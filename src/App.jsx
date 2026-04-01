@@ -488,6 +488,36 @@ function AuditModal({type,onClose,onComplete}){
 
 // profile modal
 // ─── EMPLOYEE INFO TAB ────────────────────────────────────────────────────────
+// EIField and EISection are top-level so React never remounts inputs on keystroke
+function EIField({label,fkey,type,sensitive,placeholder,editing,draft,setDraft,ei,canSeePrivate}){
+  if(sensitive&&!canSeePrivate)return(
+    <div style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}>
+      <span style={{color:C.muted}}>{label}</span>
+      <span style={{color:C.hint,fontSize:11}}>🔒 Restricted</span>
+    </div>
+  );
+  if(editing)return(
+    <div style={{marginBottom:"0.5rem"}}>
+      <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>{label}</label>
+      <input
+        type={type||"text"}
+        value={draft[fkey]||""}
+        onChange={e=>setDraft(p=>({...p,[fkey]:e.target.value}))}
+        placeholder={placeholder||""}
+        style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}
+      />
+    </div>
+  );
+  return(
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"7px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}>
+      <span style={{color:C.muted,flexShrink:0,marginRight:16,minWidth:130}}>{label}</span>
+      <span style={{fontWeight:ei[fkey]?500:400,color:ei[fkey]?C.text:C.hint,textAlign:"right",wordBreak:"break-word"}}>
+        {ei[fkey]||<em style={{fontWeight:400,fontSize:12}}>Not entered</em>}
+      </span>
+    </div>
+  );
+}
+
 function EmployeeInfoTab({staffId,staffName,role}){
   const eiKey=`empinfo_${staffId}`;
   const canSeePrivate=role==="owner"||role===staffId;
@@ -499,21 +529,19 @@ function EmployeeInfoTab({staffId,staffName,role}){
   function save(){
     if(!draft.sigName?.trim()){alert("Please type your full name in the Declaration field to confirm.");return;}
     const saved={...draft,savedDate:new Date().toLocaleDateString("en-NZ"),savedBy:staffName};
-    try{localStorage.setItem(eiKey,JSON.stringify(saved));}catch(e){alert("Could not save — storage full.");}
+    try{localStorage.setItem(eiKey,JSON.stringify(saved));}catch{alert("Could not save — storage full.");}
     setEi(saved);setEditing(false);
   }
 
-  function ERow({label,fkey,type="text",sensitive=false,placeholder=""}){
-    const hidden=sensitive&&!canSeePrivate;
-    if(hidden)return <div style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}><span style={{color:C.muted}}>{label}</span><span style={{color:C.hint,fontSize:11}}>🔒 Restricted</span></div>;
-    if(editing)return <div style={{marginBottom:"0.5rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>{label}</label><input type={type} value={draft[fkey]||""} onChange={e=>setDraft(p=>({...p,[fkey]:e.target.value}))} placeholder={placeholder} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>;
-    return <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"7px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}><span style={{color:C.muted,flexShrink:0,marginRight:16,minWidth:130}}>{label}</span><span style={{fontWeight:ei[fkey]?500:400,color:ei[fkey]?C.text:C.hint,textAlign:"right",wordBreak:"break-word"}}>{ei[fkey]||<em style={{fontWeight:400,fontSize:12}}>Not entered</em>}</span></div>;
-  }
+  // shorthand so call sites stay tidy
+  const fp={editing,draft,setDraft,ei,canSeePrivate};
+  const sh={...fp,sensitive:true};
 
-  function Section({title,color,borderColor,children}){return <div style={{marginBottom:"1rem"}}><div style={{fontSize:12,fontWeight:600,color,marginBottom:"0.5rem",paddingBottom:"0.375rem",borderBottom:`2px solid ${borderColor}`}}>{title}</div>{children}</div>;}
+  const secStyle=(color,borderColor)=>({fontSize:12,fontWeight:600,color,marginBottom:"0.5rem",paddingBottom:"0.375rem",borderBottom:`2px solid ${borderColor}`,marginTop:"0.25rem"});
 
   return(
     <div>
+      {/* header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.875rem"}}>
         <SL>Employee Information Sheet</SL>
         <div style={{display:"flex",gap:6}}>
@@ -525,58 +553,96 @@ function EmployeeInfoTab({staffId,staffName,role}){
 
       {ei.savedDate&&!editing&&<div style={{fontSize:11,color:C.muted,marginBottom:"0.875rem",background:C.grayXL,padding:"5px 10px",borderRadius:20,display:"inline-block"}}>Last updated {ei.savedDate} · {ei.savedBy}</div>}
       {!canSeePrivate&&<Alert type="blue" title="🔒 Some fields restricted">Pay, bank and IRD details are only visible to Jade and the individual staff member.</Alert>}
-      {!editing&&!ei.fullName&&canSeePrivate&&<Alert type="amber" title="No information entered yet">Tap "Add details" to fill in the employee information form. Staff can enter and update their own details.</Alert>}
+      {!editing&&!ei.fullName&&canSeePrivate&&<Alert type="amber" title="No information entered yet">Tap "Add details" to fill in the employee information form.</Alert>}
 
-      <Section title="Personal details" color={C.teal} borderColor={C.tealL}>
-        <ERow label="Full name" fkey="fullName"/>
-        <ERow label="Date of birth" fkey="dob" type="date"/>
-        <ERow label="Home address" fkey="address"/>
-        <ERow label="Home phone" fkey="homePhone"/>
-        <ERow label="Cell / mobile" fkey="cell"/>
-        <ERow label="Email" fkey="email" type="email"/>
-      </Section>
+      {/* personal */}
+      <div style={{marginBottom:"1rem"}}>
+        <div style={secStyle(C.teal,C.tealL)}>Personal details</div>
+        <EIField label="Full name"    fkey="fullName"   {...fp}/>
+        <EIField label="Date of birth" fkey="dob"       {...fp} type="date"/>
+        <EIField label="Home address" fkey="address"    {...fp}/>
+        <EIField label="Home phone"   fkey="homePhone"  {...fp}/>
+        <EIField label="Cell / mobile" fkey="cell"      {...fp}/>
+        <EIField label="Email"        fkey="email"      {...fp} type="email"/>
+      </div>
 
-      <Section title="Next of kin / emergency contact" color={C.blue} borderColor={C.blueL}>
-        <ERow label="Name" fkey="nokName"/>
-        <ERow label="Relationship" fkey="nokRelationship"/>
-        <ERow label="Address" fkey="nokAddress"/>
-        <ERow label="Home phone" fkey="nokHomePhone"/>
-        <ERow label="Cell / mobile" fkey="nokCell"/>
-      </Section>
+      {/* next of kin */}
+      <div style={{marginBottom:"1rem"}}>
+        <div style={secStyle(C.blue,C.blueL)}>Next of kin / emergency contact</div>
+        <EIField label="Name"         fkey="nokName"         {...fp}/>
+        <EIField label="Relationship" fkey="nokRelationship" {...fp}/>
+        <EIField label="Address"      fkey="nokAddress"      {...fp}/>
+        <EIField label="Home phone"   fkey="nokHomePhone"    {...fp}/>
+        <EIField label="Cell / mobile" fkey="nokCell"        {...fp}/>
+      </div>
 
-      <Section title={<span>Pay & account details {!canSeePrivate&&<span style={{fontSize:10,color:C.hint,fontWeight:400}}> 🔒 restricted</span>}</span>} color={C.amber} borderColor={C.amberL}>
+      {/* pay & account */}
+      <div style={{marginBottom:"1rem"}}>
+        <div style={secStyle(C.amber,C.amberL)}>
+          Pay &amp; account details{!canSeePrivate&&<span style={{fontSize:10,color:C.hint,fontWeight:400}}> 🔒 restricted</span>}
+        </div>
         {editing&&canSeePrivate&&(
           <>
             <div style={{marginBottom:"0.75rem"}}>
-              <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:6}}>Employment type</label>
+              <div style={{fontSize:12,color:C.muted,marginBottom:6}}>Employment type</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem"}}>
-                {["Employed","Sub Contractor"].map(opt=><div key={opt} onClick={()=>setDraft(p=>({...p,employmentType:opt}))} style={{padding:"8px 12px",borderRadius:6,border:`1.5px solid ${draft.employmentType===opt?C.teal:C.border}`,background:draft.employmentType===opt?C.tealL:"white",fontSize:13,cursor:"pointer",textAlign:"center",fontWeight:draft.employmentType===opt?600:400}}>{opt}</div>)}
+                {["Employed","Sub Contractor"].map(opt=>(
+                  <div key={opt} onClick={()=>setDraft(p=>({...p,employmentType:opt}))}
+                    style={{padding:"8px 12px",borderRadius:6,border:`1.5px solid ${draft.employmentType===opt?C.teal:C.border}`,background:draft.employmentType===opt?C.tealL:"white",fontSize:13,cursor:"pointer",textAlign:"center",fontWeight:draft.employmentType===opt?600:400}}>
+                    {opt}
+                  </div>
+                ))}
               </div>
             </div>
             <div style={{marginBottom:"0.75rem"}}>
-              <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:6}}>Hours</label>
+              <div style={{fontSize:12,color:C.muted,marginBottom:6}}>Hours</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem"}}>
-                {["Full time","Part time"].map(opt=><div key={opt} onClick={()=>setDraft(p=>({...p,hours:opt}))} style={{padding:"8px 12px",borderRadius:6,border:`1.5px solid ${draft.hours===opt?C.blue:C.border}`,background:draft.hours===opt?C.blueL:"white",fontSize:13,cursor:"pointer",textAlign:"center",fontWeight:draft.hours===opt?600:400}}>{opt}</div>)}
+                {["Full time","Part time"].map(opt=>(
+                  <div key={opt} onClick={()=>setDraft(p=>({...p,hours:opt}))}
+                    style={{padding:"8px 12px",borderRadius:6,border:`1.5px solid ${draft.hours===opt?C.blue:C.border}`,background:draft.hours===opt?C.blueL:"white",fontSize:13,cursor:"pointer",textAlign:"center",fontWeight:draft.hours===opt?600:400}}>
+                    {opt}
+                  </div>
+                ))}
               </div>
             </div>
           </>
         )}
-        {!editing&&<>
-          <ERow label="Employment type" fkey="employmentType"/>
-          <ERow label="Hours" fkey="hours"/>
-        </>}
-        <ERow label="Hourly rate ($)" fkey="hourlyRate" sensitive={true}/>
-        <ERow label="Percentage (%)" fkey="percentage" sensitive={true}/>
-        <ERow label="IRD number" fkey="ird" sensitive={true}/>
-        <ERow label="Bank name" fkey="bankName" sensitive={true}/>
-        <ERow label="Bank account number" fkey="bankAccount" sensitive={true} placeholder="00-0000-0000000-00"/>
-      </Section>
+        {!editing&&(
+          <>
+            <EIField label="Employment type" fkey="employmentType" {...fp}/>
+            <EIField label="Hours"           fkey="hours"          {...fp}/>
+          </>
+        )}
+        <EIField label="Hourly rate ($)"      fkey="hourlyRate"  {...sh}/>
+        <EIField label="Percentage (%)"       fkey="percentage"  {...sh}/>
+        <EIField label="IRD number"           fkey="ird"         {...sh}/>
+        <EIField label="Bank name"            fkey="bankName"    {...sh}/>
+        <EIField label="Bank account number"  fkey="bankAccount" {...sh} placeholder="00-0000-0000000-00"/>
+      </div>
 
-      <Section title="Declaration" color={C.gray} borderColor={C.grayL}>
-        {editing
-          ?<><div style={{marginBottom:"0.5rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Signed (type your full name)</label><input value={draft.sigName||""} onChange={e=>setDraft(p=>({...p,sigName:e.target.value}))} placeholder={staffName} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div><div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>By saving, {staffName} confirms the above information is true and correct.</div></>
-          :<><ERow label="Signed" fkey="sigName"/><ERow label="Date" fkey="savedDate"/></>}
-      </Section>
+      {/* declaration */}
+      <div style={{marginBottom:"1rem"}}>
+        <div style={secStyle(C.gray,C.grayL)}>Declaration</div>
+        {editing?(
+          <>
+            <div style={{marginBottom:"0.5rem"}}>
+              <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Signed (type your full name)</label>
+              <input
+                value={draft.sigName||""}
+                onChange={e=>setDraft(p=>({...p,sigName:e.target.value}))}
+                placeholder={staffName}
+                style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}
+              />
+            </div>
+            <div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>By saving, {staffName} confirms the above information is true and correct.</div>
+          </>
+        ):(
+          <>
+            <EIField label="Signed" fkey="sigName"   {...fp}/>
+            <EIField label="Date"   fkey="savedDate" {...fp}/>
+          </>
+        )}
+      </div>
     </div>
   );
 }
