@@ -170,6 +170,7 @@ const CORE_CERTS = [
   {key:"peerreview", label:"Peer Review",                     renews:"Annual",            required:false},
   {key:"appraisal",  label:"Performance Appraisal",           renews:"Annual",            required:false},
   {key:"pnz",        label:"PNZ Membership",                  renews:"Annual",            required:false},
+  {key:"policevetting", label:"Police Vetting",               renews:"Every 3 years",     required:true},
 ];
 
 const REMINDER_SCHEDULE = [
@@ -185,6 +186,7 @@ const REMINDER_SCHEDULE = [
   {key:"peer_review",  label:"Peer review",                  freq:"Annual",    freqDays:365,month:4, day:1, icon:"🔍",applies:"All staff"},
   {key:"appraisal",    label:"Performance appraisal",        freq:"Annual",    freqDays:365,month:10,day:1, icon:"📊",applies:"All staff"},
   {key:"pp_review",    label:"P&P annual review",            freq:"Annual",    freqDays:365,month:4, day:1, icon:"📖",applies:"Management"},
+  {key:"policevetting",label:"Police vetting renewal",        freq:"3-yearly",  freqDays:1095,month:4,day:1, icon:"🚔",applies:"All staff"},
   {key:"notes_audit",  label:"Clinical notes audit",         freq:"6-monthly", freqDays:182,month:6, day:1, icon:"📋",applies:"All physios",auditKey:"clinical_notes"},
 ];
 
@@ -518,12 +520,110 @@ function EIField({label,fkey,type,sensitive,placeholder,editing,draft,setDraft,e
   );
 }
 
+// ─── EMPLOYEE INFO SEED DATA (pre-populated from Drive documents) ─────────────
+const EI_SEED = {
+  hans: {
+    fullName:"Hans Vermeulen",
+    address:"38 Blackburn Road, Auckland",
+    cell:"021 047 847",
+    nokName:"Sue Alsbury",
+    nokRelationship:"Wife",
+    nokCell:"021 497 689",
+    ird:"93-653-369",
+    bankName:"Kiwibank",
+    bankAccount:"38-3012-0664145-00",
+    employmentType:"Sub Contractor",
+    hours:"Full time",
+    sigName:"Hans Vermeulen",
+    savedDate:"28/10/2023",
+    savedBy:"Hans Vermeulen",
+  },
+  dylan: {
+    fullName:"Dylan Connolly",
+    cell:"029 121 4880",
+    email:"dconnol4@tcd.ie",
+    nokName:"Tiquilla Furey-Holder",
+    nokAddress:"12 Springcombe Rd, St Heliers, Auckland 1071",
+    nokCell:"021 274 4717",
+    hourlyRate:"37.02",
+    ird:"140-022-810",
+    bankName:"BNZ",
+    bankAccount:"02-0108-0793911-000",
+    employmentType:"Employed",
+    hours:"Full time",
+    sigName:"Dylan Connolly",
+    savedDate:"",
+    savedBy:"Dylan Connolly",
+  },
+  gwenne: {
+    fullName:"Gwenne Jane Manares",
+    dob:"1999-11-17",
+    address:"25D Northall Rd, New Lynn, Auckland 0600",
+    employmentType:"Employee",
+    hours:"",
+    sigName:"",
+    savedDate:"",
+    savedBy:"",
+  },
+  timothy: {
+    fullName:"Timothy Keung",
+    address:"26A Victoria Road, Papatoetoe, Auckland",
+    cell:"027 260 6498",
+    nokName:"Wendy",
+    nokCell:"022 094 0298",
+    ird:"79-787-727",
+    bankAccount:"12-3447-0398838-30",
+    employmentType:"Employed",
+    hours:"Full time",
+    sigName:"Timothy Keung",
+    savedDate:"11/07/2022",
+    savedBy:"Timothy Keung",
+  },
+  isabella: {
+    fullName:"Isabella Yang",
+    address:"37 Hangahai Road, Flat Bush, Auckland",
+    cell:"021 057 8859",
+    email:"isabez756@gmail.com",
+    nokName:"Ruiqun Li",
+    nokAddress:"46 Vivian Wilson Drive, Eastern Beach, Auckland",
+    nokCell:"021 236 7581",
+    hourlyRate:"36.06",
+    percentage:"52%",
+    ird:"111-135-312",
+    bankName:"ASB",
+    bankAccount:"12-3089-0444057-50",
+    employmentType:"Employed",
+    hours:"Full time",
+    sigName:"Isabella Yang",
+    savedDate:"19/06/2024",
+    savedBy:"Isabella Yang",
+  },
+  ibrahim: {
+    fullName:"Ibrahim Bahaa Al-Din Al-Jumaily",
+    dob:"2002-04-20",
+    address:"124 Hutchinsons Rd, Buckland's Beach, Auckland 2014",
+    employmentType:"Employed",
+    hours:"",
+    sigName:"",
+    savedDate:"",
+    savedBy:"",
+  },
+};
+
 function EmployeeInfoTab({staffId,staffName,role}){
   const eiKey=`empinfo_${staffId}`;
   const canSeePrivate=role==="owner"||role===staffId;
-  const[ei,setEi]=useState(()=>{try{return JSON.parse(localStorage.getItem(eiKey)||"{}");}catch{return{};}});
+  const[ei,setEi]=useState(()=>{
+    try{
+      const stored=localStorage.getItem(eiKey);
+      if(stored){return JSON.parse(stored);}
+      // Fall back to seed data if nothing stored yet
+      return EI_SEED[staffId]||{};
+    }catch{return EI_SEED[staffId]||{};}
+  });
   const[editing,setEditing]=useState(false);
   const[draft,setDraft]=useState({});
+
 
   function startEdit(){setDraft({...ei});setEditing(true);}
   function save(){
@@ -867,7 +967,7 @@ export default function App(){
         </div>
         <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-            <thead><TH headers={["Staff","Type","Clinics","APC","First Aid","Cultural","Orientation","Progress"]}/></thead>
+            <thead><TH headers={["Staff","Type","Clinics","APC","First Aid","Cultural","Police Vetting","Orientation","Progress"]}/></thead>
             <tbody>
               {Object.entries(STAFF).map(([id,s])=>{
                 const fs=k=>loadFile(id,k)?"ok":"pending";const comp=staffComp(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[s.type]||"gray";
@@ -875,7 +975,7 @@ export default function App(){
                   <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
                     <TD><strong>{s.name}</strong></TD><TD><Chip color={tc}>{s.type}</Chip></TD>
                     <TD style={{fontSize:11,color:C.muted}}>{s.clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</TD>
-                    <TD><Pill s={fs("apc")}/></TD><TD><Pill s={fs("firstaid")}/></TD><TD><Pill s={fs("cultural")}/></TD><TD><Pill s={fs("orientation")}/></TD>
+                    <TD><Pill s={fs("apc")}/></TD><TD><Pill s={fs("firstaid")}/></TD><TD><Pill s={fs("cultural")}/></TD><TD><Pill s={fs("policevetting")}/></TD><TD><Pill s={fs("orientation")}/></TD>
                     <TD><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:52,height:5,background:C.grayL,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:comp.pct===100?C.teal:comp.pct>50?C.amber:C.red,width:`${comp.pct}%`}}/></div><span style={{fontSize:11,color:C.muted}}>{comp.done}/{comp.total}</span></div></TD>
                   </tr>
                 );
@@ -960,7 +1060,8 @@ export default function App(){
     <div>
       <PH title="Compliance tracker" sub="All staff — employees and contractors — must hold all required certifications."/>
       <Alert type="blue" title="📌 Universal requirements — everyone">APC · First Aid / CPR · Cultural Competency · Contract · Job Description · Orientation. Peer review & appraisal for staff 12+ months.</Alert>
-      <TabBar items={[["overview","Overview"],["apc","APC"],["firstaid","First Aid"],["cultural","Cultural"],["reviews","Reviews"]]} current={compTab} setter={setCompTab}/>
+      <TabBar items={[["overview","Overview"],["apc","APC"],["firstaid","First Aid"],["cultural","Cultural"],["vetting","🚔 Police Vetting"],["reviews","Reviews"]]} current={compTab} setter={setCompTab}/>
+      {compTab==="vetting"&&<><Alert type="blue" title="Police Vetting — §4.2 P&P Manual">Required for all staff working with vulnerable clients (children, older adults, people with disabilities). Renewed every 3 years. Evidence is the email from NZ Police showing a clear result. Upload the email or PDF confirmation to each staff member's profile.</Alert><Tbl headers={["Staff","Vetting on file","File","Notes"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"policevetting");const note={gwenne:"Vetting completed — clear ✓",ibrahim:"Vetting completed — clear ✓"}[id]||"Upload email confirmation";return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={f?"ok":"pending"} label={f?`Uploaded ${f.uploadedDate}`:"Not uploaded"}/></TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD><TD style={{fontSize:11,color:C.muted}}>{note}</TD></tr>;})}</Tbl><div style={{fontSize:12,color:C.muted,marginTop:"0.75rem",lineHeight:1.6,padding:"0.75rem 1rem",background:C.grayXL,borderRadius:8}}>📌 Per §4.2 P&P Manual: police vetting and risk assessment must be completed every 3 years. The NZ Police vetting email or PDF showing "no information to release" is sufficient evidence. Tap any staff member to upload their certificate.</div></>}
       {compTab==="overview"&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><TH headers={["Staff","APC","First Aid","Cultural","Contract","JD","Orientation","Peer Review","Appraisal"]}/></thead><tbody>{Object.entries(STAFF).map(([id,s])=><tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD>{CORE_CERTS.map(c=><TD key={c.key}>{c.ownerOnly&&role!=="owner"&&role!==id?<span style={{fontSize:11,color:C.hint}}>🔒</span>:<Pill s={loadFile(id,c.key)?"ok":"pending"}/>}</TD>)}</tr>)}</tbody></table></div>}
       {compTab==="apc"&&<><Alert type="amber" title="Annual Practising Certificate">Issued by PBNZ. Renews 1 April. Must be sighted and copy on file for all staff.</Alert><Tbl headers={["Staff","APC on file","File"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"apc");return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}}><TD><strong>{s.name}</strong></TD><TD><Pill s={f?"ok":"pending"} label={f?`Uploaded ${f.uploadedDate}`:"Not uploaded"}/></TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD></tr>;})}</Tbl></>}
       {compTab==="firstaid"&&<Alert type="amber" title="First Aid / CPR — all staff required">Valid 2 years. Alistair's cert expired 10 Aug 2024. Upload via each staff profile.</Alert>}
@@ -1069,7 +1170,7 @@ export default function App(){
     </div>}
     {mgmtTab==="accreditation"&&<div>
       <Alert type="green" title="DAA Group — ACC Allied Health Standards">All sections of this portal support your DAA audit readiness. P&P manual underpins all requirements below.</Alert>
-      {[["Staff credentials — APC, First Aid, Cultural",Object.entries(STAFF).every(([id])=>["apc","firstaid","cultural"].every(k=>loadFile(id,k)))?"ok":"pending","All staff hold current APC, First Aid and Cultural Competency — P&P §7"],["Clinical Director oversight (Alistair)","ok","ACC confirmed Nov 2023 — clinical reviews before 16th visit — P&P §1.2"],["16th-visit case reviews","pending","Document in meeting notes — P&P §1.2"],["Orientation — all staff","pending","Complete digital checklist for each staff member — P&P §7.1"],["P&P annual review","pending","Due April — P&P §1.1"],["In-service training","pending","At least one per clinic per year — P&P §7.7.3"],["H&S audits — quarterly","ok","Records in audit history — P&P §1.5.2"],["Fire drills — annual","pending","Run from Clinics page — P&P §3.1.2"],["Staff meetings — quarterly","ok","Minutes logged above — P&P §7.6"],["Equipment servicing — annual","ok","Records above — P&P §3.1.15"],["Clinical notes audit — 6-monthly","pending","10 records per physio (5 current + 5 past) — P&P §1.5.1"],["Client satisfaction survey","pending","Via website or forms — P&P §1.5.3"]].map(([t,s,d])=>(
+      {[["Staff credentials — APC, First Aid, Cultural",Object.entries(STAFF).every(([id])=>["apc","firstaid","cultural"].every(k=>loadFile(id,k)))?"ok":"pending","All staff hold current APC, First Aid and Cultural Competency — P&P §7"],["Police vetting — all staff",Object.entries(STAFF).every(([id])=>loadFile(id,"policevetting"))?"ok":"pending","Every 3 years — NZ Police email confirmation — P&P §4.2"],["Clinical Director oversight (Alistair)","ok","ACC confirmed Nov 2023 — clinical reviews before 16th visit — P&P §1.2"],["16th-visit case reviews","pending","Document in meeting notes — P&P §1.2"],["Orientation — all staff","pending","Complete digital checklist for each staff member — P&P §7.1"],["P&P annual review","pending","Due April — P&P §1.1"],["In-service training","pending","At least one per clinic per year — P&P §7.7.3"],["H&S audits — quarterly","ok","Records in audit history — P&P §1.5.2"],["Fire drills — annual","pending","Run from Clinics page — P&P §3.1.2"],["Staff meetings — quarterly","ok","Minutes logged above — P&P §7.6"],["Equipment servicing — annual","ok","Records above — P&P §3.1.15"],["Clinical notes audit — 6-monthly","pending","10 records per physio (5 current + 5 past) — P&P §1.5.1"],["Client satisfaction survey","pending","Via website or forms — P&P §1.5.3"]].map(([t,s,d])=>(
         <Card key={t} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
             <div><div style={{fontSize:13,fontWeight:600}}>{t}</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>{d}</div></div>
