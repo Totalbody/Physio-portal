@@ -205,9 +205,9 @@ const AUDIT_FORMS = {
     {title:"Common areas",items:["Waiting room chairs and surfaces clean","Reception desk clean and tidy","Kitchen/staff room clean","Staff toilets clean and stocked"]},
     {title:"PPE & infection control",items:["PPE supplies stocked (gloves, masks)","Clinical waste disposed of correctly","No expired single-use items in clinical areas"]},
   ]},
-  clinical_notes:{title:"Clinical Notes Audit",icon:"📋",freq:"Every 6 months",sections:[
+  clinical_notes:{title:"Clinical Notes Audit",icon:"📋",freq:"Every 6 months",hasPhysioSelect:true,sections:[
     {title:"Documentation standards (10 records — 5 current, 5 past)",items:["Notes completed within 24hrs of treatment","SOATAP format used consistently","Legible and professional language throughout","No blank fields in required sections","ACC45 number present on all records"]},
-    {title:"Consent & patient information",items:["Informed verbal consent documented at first visit","'Informed Verbal Consent Obtained' ticked on initial assessment","Patient details accurate and up to date","Privacy statement signed","ACC claim details correct"]},
+    {title:"Consent & patient information",items:["Informed verbal consent documented at first visit","'Informed Verbal Consent Obtained' ticked on initial assessment","Patient details accurate and up to date","Privacy statement signed","ACC claim details correct","If PhysioNote AI used in session — client consent documented in notes"]},
     {title:"Treatment planning",items:["Initial assessment findings fully documented","Clinical diagnosis recorded","Treatment plan with functional goals documented","SMART goals set with patient","Baseline outcome measures recorded"]},
     {title:"Progress & outcomes",items:["Progress notes reflect treatment plan","Numerical pain rating scale recorded every visit","Patient Specific Functional Scale recorded","Any change in condition noted and plan updated","Referrals documented where made"]},
     {title:"ACC compliance",items:["Clinical Director 16th-visit review completed where required","Discharge summary completed per ACC guidelines","Discharge letter sent to GP where referred","ACC forms completed accurately","Treatment codes correct","Submit Kit used for claims"]},
@@ -414,15 +414,17 @@ function OrientationModal({staffId,onClose}){
 function AuditModal({type,onClose,onComplete}){
   const form=AUDIT_FORMS[type];const all=form.sections.flatMap(s=>s.items);
   const[checks,setChecks]=useState({});const[notes,setNotes]=useState({});
-  const[meta,setMeta]=useState({clinic:CLINICS[0].short,auditor:"",date:new Date().toISOString().split("T")[0]});
+  const[meta,setMeta]=useState({clinic:CLINICS[0].short,auditor:"",physioAudited:"",date:new Date().toISOString().split("T")[0]});
   const[overall,setOverall]=useState("");
   const passed=Object.values(checks).filter(v=>v==="pass").length;const failed=Object.values(checks).filter(v=>v==="fail").length;const na=Object.values(checks).filter(v=>v==="na").length;
   const answered=passed+failed+na;const pct=Math.round((answered/all.length)*100);
   function submit(){
     if(!meta.auditor.trim()){alert("Please enter auditor name.");return;}
+    if(form.hasPhysioSelect&&!meta.physioAudited){alert("Please select the physiotherapist whose notes are being audited.");return;}
     if(answered<all.length&&!window.confirm(`${all.length-answered} items unanswered. Submit anyway?`))return;
     const fn=Object.entries(notes).filter(([,v])=>v).map(([k,v])=>`• ${k}: ${v}`).join("\n");
-    onComplete({id:Date.now(),type,title:form.title,icon:form.icon,clinic:meta.clinic,auditor:meta.auditor,date:meta.date,passed,failed,na,total:all.length,outcome:failed===0?"Passed":`${failed} issue${failed>1?"s":""} found`,notes:(fn+(overall?`\nNotes: ${overall}`:"")).trim()});
+    const titleDisplay=form.hasPhysioSelect&&meta.physioAudited?`${form.title} — ${meta.physioAudited}`:form.title;
+    onComplete({id:Date.now(),type,title:titleDisplay,icon:form.icon,clinic:meta.clinic,auditor:meta.auditor,physioAudited:meta.physioAudited||null,date:meta.date,passed,failed,na,total:all.length,outcome:failed===0?"Passed":`${failed} issue${failed>1?"s":""} found`,notes:(fn+(overall?`\nNotes: ${overall}`:"")).trim()});
   }
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:400,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
@@ -435,13 +437,25 @@ function AuditModal({type,onClose,onComplete}){
           </div>
         </div>
         <div style={{padding:"1.25rem 1.5rem",maxHeight:"75vh",overflowY:"auto"}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.75rem",marginBottom:"1.25rem"}}>
-            {[["Clinic","clinic","select"],["Auditor","auditor","text"],["Date","date","date"]].map(([lbl,k,t])=>(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.75rem",marginBottom:form.hasPhysioSelect?"0.75rem":"1.25rem"}}>
+            {[["Clinic","clinic","select"],["Auditor name","auditor","text"],["Date","date","date"]].map(([lbl,k,t])=>(
               <div key={k}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>{lbl}</label>
                 {t==="select"?<select value={meta[k]} onChange={e=>setMeta({...meta,[k]:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL}}>{CLINICS.map(c=><option key={c.id}>{c.short}</option>)}</select>:<input type={t} value={meta[k]} onChange={e=>setMeta({...meta,[k]:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/>}
               </div>
             ))}
           </div>
+          {form.hasPhysioSelect&&(
+            <div style={{background:"#E6F1FB",border:`1px solid #b8d4f0`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1.25rem"}}>
+              <div style={{fontSize:12,fontWeight:600,color:C.blue,marginBottom:"0.5rem"}}>📋 Whose notes are being audited?</div>
+              <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+                {Object.values(STAFF).filter(s=>s.type!=="Owner").map(s=>(
+                  <div key={s.name} onClick={()=>setMeta(p=>({...p,physioAudited:s.name}))} style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${meta.physioAudited===s.name?C.blue:C.border}`,background:meta.physioAudited===s.name?C.blueL:"white",fontSize:12,cursor:"pointer",fontWeight:meta.physioAudited===s.name?600:400,color:meta.physioAudited===s.name?C.blue:C.text}}>{s.name.split(" ")[0]}</div>
+                ))}
+              </div>
+              {meta.physioAudited&&<div style={{fontSize:11,color:C.muted}}>Auditing 5 current + 5 past records for <strong>{meta.physioAudited}</strong> · per §1.5.1 P&P Manual</div>}
+              {!meta.physioAudited&&<div style={{fontSize:11,color:C.amber}}>⚠ Please select the physiotherapist whose notes are being audited.</div>}
+            </div>
+          )}
           <div style={{display:"flex",gap:16,marginBottom:"0.875rem",fontSize:12,color:C.muted}}><span style={{fontWeight:500,color:C.text}}>Each item:</span><span style={{color:"#3B6D11",fontWeight:600}}>✓ Pass</span><span style={{color:C.red,fontWeight:600}}>✗ Fail</span><span style={{color:C.gray,fontWeight:600}}>— N/A</span></div>
           {form.sections.map((sec,si)=>(
             <div key={si} style={{marginBottom:"1.5rem"}}>
@@ -473,6 +487,100 @@ function AuditModal({type,onClose,onComplete}){
 }
 
 // profile modal
+// ─── EMPLOYEE INFO TAB ────────────────────────────────────────────────────────
+function EmployeeInfoTab({staffId,staffName,role}){
+  const eiKey=`empinfo_${staffId}`;
+  const canSeePrivate=role==="owner"||role===staffId;
+  const[ei,setEi]=useState(()=>{try{return JSON.parse(localStorage.getItem(eiKey)||"{}");}catch{return{};}});
+  const[editing,setEditing]=useState(false);
+  const[draft,setDraft]=useState({});
+
+  function startEdit(){setDraft({...ei});setEditing(true);}
+  function save(){
+    if(!draft.sigName?.trim()){alert("Please type your full name in the Declaration field to confirm.");return;}
+    const saved={...draft,savedDate:new Date().toLocaleDateString("en-NZ"),savedBy:staffName};
+    try{localStorage.setItem(eiKey,JSON.stringify(saved));}catch(e){alert("Could not save — storage full.");}
+    setEi(saved);setEditing(false);
+  }
+
+  function ERow({label,fkey,type="text",sensitive=false,placeholder=""}){
+    const hidden=sensitive&&!canSeePrivate;
+    if(hidden)return <div style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}><span style={{color:C.muted}}>{label}</span><span style={{color:C.hint,fontSize:11}}>🔒 Restricted</span></div>;
+    if(editing)return <div style={{marginBottom:"0.5rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>{label}</label><input type={type} value={draft[fkey]||""} onChange={e=>setDraft(p=>({...p,[fkey]:e.target.value}))} placeholder={placeholder} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>;
+    return <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"7px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}><span style={{color:C.muted,flexShrink:0,marginRight:16,minWidth:130}}>{label}</span><span style={{fontWeight:ei[fkey]?500:400,color:ei[fkey]?C.text:C.hint,textAlign:"right",wordBreak:"break-word"}}>{ei[fkey]||<em style={{fontWeight:400,fontSize:12}}>Not entered</em>}</span></div>;
+  }
+
+  function Section({title,color,borderColor,children}){return <div style={{marginBottom:"1rem"}}><div style={{fontSize:12,fontWeight:600,color,marginBottom:"0.5rem",paddingBottom:"0.375rem",borderBottom:`2px solid ${borderColor}`}}>{title}</div>{children}</div>;}
+
+  return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.875rem"}}>
+        <SL>Employee Information Sheet</SL>
+        <div style={{display:"flex",gap:6}}>
+          {editing
+            ?<><Btn onClick={save}>Save</Btn><Btn outline onClick={()=>setEditing(false)}>Cancel</Btn></>
+            :<BSm onClick={startEdit} color={C.teal}>✏️ {Object.keys(ei).length>2?"Edit details":"Add details"}</BSm>}
+        </div>
+      </div>
+
+      {ei.savedDate&&!editing&&<div style={{fontSize:11,color:C.muted,marginBottom:"0.875rem",background:C.grayXL,padding:"5px 10px",borderRadius:20,display:"inline-block"}}>Last updated {ei.savedDate} · {ei.savedBy}</div>}
+      {!canSeePrivate&&<Alert type="blue" title="🔒 Some fields restricted">Pay, bank and IRD details are only visible to Jade and the individual staff member.</Alert>}
+      {!editing&&!ei.fullName&&canSeePrivate&&<Alert type="amber" title="No information entered yet">Tap "Add details" to fill in the employee information form. Staff can enter and update their own details.</Alert>}
+
+      <Section title="Personal details" color={C.teal} borderColor={C.tealL}>
+        <ERow label="Full name" fkey="fullName"/>
+        <ERow label="Date of birth" fkey="dob" type="date"/>
+        <ERow label="Home address" fkey="address"/>
+        <ERow label="Home phone" fkey="homePhone"/>
+        <ERow label="Cell / mobile" fkey="cell"/>
+        <ERow label="Email" fkey="email" type="email"/>
+      </Section>
+
+      <Section title="Next of kin / emergency contact" color={C.blue} borderColor={C.blueL}>
+        <ERow label="Name" fkey="nokName"/>
+        <ERow label="Relationship" fkey="nokRelationship"/>
+        <ERow label="Address" fkey="nokAddress"/>
+        <ERow label="Home phone" fkey="nokHomePhone"/>
+        <ERow label="Cell / mobile" fkey="nokCell"/>
+      </Section>
+
+      <Section title={<span>Pay & account details {!canSeePrivate&&<span style={{fontSize:10,color:C.hint,fontWeight:400}}> 🔒 restricted</span>}</span>} color={C.amber} borderColor={C.amberL}>
+        {editing&&canSeePrivate&&(
+          <>
+            <div style={{marginBottom:"0.75rem"}}>
+              <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:6}}>Employment type</label>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem"}}>
+                {["Employed","Sub Contractor"].map(opt=><div key={opt} onClick={()=>setDraft(p=>({...p,employmentType:opt}))} style={{padding:"8px 12px",borderRadius:6,border:`1.5px solid ${draft.employmentType===opt?C.teal:C.border}`,background:draft.employmentType===opt?C.tealL:"white",fontSize:13,cursor:"pointer",textAlign:"center",fontWeight:draft.employmentType===opt?600:400}}>{opt}</div>)}
+              </div>
+            </div>
+            <div style={{marginBottom:"0.75rem"}}>
+              <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:6}}>Hours</label>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem"}}>
+                {["Full time","Part time"].map(opt=><div key={opt} onClick={()=>setDraft(p=>({...p,hours:opt}))} style={{padding:"8px 12px",borderRadius:6,border:`1.5px solid ${draft.hours===opt?C.blue:C.border}`,background:draft.hours===opt?C.blueL:"white",fontSize:13,cursor:"pointer",textAlign:"center",fontWeight:draft.hours===opt?600:400}}>{opt}</div>)}
+              </div>
+            </div>
+          </>
+        )}
+        {!editing&&<>
+          <ERow label="Employment type" fkey="employmentType"/>
+          <ERow label="Hours" fkey="hours"/>
+        </>}
+        <ERow label="Hourly rate ($)" fkey="hourlyRate" sensitive={true}/>
+        <ERow label="Percentage (%)" fkey="percentage" sensitive={true}/>
+        <ERow label="IRD number" fkey="ird" sensitive={true}/>
+        <ERow label="Bank name" fkey="bankName" sensitive={true}/>
+        <ERow label="Bank account number" fkey="bankAccount" sensitive={true} placeholder="00-0000-0000000-00"/>
+      </Section>
+
+      <Section title="Declaration" color={C.gray} borderColor={C.grayL}>
+        {editing
+          ?<><div style={{marginBottom:"0.5rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Signed (type your full name)</label><input value={draft.sigName||""} onChange={e=>setDraft(p=>({...p,sigName:e.target.value}))} placeholder={staffName} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div><div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>By saving, {staffName} confirms the above information is true and correct.</div></>
+          :<><ERow label="Signed" fkey="sigName"/><ERow label="Date" fkey="savedDate"/></>}
+      </Section>
+    </div>
+  );
+}
+
 function ProfileModal({id,onClose,role}){
   const[tab,setTab]=useState("certs");const[showOri,setShowOri]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
   if(!id)return null;const s=STAFF[id];const comp=staffComp(id);
@@ -509,87 +617,7 @@ function ProfileModal({id,onClose,role}){
                 <div style={{fontSize:11,color:C.muted,marginTop:"0.625rem",lineHeight:1.5}}>📷 Tap Upload to take a photo or pick a file. Images and PDFs display inline. Max 3MB.</div>
               </div>
             )}
-            {tab==="empinfo"&&(()=>{
-              const eiKey=`empinfo_${id}`;
-              const canSeePrivate=role==="owner"||role===id;
-              const[ei,setEi]=useState(()=>{try{return JSON.parse(localStorage.getItem(eiKey)||"{}");}catch{return{};}});
-              const[editing,setEditing]=useState(false);
-              const[draft,setDraft]=useState({});
-              function startEdit(){setDraft({...ei});setEditing(true);}
-              function save(){
-                const saved={...draft,savedDate:new Date().toLocaleDateString("en-NZ"),savedBy:s.name};
-                try{localStorage.setItem(eiKey,JSON.stringify(saved));}catch{}
-                setEi(saved);setEditing(false);
-              }
-              function cancel(){setEditing(false);setDraft({});}
-              function F({label,fkey,type="text",sensitive=false,placeholder=""}){
-                const val=editing?draft[fkey]||"":ei[fkey]||"";
-                const hidden=sensitive&&!canSeePrivate;
-                if(hidden)return <div style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}><span style={{color:C.muted}}>{label}</span><span style={{color:C.hint,fontSize:11}}>🔒 Restricted</span></div>;
-                if(editing)return <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>{label}</label><input type={type} value={draft[fkey]||""} onChange={e=>setDraft(p=>({...p,[fkey]:e.target.value}))} placeholder={placeholder||""} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>;
-                return <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"7px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}><span style={{color:C.muted,flexShrink:0,marginRight:12}}>{label}</span><span style={{fontWeight:ei[fkey]?500:400,color:ei[fkey]?C.text:C.hint,textAlign:"right",wordBreak:"break-all"}}>{ei[fkey]||<em style={{fontWeight:400}}>Not entered</em>}</span></div>;
-              }
-              return(
-                <div>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
-                    <SL>Employee Information Sheet</SL>
-                    <div style={{display:"flex",gap:6}}>
-                      {editing?<><Btn onClick={save}>Save</Btn><Btn outline onClick={cancel}>Cancel</Btn></>:<BSm onClick={startEdit} color={canSeePrivate?C.teal:C.gray}>{canSeePrivate?"✏️ Edit":"View only"}</BSm>}
-                    </div>
-                  </div>
-                  {ei.savedDate&&!editing&&<div style={{fontSize:11,color:C.muted,marginBottom:"0.875rem",background:C.grayXL,padding:"5px 10px",borderRadius:20,display:"inline-block"}}>Last updated {ei.savedDate} by {ei.savedBy}</div>}
-                  {!canSeePrivate&&<Alert type="blue" title="🔒 Some fields restricted">Pay, bank and IRD details are only visible to Jade and the individual staff member.</Alert>}
-
-                  <div style={{marginBottom:"0.75rem"}}><div style={{fontSize:12,fontWeight:600,color:C.teal,marginBottom:"0.5rem",paddingBottom:"0.375rem",borderBottom:`2px solid ${C.tealL}`}}>Personal details</div>
-                    <F label="Full name" fkey="fullName"/>
-                    <F label="Date of birth" fkey="dob" type="date"/>
-                    <F label="Address" fkey="address"/>
-                    <F label="Home phone" fkey="homePhone"/>
-                    <F label="Cell / mobile" fkey="cell"/>
-                    <F label="Email" fkey="email" type="email"/>
-                  </div>
-
-                  <div style={{marginBottom:"0.75rem"}}><div style={{fontSize:12,fontWeight:600,color:C.blue,marginBottom:"0.5rem",paddingBottom:"0.375rem",borderBottom:`2px solid ${C.blueL}`}}>Next of kin / emergency contact</div>
-                    <F label="Next of kin name" fkey="nokName"/>
-                    <F label="Relationship" fkey="nokRelationship"/>
-                    <F label="Address" fkey="nokAddress"/>
-                    <F label="Home phone" fkey="nokHomePhone"/>
-                    <F label="Cell / mobile" fkey="nokCell"/>
-                  </div>
-
-                  <div style={{marginBottom:"0.75rem"}}><div style={{fontSize:12,fontWeight:600,color:C.amber,marginBottom:"0.5rem",paddingBottom:"0.375rem",borderBottom:`2px solid ${C.amberL}`}}>Pay & account details {!canSeePrivate&&<span style={{fontSize:10,color:C.hint}}>🔒</span>}</div>
-                    <F label="Employment type" fkey="employmentType" sensitive={false}/>
-                    <F label="Hours" fkey="hours" sensitive={false}/>
-                    <F label="Agreed hourly rate ($)" fkey="hourlyRate" sensitive={true}/>
-                    <F label="Percentage (%)" fkey="percentage" sensitive={true}/>
-                    <F label="IRD number" fkey="ird" sensitive={true}/>
-                    <F label="Bank name" fkey="bankName" sensitive={true}/>
-                    <F label="Bank account number" fkey="bankAccount" sensitive={true} placeholder="00-0000-0000000-00"/>
-                  </div>
-
-                  {editing&&canSeePrivate&&<div style={{marginBottom:"0.75rem"}}><div style={{fontSize:12,fontWeight:600,color:C.green,marginBottom:"0.5rem",paddingBottom:"0.375rem",borderBottom:`2px solid ${C.greenL}`}}>Employment type</div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",marginBottom:"0.5rem"}}>
-                      {["Employed","Sub Contractor"].map(opt=><div key={opt} onClick={()=>setDraft(p=>({...p,employmentType:opt}))} style={{padding:"8px 12px",borderRadius:6,border:`1.5px solid ${draft.employmentType===opt?C.teal:C.border}`,background:draft.employmentType===opt?C.tealL:"white",fontSize:13,cursor:"pointer",textAlign:"center",fontWeight:draft.employmentType===opt?500:400}}>{opt}</div>)}
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem"}}>
-                      {["Full time","Part time"].map(opt=><div key={opt} onClick={()=>setDraft(p=>({...p,hours:opt}))} style={{padding:"8px 12px",borderRadius:6,border:`1.5px solid ${draft.hours===opt?C.blue:C.border}`,background:draft.hours===opt?C.blueL:"white",fontSize:13,cursor:"pointer",textAlign:"center",fontWeight:draft.hours===opt?500:400}}>{opt}</div>)}
-                    </div>
-                  </div>}
-
-                  <div style={{marginBottom:"0.75rem"}}><div style={{fontSize:12,fontWeight:600,color:C.gray,marginBottom:"0.5rem",paddingBottom:"0.375rem",borderBottom:`2px solid ${C.grayL}`}}>Declaration</div>
-                    {editing?<>
-                      <Input label="Signed (type full name)" value={draft.sigName||""} onChange={e=>setDraft(p=>({...p,sigName:e.target.value}))} placeholder={s.name}/>
-                      <div style={{fontSize:11,color:C.muted,marginBottom:"0.5rem"}}>By saving, {s.name} confirms the above information is true and correct.</div>
-                    </>:<>
-                      <F label="Signed" fkey="sigName"/>
-                      <F label="Date saved" fkey="savedDate"/>
-                    </>}
-                  </div>
-
-                  {!editing&&!ei.fullName&&canSeePrivate&&<Alert type="amber" title="No information entered yet">Tap Edit to fill in employee details. Staff members can enter and update their own information.</Alert>}
-                </div>
-              );
-            })()}
+            {tab==="empinfo"&&<EmployeeInfoTab staffId={id} staffName={s.name} role={role}/>}
             {tab==="profile"&&(
               <div>
                 <div style={{fontSize:13,color:C.muted,lineHeight:1.7,marginBottom:"1.25rem",padding:"0.75rem 1rem",background:C.grayXL,borderRadius:8}}>{s.title} · {s.type}</div>
@@ -939,7 +967,7 @@ export default function App(){
       {[...audits].reverse().map(a=>(
         <Card key={a.id}>
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:6}}>
-            <div><div style={{fontSize:14,fontWeight:600}}>{a.icon} {a.title}</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>{a.date} · {a.clinic} · {a.auditor}</div></div>
+            <div><div style={{fontSize:14,fontWeight:600}}>{a.icon} {a.title}</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>{a.date} · {a.clinic} · Auditor: {a.auditor}{a.physioAudited?` · Physio: ${a.physioAudited}`:""}</div></div>
             <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
           </div>
           <div style={{display:"flex",gap:16,fontSize:12,marginBottom:a.notes?6:0}}><span style={{color:"#3B6D11",fontWeight:500}}>{a.passed} passed</span><span style={{color:C.red,fontWeight:500}}>{a.failed} failed</span><span style={{color:C.gray}}>{a.na} N/A</span><span style={{color:C.muted}}>{a.total} total</span></div>
