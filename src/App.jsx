@@ -7,31 +7,13 @@ const _apiHeaders = { "Content-Type": "application/json", "X-Portal-Secret": POR
 // ── AI EXPIRY DATE DETECTION ─────────────────────────────
 async function detectExpiryDate(dataUrl, certLabel) {
   try {
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    const resp = await fetch(PORTAL_API + "/detect-expiry", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 300,
-        messages: [{
-          role: "user",
-          content: [
-            {
-              type: dataUrl.startsWith("data:application/pdf") ? "document" : "image",
-              source: { type: "base64", media_type: dataUrl.split(";")[0].split(":")[1], data: dataUrl.split(",")[1] }
-            },
-            {
-              type: "text",
-              text: `This is a ${certLabel} certificate from New Zealand. Extract ONLY the expiry date (or "valid to" / "valid until" / "renewal date" / "expires" date). Return ONLY a JSON object like {"expiry":"2026-03-31"} with the date in YYYY-MM-DD format. If you find an issue date but no expiry, return {"issued":"2024-08-10","expiry":null}. If you cannot find any date, return {"expiry":null}. Return ONLY the JSON, nothing else.`
-            }
-          ]
-        }]
-      })
+      headers: _apiHeaders,
+      body: JSON.stringify({ fileData: dataUrl, certLabel: certLabel })
     });
-    const data = await resp.json();
-    const text = data.content?.[0]?.text || "";
-    const clean = text.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(clean);
+    if (!resp.ok) throw new Error("API " + resp.status);
+    const parsed = await resp.json();
     console.log("[AI Expiry]", certLabel, "→", parsed);
     return parsed;
   } catch (e) {
