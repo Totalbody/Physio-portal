@@ -298,7 +298,7 @@ function saveFile(id, k, d) {
     _portalStore.files[key] = d;
     fetch(PORTAL_API + "/upload", {
       method: "POST", headers: _apiHeaders,
-      body: JSON.stringify({ fileKey: key, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl }),
+      body: JSON.stringify({ fileKey: key, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl, meta: d.expiry ? { expiry: d.expiry } : d.issued ? { issued: d.issued } : undefined }),
     }).then(r => r.json()).then(result => {
       if (result.ok && result.file) { _portalStore.files[key] = result.file; if (_portalForceUpdate) _portalForceUpdate(n => n + 1); }
     }).catch(e => console.error("[Portal] Upload error:", e));
@@ -438,9 +438,11 @@ function CertCard({staffId,cert,role,onView}){
   const ref=useRef();const[file,setFile]=useState(()=>loadFile(staffId,cert.key));
   const canSee=!cert.ownerOnly||(role==="owner"||role===staffId);
   const[scanning,setScanning]=useState(false);
-  function handle(e){const f=e.target.files[0];if(!f)return;if(f.size>3*1024*1024){alert("File over 3MB.");return;}const r=new FileReader();r.onload=ev=>{const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:cert.key};if(saveFile(staffId,cert.key,d)){setFile(d);setScanning(true);detectExpiryDate(ev.target.result,cert.label).then(result=>{if(result.expiry){const updated={...d,expiry:result.expiry};saveFile(staffId,cert.key,updated);setFile(updated);}else if(result.issued){const updated={...d,issued:result.issued};saveFile(staffId,cert.key,updated);setFile(updated);}setScanning(false);}).catch(()=>setScanning(false));}};r.readAsDataURL(f);e.target.value="";}
+  function handle(e){const f=e.target.files[0];if(!f)return;if(f.size>3*1024*1024){alert("File over 3MB.");return;}const r=new FileReader();r.onload=ev=>{const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:cert.key};if(saveFile(staffId,cert.key,d)){setFile(d);setScanning(true);detectExpiryDate(ev.target.result,cert.label).then(result=>{if(result.expiry||result.issued){const updated={...d,expiry:result.expiry||null,issued:result.issued||null};setFile(updated);const key=sKey(staffId,cert.key);if(_portalReady&&_portalStore.files[key]){_portalStore.files[key].expiry=result.expiry||null;_portalStore.files[key].issued=result.issued||null;fetch(PORTAL_API+"/store",{method:"POST",headers:_apiHeaders,body:JSON.stringify({key:"expiry_"+key,value:{expiry:result.expiry||null,issued:result.issued||null}})}).catch(()=>{});}}setScanning(false);}).catch(()=>setScanning(false));}};r.readAsDataURL(f);e.target.value="";}
   if(!canSee)return <div style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:6,display:"flex",alignItems:"center",justifyContent:"space-between"}}><div style={{fontWeight:500,fontSize:13,color:C.muted}}>🔒 {cert.label}</div><Pill s={file?"ok":"pending"} label={file?"On file":"Needed"}/></div>;
-  const expInfo=file?.expiry?getExpiryStatus(file.expiry):null;
+  const expiryData=_portalReady?(_portalStore.data["expiry_"+sKey(staffId,cert.key)]||null):null;
+  const certExpiry=file?.expiry||expiryData?.expiry||null;
+  const expInfo=certExpiry?getExpiryStatus(certExpiry):null;
   const isExpired=expInfo?.status==="expired";
   const isExpiring=expInfo?.status==="expiring";
   const status=file?(isExpired?"expired":"ok"):cert.required?"pending":"na";
