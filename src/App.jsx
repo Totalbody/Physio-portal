@@ -303,9 +303,10 @@ function saveFile(id, k, d) {
     fetch(PORTAL_API + "/upload", {
       method: "POST", headers: _apiHeaders,
       body: JSON.stringify({ fileKey: key, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl, meta: d.expiry ? { expiry: d.expiry } : d.issued ? { issued: d.issued } : undefined }),
-    }).then(r => r.json()).then(result => {
-      if (result.ok && result.file) { _portalStore.files[key] = result.file; if (_portalForceUpdate) _portalForceUpdate(n => n + 1); }
-    }).catch(e => console.error("[Portal] Upload error:", e));
+    }).then(r => r.text()).then(text => {
+      alert("[Upload] Response: " + text.slice(0, 200));
+      try { var result = JSON.parse(text); if (result.ok && result.file) { _portalStore.files[key] = result.file; if (_portalForceUpdate) _portalForceUpdate(n => n + 1); } } catch(e) {}
+    }).catch(e => alert("[Upload] Failed: " + e.message));
     return true;
   }
   try { localStorage.setItem(key, JSON.stringify(d)); return true; } catch { return false; }
