@@ -1045,13 +1045,14 @@ const INIT_AUDITS=[
 export default function App(){
   const[page,setPage]=useState("dashboard");const[profile,setProfile]=useState(null);const[role,setRole]=useState("owner");
   const[portalLoading,setPortalLoading]=useState(true);
+  const[portalConnected,setPortalConnected]=useState(false);
   const[,forceRender]=useState(0);
   const[compTab,setCompTab]=useState("overview");const[mgmtTab,setMgmtTab]=useState("audits");const[docsTab,setDocsTab]=useState("contracts");const[isrvTab,setIsrvTab]=useState("log");
   const[meetings,setMeetings]=useState(INIT_MEETINGS);const[audits,setAudits]=useState(INIT_AUDITS);const[activeAudit,setActiveAudit]=useState(null);
   const[showAdd,setShowAdd]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
   const[nm,setNm]=useState({date:"",clinic:"All clinics",topic:"",attendees:"",notes:""});
   const roleNames={owner:"Jade Warren",alistair:"Alistair Burgess",hans:"Hans Vermeulen",staff:"Staff member"};
-  useEffect(()=>{_portalForceUpdate=forceRender;_loadStore().then(()=>{setPortalLoading(false);});},[]);
+  useEffect(()=>{_portalForceUpdate=forceRender;_loadStore().then((ok)=>{setPortalConnected(ok&&_portalReady);setPortalLoading(false);});},[]);
   const reminders=getReminders();const urgentCount=reminders.filter(r=>r.status!=="ok").length;
 
   const navItems=[
@@ -1073,7 +1074,7 @@ export default function App(){
     const sa=Object.entries(STAFF);const tr=sa.length*CORE_CERTS.filter(c=>c.required).length;const td=sa.reduce((a,[id])=>a+staffComp(id).done,0);const pct=Math.round((td/tr)*100);
     return(
       <div>
-        <PH title="Good morning, Jade 👋" sub="Total Body Physio — Compliance & HR Portal · April 2026"/>
+        <PH title="Good morning, Jade 👋" sub={"Total Body Physio — Compliance & HR Portal · April 2026" + (portalConnected ? " · ☁️ Cloud connected" : " · ⚠️ Local storage only")}/>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.75rem",marginBottom:"1rem"}}>
           {[["9","Staff",C.teal],[`${pct}%`,"Compliance",pct>=80?C.teal:pct>50?C.amber:C.red],[String(urgentCount),"Due/overdue",urgentCount>0?C.red:C.teal],[String(audits.length),"Audit records",C.blue]].map(([n,l,c])=>(
             <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",textAlign:"center"}}>
