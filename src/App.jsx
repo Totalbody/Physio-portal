@@ -1,4 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+
+const PORTAL_API = "https://tbp-cliniko-proxy-j6f9.vercel.app/api/portal";
+const PORTAL_SECRET = "tbp-portal-2026";
+const _apiHeaders = { "Content-Type": "application/json", "X-Portal-Secret": PORTAL_SECRET };
 
 const C = {
   teal:"#0F6E56",tealL:"#E1F5EE",red:"#E24B4A",redL:"#FCEBEB",
@@ -234,25 +238,108 @@ const AUDIT_FORMS = {
   ]},
 };
 
-// storage helpers
-const sKey=(id,k)=>`cert_${id}_${k}`;
-function saveFile(id,k,d){try{localStorage.setItem(sKey(id,k),JSON.stringify(d));return true;}catch(e){if(e.name==="QuotaExceededError")alert("Storage full — please remove older files.");return false;}}
-function loadFile(id,k){try{const d=localStorage.getItem(sKey(id,k));return d?JSON.parse(d):null;}catch{return null;}}
-function removeFile(id,k){try{localStorage.removeItem(sKey(id,k));}catch{}}
-function saveGen(k,d){try{localStorage.setItem(k,JSON.stringify(d));return true;}catch{return false;}}
-function loadGen(k){try{const d=localStorage.getItem(k);return d?JSON.parse(d):null;}catch{return null;}}
-function staffComp(id){const req=CORE_CERTS.filter(c=>c.required);const done=req.filter(c=>!!loadFile(id,c.key)).length;return{done,total:req.length,pct:Math.round((done/req.length)*100)};}
-function getReminders(){
-  const today=new Date();const items=[];
-  REMINDER_SCHEDULE.forEach(r=>{
-    const next=new Date(today.getFullYear(),r.month-1,r.day);
-    if(next<today)next.setFullYear(today.getFullYear()+1);
-    const days=Math.ceil((next-today)/(1000*60*60*24));
-    const status=days<0?"overdue":days<=30?"due":"ok";
-    const targets=r.applies==="Per clinic"?CLINICS.filter(c=>c.id!=="schools").map(c=>c.short):["All staff"];
-    targets.forEach(t=>items.push({...r,nextDate:next.toLocaleDateString("en-NZ"),days,status,target:t}));
+// ── CLOUD STORAGE — Vercel Blob via proxy API ────────────
+let _portalStore = { files: {}, data: {} };
+let _portalReady = false;
+let _portalForceUpdate = null;
+
+async function _loadStore() {
+  try {
+    const resp = await fetch(PORTAL_API + "/store?secret=" + encodeURIComponent(PORTAL_SECRET), {
+      headers: { "X-Portal-Secret": PORTAL_SECRET },
+    });
+    if (!resp.ok) throw new Error("API " + resp.status);
+    const state = await resp.json();
+    _portalStore = { files: state.files || {}, data: state.data || {} };
+    _portalReady = true;
+    console.log("[Portal] Loaded:", Object.keys(_portalStore.files).length, "files,", Object.keys(_portalStore.data).length, "data keys");
+    return true;
+  } catch (e) {
+    console.warn("[Portal] API unavailable, using localStorage:", e.message);
+    _portalReady = false;
+    return false;
+  }
+}
+
+const sKey = (id, k) => `cert_${id}_${k}`;
+
+function saveFile(id, k, d) {
+  const key = sKey(id, k);
+  if (_portalReady) {
+    _portalStore.files[key] = d;
+    fetch(PORTAL_API + "/upload", {
+      method: "POST", headers: _apiHeaders,
+      body: JSON.stringify({ fileKey: key, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl }),
+    }).then(r => r.json()).then(result => {
+      if (result.ok && result.file) { _portalStore.files[key] = result.file; if (_portalForceUpdate) _portalForceUpdate(n => n + 1); }
+    }).catch(e => console.error("[Portal] Upload error:", e));
+    return true;
+  }
+  try { localStorage.setItem(key, JSON.stringify(d)); return true; } catch { return false; }
+}
+
+function loadFile(id, k) {
+  const key = sKey(id, k);
+  if (_portalReady) return _portalStore.files[key] || null;
+  try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : null; } catch { return null; }
+}
+
+function removeFile(id, k) {
+  const key = sKey(id, k);
+  if (_portalReady) {
+    delete _portalStore.files[key];
+    fetch(PORTAL_API + "/upload?fileKey=" + encodeURIComponent(key) + "&secret=" + encodeURIComponent(PORTAL_SECRET), {
+      method: "DELETE", headers: { "X-Portal-Secret": PORTAL_SECRET },
+    }).catch(e => console.error("[Portal] Delete error:", e));
+    return;
+  }
+  try { localStorage.removeItem(key); } catch {}
+}
+
+function saveGen(k, d) {
+  if (_portalReady) {
+    if (d && d.dataUrl) {
+      _portalStore.files[k] = d;
+      fetch(PORTAL_API + "/upload", {
+        method: "POST", headers: _apiHeaders,
+        body: JSON.stringify({ fileKey: k, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl }),
+      }).then(r => r.json()).then(result => {
+        if (result.ok && result.file) { _portalStore.files[k] = result.file; if (_portalForceUpdate) _portalForceUpdate(n => n + 1); }
+      }).catch(e => console.error("[Portal] Upload error:", e));
+    } else {
+      _portalStore.data[k] = d;
+      fetch(PORTAL_API + "/store", {
+        method: "POST", headers: _apiHeaders,
+        body: JSON.stringify({ key: k, value: d }),
+      }).catch(e => console.error("[Portal] Save error:", e));
+    }
+    return true;
+  }
+  try { localStorage.setItem(k, JSON.stringify(d)); return true; } catch { return false; }
+}
+
+function loadGen(k) {
+  if (_portalReady) return _portalStore.files[k] || _portalStore.data[k] || null;
+  try { const d = localStorage.getItem(k); return d ? JSON.parse(d) : null; } catch { return null; }
+}
+
+function staffComp(id) {
+  const req = CORE_CERTS.filter(c => c.required);
+  const done = req.filter(c => !!loadFile(id, c.key)).length;
+  return { done, total: req.length, pct: Math.round((done / req.length) * 100) };
+}
+
+function getReminders() {
+  const today = new Date(); const items = [];
+  REMINDER_SCHEDULE.forEach(r => {
+    const next = new Date(today.getFullYear(), r.month - 1, r.day);
+    if (next < today) next.setFullYear(today.getFullYear() + 1);
+    const days = Math.ceil((next - today) / (1000 * 60 * 60 * 24));
+    const status = days < 0 ? "overdue" : days <= 30 ? "due" : "ok";
+    const targets = r.applies === "Per clinic" ? CLINICS.filter(c => c.id !== "schools").map(c => c.short) : ["All staff"];
+    targets.forEach(t => items.push({ ...r, nextDate: next.toLocaleDateString("en-NZ"), days, status, target: t }));
   });
-  return items.sort((a,b)=>a.days-b.days);
+  return items.sort((a, b) => a.days - b.days);
 }
 
 // base ui
@@ -284,14 +371,14 @@ function FileViewer({file,onClose}){
           <div style={{color:"white",fontWeight:600,fontSize:14}}>{file.fileName}</div>
           <div style={{display:"flex",gap:10,alignItems:"center"}}>
             <span style={{color:"rgba(255,255,255,0.7)",fontSize:11}}>Uploaded {file.uploadedDate}</span>
-            <a href={file.dataUrl} download={file.fileName} style={{color:"white",fontSize:11,padding:"3px 10px",background:"rgba(255,255,255,0.2)",borderRadius:20,textDecoration:"none"}}>⬇ Download</a>
+            <a href={(file.blobUrl||file.dataUrl)} download={file.fileName} style={{color:"white",fontSize:11,padding:"3px 10px",background:"rgba(255,255,255,0.2)",borderRadius:20,textDecoration:"none"}}>⬇ Download</a>
             <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:15}}>✕</button>
           </div>
         </div>
         <div style={{flex:1,overflow:"auto",padding:"1.25rem",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0f0f0",minHeight:300}}>
-          {isImg&&<img src={file.dataUrl} alt={file.fileName} style={{maxWidth:"100%",maxHeight:"70vh",borderRadius:6,objectFit:"contain"}}/>}
-          {isPdf&&<iframe src={file.dataUrl} style={{width:"100%",height:"68vh",border:"none",borderRadius:6}} title={file.fileName}/>}
-          {!isImg&&!isPdf&&<div style={{textAlign:"center",color:C.muted}}><div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div><div style={{fontSize:14,fontWeight:500}}>{file.fileName}</div><a href={file.dataUrl} download={file.fileName} style={{display:"inline-block",marginTop:"1rem",color:C.teal,fontSize:13,fontWeight:500}}>⬇ Download</a></div>}
+          {isImg&&<img src={(file.blobUrl||file.dataUrl)} alt={file.fileName} style={{maxWidth:"100%",maxHeight:"70vh",borderRadius:6,objectFit:"contain"}}/>}
+          {isPdf&&<iframe src={(file.blobUrl||file.dataUrl)} style={{width:"100%",height:"68vh",border:"none",borderRadius:6}} title={file.fileName}/>}
+          {!isImg&&!isPdf&&<div style={{textAlign:"center",color:C.muted}}><div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div><div style={{fontSize:14,fontWeight:500}}>{file.fileName}</div><a href={(file.blobUrl||file.dataUrl)} download={file.fileName} style={{display:"inline-block",marginTop:"1rem",color:C.teal,fontSize:13,fontWeight:500}}>⬇ Download</a></div>}
         </div>
       </div>
     </div>
@@ -305,7 +392,7 @@ function FileRow({label,gkey,onView,accent=C.teal}){
   const isImg=file?.fileType?.startsWith("image/");
   return(
     <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:`1px solid ${C.border}`}}>
-      {isImg&&file&&<div onClick={()=>onView(file)} style={{width:36,height:36,borderRadius:5,overflow:"hidden",cursor:"pointer",flexShrink:0,border:`1px solid ${C.border}`}}><img src={file.dataUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>}
+      {isImg&&file&&<div onClick={()=>onView(file)} style={{width:36,height:36,borderRadius:5,overflow:"hidden",cursor:"pointer",flexShrink:0,border:`1px solid ${C.border}`}}><img src={(file.blobUrl||file.dataUrl)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>}
       <div style={{flex:1}}><div style={{fontSize:13,fontWeight:500}}>{label}</div>{file&&<div style={{fontSize:11,color:C.muted,marginTop:1}}>{file.fileName} · {file.uploadedDate}</div>}</div>
       <div style={{display:"flex",gap:5,flexShrink:0}}>
         {file&&<BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>}
@@ -330,7 +417,7 @@ function CertCard({staffId,cert,role,onView}){
   return(
     <div style={{background:bg,border:`1px solid ${bd}`,borderRadius:8,padding:"10px 12px",marginBottom:6}}>
       <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-        {isImg&&<div onClick={()=>onView(file)} style={{width:44,height:44,borderRadius:6,overflow:"hidden",flexShrink:0,cursor:"pointer",border:`1px solid ${C.border}`}}><img src={file.dataUrl} alt="cert" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>}
+        {isImg&&<div onClick={()=>onView(file)} style={{width:44,height:44,borderRadius:6,overflow:"hidden",flexShrink:0,cursor:"pointer",border:`1px solid ${C.border}`}}><img src={(file.blobUrl||file.dataUrl)} alt="cert" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>}
         {isPdf&&<div onClick={()=>onView(file)} style={{width:44,height:44,borderRadius:6,background:C.redL,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",border:`1px solid ${C.border}`,fontSize:22}}>📄</div>}
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
@@ -917,11 +1004,14 @@ const INIT_AUDITS=[
 
 export default function App(){
   const[page,setPage]=useState("dashboard");const[profile,setProfile]=useState(null);const[role,setRole]=useState("owner");
+  const[portalLoading,setPortalLoading]=useState(true);
+  const[,forceRender]=useState(0);
   const[compTab,setCompTab]=useState("overview");const[mgmtTab,setMgmtTab]=useState("audits");const[docsTab,setDocsTab]=useState("contracts");const[isrvTab,setIsrvTab]=useState("log");
   const[meetings,setMeetings]=useState(INIT_MEETINGS);const[audits,setAudits]=useState(INIT_AUDITS);const[activeAudit,setActiveAudit]=useState(null);
   const[showAdd,setShowAdd]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
   const[nm,setNm]=useState({date:"",clinic:"All clinics",topic:"",attendees:"",notes:""});
   const roleNames={owner:"Jade Warren",alistair:"Alistair Burgess",hans:"Hans Vermeulen",staff:"Staff member"};
+  useEffect(()=>{_portalForceUpdate=forceRender;_loadStore().then(()=>{setPortalLoading(false);});},[]);
   const reminders=getReminders();const urgentCount=reminders.filter(r=>r.status!=="ok").length;
 
   const navItems=[
@@ -1181,6 +1271,8 @@ export default function App(){
     </div>}
     </div>
   );};
+
+  if(portalLoading)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:C.bg,fontFamily:"-apple-system,'Segoe UI',sans-serif"}}><div style={{textAlign:"center"}}><div style={{width:48,height:48,borderRadius:"50%",background:C.teal,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 1rem"}}><svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm-1-5h2v2h-2zm0-8h2v6h-2z"/></svg></div><div style={{fontSize:16,fontWeight:600,color:C.text,marginBottom:4}}>Total Body Physio</div><div style={{fontSize:13,color:C.muted}}>Loading portal...</div></div></div>);
 
   return(
     <div style={{display:"flex",minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"-apple-system,'Segoe UI',sans-serif"}}>
