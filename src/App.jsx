@@ -13,15 +13,14 @@ async function detectExpiryDate(dataUrl, certLabel) {
       body: JSON.stringify({ fileData: dataUrl, certLabel: certLabel })
     });
     if (!resp.ok) {
-      const errText = await resp.text();
-      alert("[Expiry] API error " + resp.status + ": " + errText);
+      console.error("[Expiry] API error " + resp.status);
       return { expiry: null };
     }
     const parsed = await resp.json();
-    alert("[Expiry] AI detected: " + JSON.stringify(parsed));
+    console.log("[Expiry] AI detected:", parsed);
     return parsed;
   } catch (e) {
-    alert("[Expiry] Failed: " + e.message);
+    console.error("[Expiry] Failed:", e.message);
     return { expiry: null };
   }
 }
@@ -283,7 +282,15 @@ async function _loadStore() {
     });
     if (!resp.ok) throw new Error("API " + resp.status);
     const state = await resp.json();
-    _portalStore = { files: state.files || {}, data: state.data || {} };
+    // Merge file records: the store may return files in state.files and/or state.data
+    const files = { ...(state.files || {}) };
+    // Also pull any file records saved under the "files" store namespace
+    if (state.data) {
+      Object.entries(state.data).forEach(([k, v]) => {
+        if (v && v.blobUrl) files[k] = v; // any data record with a blobUrl is a file record
+      });
+    }
+    _portalStore = { files, data: state.data || {} };
     _portalReady = true;
     console.log("[Portal] Loaded:", Object.keys(_portalStore.files).length, "files,", Object.keys(_portalStore.data).length, "data keys");
     return true;
@@ -303,10 +310,17 @@ function saveFile(id, k, d) {
     fetch(PORTAL_API + "/upload", {
       method: "POST", headers: _apiHeaders,
       body: JSON.stringify({ fileKey: key, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl, meta: d.expiry ? { expiry: d.expiry } : d.issued ? { issued: d.issued } : undefined }),
-    }).then(r => r.text()).then(text => {
-      alert("[Upload] Response: " + text.slice(0, 200));
-      try { var result = JSON.parse(text); if (result.ok && result.file) { _portalStore.files[key] = result.file; if (_portalForceUpdate) _portalForceUpdate(n => n + 1); } } catch(e) {}
-    }).catch(e => alert("[Upload] Failed: " + e.message));
+    }).then(r => r.json()).then(result => {
+      if (result.ok && result.file) {
+        _portalStore.files[key] = result.file;
+        // Explicitly persist file metadata to store so other browsers see it
+        fetch(PORTAL_API + "/store", {
+          method: "POST", headers: _apiHeaders,
+          body: JSON.stringify({ key, value: result.file, store: "files" }),
+        }).catch(e => console.error("[Portal] Sync error:", e));
+        if (_portalForceUpdate) _portalForceUpdate(n => n + 1);
+      }
+    }).catch(e => console.error("[Upload] Failed:", e.message));
     return true;
   }
   try { localStorage.setItem(key, JSON.stringify(d)); return true; } catch { return false; }
@@ -357,6 +371,18 @@ function loadGen(k) {
   try { const d = localStorage.getItem(k); return d ? JSON.parse(d) : null; } catch { return null; }
 }
 
+function removeGen(k) {
+  if (_portalReady) {
+    delete _portalStore.files[k];
+    delete _portalStore.data[k];
+    fetch(PORTAL_API + "/upload?fileKey=" + encodeURIComponent(k) + "&secret=" + encodeURIComponent(PORTAL_SECRET), {
+      method: "DELETE", headers: { "X-Portal-Secret": PORTAL_SECRET },
+    }).catch(e => console.error("[Portal] Delete error:", e));
+    return;
+  }
+  try { localStorage.removeItem(k); } catch {}
+}
+
 function staffComp(id) {
   const req = CORE_CERTS.filter(c => c.required);
   const done = req.filter(c => !!loadFile(id, c.key)).length;
@@ -398,6 +424,9 @@ function TabBar({items,current,setter}){return <div style={{display:"flex",borde
 function FileViewer({file,onClose}){
   if(!file)return null;
   const isImg=file.fileType?.startsWith("image/");const isPdf=file.fileType==="application/pdf";
+  const url=file.blobUrl||file.dataUrl;
+  const[pdfLoading,setPdfLoading]=useState(true);const[pdfError,setPdfError]=useState(false);
+  const gdocsUrl=file.blobUrl?"https://docs.google.com/gview?embedded=true&url="+encodeURIComponent(file.blobUrl):null;
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:12,overflow:"hidden",maxWidth:800,width:"100%",maxHeight:"92vh",display:"flex",flexDirection:"column"}}>
@@ -405,14 +434,30 @@ function FileViewer({file,onClose}){
           <div style={{color:"white",fontWeight:600,fontSize:14}}>{file.fileName}</div>
           <div style={{display:"flex",gap:10,alignItems:"center"}}>
             <span style={{color:"rgba(255,255,255,0.7)",fontSize:11}}>Uploaded {file.uploadedDate}</span>
-            <a href={(file.blobUrl||file.dataUrl)} download={file.fileName} style={{color:"white",fontSize:11,padding:"3px 10px",background:"rgba(255,255,255,0.2)",borderRadius:20,textDecoration:"none"}}>⬇ Download</a>
+            {url&&<a href={url} target="_blank" rel="noreferrer" style={{color:"white",fontSize:11,padding:"3px 10px",background:"rgba(255,255,255,0.2)",borderRadius:20,textDecoration:"none"}}>↗ Open</a>}
+            {url&&<a href={url} download={file.fileName} style={{color:"white",fontSize:11,padding:"3px 10px",background:"rgba(255,255,255,0.2)",borderRadius:20,textDecoration:"none"}}>⬇ Download</a>}
             <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:15}}>✕</button>
           </div>
         </div>
-        <div style={{flex:1,overflow:"auto",padding:"1.25rem",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0f0f0",minHeight:300}}>
-          {isImg&&<img src={(file.blobUrl||file.dataUrl)} alt={file.fileName} style={{maxWidth:"100%",maxHeight:"70vh",borderRadius:6,objectFit:"contain"}}/>}
-          {isPdf&&<iframe src={file.blobUrl?"https://docs.google.com/gview?embedded=true&url="+encodeURIComponent(file.blobUrl):(file.dataUrl)} style={{width:"100%",height:"68vh",border:"none",borderRadius:6}} title={file.fileName}/>}
-          {!isImg&&!isPdf&&<div style={{textAlign:"center",color:C.muted}}><div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div><div style={{fontSize:14,fontWeight:500}}>{file.fileName}</div><a href={(file.blobUrl||file.dataUrl)} download={file.fileName} style={{display:"inline-block",marginTop:"1rem",color:C.teal,fontSize:13,fontWeight:500}}>⬇ Download</a></div>}
+        <div style={{flex:1,overflow:"auto",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0f0f0",minHeight:300,position:"relative"}}>
+          {isImg&&<img src={url} alt={file.fileName} style={{maxWidth:"100%",maxHeight:"70vh",borderRadius:6,objectFit:"contain"}}/>}
+          {isPdf&&!pdfError&&gdocsUrl&&(
+            <>
+              {pdfLoading&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",textAlign:"center",color:C.muted}}><div style={{fontSize:32,marginBottom:8}}>📄</div><div style={{fontSize:13}}>Loading PDF…</div></div>}
+              <iframe
+                src={gdocsUrl}
+                style={{width:"100%",height:"68vh",border:"none",borderRadius:6,opacity:pdfLoading?0:1,transition:"opacity 0.3s"}}
+                title={file.fileName}
+                onLoad={()=>setPdfLoading(false)}
+                onError={()=>{setPdfLoading(false);setPdfError(true);}}
+              />
+            </>
+          )}
+          {isPdf&&!gdocsUrl&&url&&(
+            <iframe src={url} style={{width:"100%",height:"68vh",border:"none",borderRadius:6}} title={file.fileName}/>
+          )}
+          {isPdf&&pdfError&&<div style={{textAlign:"center",color:C.muted,padding:"2rem"}}><div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div><div style={{fontSize:14,fontWeight:500,marginBottom:"0.5rem"}}>{file.fileName}</div><div style={{fontSize:12,marginBottom:"1rem"}}>Preview unavailable</div>{url&&<a href={url} target="_blank" rel="noreferrer" style={{color:C.teal,fontSize:13,fontWeight:500}}>↗ Open PDF in new tab</a>}</div>}
+          {!isImg&&!isPdf&&<div style={{textAlign:"center",color:C.muted,padding:"2rem"}}><div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div><div style={{fontSize:14,fontWeight:500}}>{file.fileName}</div>{url&&<a href={url} download={file.fileName} style={{display:"inline-block",marginTop:"1rem",color:C.teal,fontSize:13,fontWeight:500}}>⬇ Download</a>}</div>}
         </div>
       </div>
     </div>
@@ -431,7 +476,7 @@ function FileRow({label,gkey,onView,accent=C.teal}){
       <div style={{display:"flex",gap:5,flexShrink:0}}>
         {file&&<BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>}
         <BSm onClick={()=>ref.current.click()} color={accent}>{file?"Replace":"📷 Upload"}</BSm>
-        {file&&<BSm onClick={()=>{if(window.confirm("Remove?")){localStorage.removeItem(gkey);setFile(null);}}} color={C.red}>✕</BSm>}
+        {file&&<BSm onClick={()=>{if(window.confirm("Remove?")){removeGen(gkey);setFile(null);}}} color={C.red}>✕</BSm>}
       </div>
       <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
     </div>
@@ -482,16 +527,18 @@ function CertCard({staffId,cert,role,onView}){
 // orientation modal
 function OrientationModal({staffId,onClose}){
   const s=STAFF[staffId];const sk=`ori_${staffId}`;
-  const[checks,setChecks]=useState(()=>{try{return JSON.parse(localStorage.getItem(sk)||"{}");}catch{return{};}});
-  const[sig,setSig]=useState("");const[done,setDone]=useState(()=>!!localStorage.getItem(`ori_done_${staffId}`));
-  const[doneDate]=useState(()=>localStorage.getItem(`ori_date_${staffId}`)||"");
+  const oriData=loadGen(sk)||{};
+  const[checks,setChecks]=useState(oriData.checks||{});
+  const[sig,setSig]=useState("");const[done,setDone]=useState(!!oriData.done);
+  const[doneDate]=useState(oriData.doneDate||"");
   const all=ORI_SECTIONS.flatMap(s=>s.items);const checked=Object.values(checks).filter(Boolean).length;const pct=Math.round((checked/all.length)*100);
-  function toggle(k){const n={...checks,[k]:!checks[k]};setChecks(n);try{localStorage.setItem(sk,JSON.stringify(n));}catch{}}
+  function toggle(k){const n={...checks,[k]:!checks[k]};setChecks(n);saveGen(sk,{...oriData,checks:n});}
   function submit(){
     if(checked<all.length){alert(`${all.length-checked} items not ticked.`);return;}
     if(!sig.trim()){alert("Please type your full name to sign.");return;}
     const date=new Date().toLocaleDateString("en-NZ");
-    try{localStorage.setItem(`ori_done_${staffId}`,"true");localStorage.setItem(`ori_date_${staffId}`,date);}catch{}
+    const record={checks,done:true,doneDate:date,sig};
+    saveGen(sk,record);
     saveFile(staffId,"orientation",{fileName:`Orientation_${s.name.replace(/ /g,"_")}.txt`,dataUrl:"data:text/plain;base64,"+btoa(`Orientation completed\nName: ${s.name}\nSigned: ${sig}\nDate: ${date}\nItems: ${checked}/${all.length}`),fileType:"text/plain",uploadedDate:date,certKey:"orientation"});
     setDone(true);
   }
@@ -741,23 +788,15 @@ const EI_SEED = {
 function EmployeeInfoTab({staffId,staffName,role}){
   const eiKey=`empinfo_${staffId}`;
   const canSeePrivate=role==="owner"||role===staffId;
-  const[ei,setEi]=useState(()=>{
-    try{
-      const stored=localStorage.getItem(eiKey);
-      if(stored){return JSON.parse(stored);}
-      // Fall back to seed data if nothing stored yet
-      return EI_SEED[staffId]||{};
-    }catch{return EI_SEED[staffId]||{};}
-  });
+  const[ei,setEi]=useState(()=>loadGen(eiKey)||EI_SEED[staffId]||{});
   const[editing,setEditing]=useState(false);
   const[draft,setDraft]=useState({});
-
 
   function startEdit(){setDraft({...ei});setEditing(true);}
   function save(){
     if(!draft.sigName?.trim()){alert("Please type your full name in the Declaration field to confirm.");return;}
     const saved={...draft,savedDate:new Date().toLocaleDateString("en-NZ"),savedBy:staffName};
-    try{localStorage.setItem(eiKey,JSON.stringify(saved));}catch{alert("Could not save — storage full.");}
+    saveGen(eiKey,saved);
     setEi(saved);setEditing(false);
   }
 
@@ -920,10 +959,11 @@ function ProfileModal({id,onClose,role}){
             )}
             {tab==="orientation"&&(
               <div>
-                {localStorage.getItem(`ori_done_${id}`)
-                  ?<Alert type="green" title="✅ Orientation completed">Signed by {s.name} on {localStorage.getItem(`ori_date_${id}`)}. Record saved in Compliance tab.</Alert>
-                  :<Alert type="amber" title="Orientation not yet completed">All items must be ticked and signed before submission.</Alert>}
-                <Btn onClick={()=>setShowOri(true)}>{localStorage.getItem(`ori_done_${id}`)?"View / reopen →":"Start orientation →"}</Btn>
+                {(()=>{const oriData=loadGen(`ori_${id}`)||{};const isDone=!!oriData.done;const doneDate=oriData.doneDate||"";
+                  return isDone
+                    ?<Alert type="green" title="✅ Orientation completed">Signed by {s.name} on {doneDate}. Record saved in Compliance tab.</Alert>
+                    :<Alert type="amber" title="Orientation not yet completed">All items must be ticked and signed before submission.</Alert>;})()}
+                <Btn onClick={()=>setShowOri(true)}>{(loadGen(`ori_${id}`)||{}).done?"View / reopen →":"Start orientation →"}</Btn>
               </div>
             )}
           </div>
@@ -1231,7 +1271,7 @@ export default function App(){
     <div><PH title="In-service training log" sub="Annual requirement — at least one per clinic group per year"/>
     <Alert type="amber" title="P&P requirement">Section 7.7.3: Regular in-service education done at TBP. Topics suggested by staff, physios or selected by presenter. No client-identifying details in case studies.</Alert>
     <TabBar items={[["log","2026 Log"],["resources","Resources & files"]]} current={isrvTab} setter={setIsrvTab}/>
-    {isrvTab==="log"&&<Card><Tbl headers={["Clinic","Topic","Date","Attendees","Status"]}>{[["Pakuranga","Not yet scheduled","—","Alistair, Timothy, Dylan, Ibrahim, Komal","pending"],["Flat Bush","Not yet scheduled","—","Ibrahim, Isabella","pending"],["Titirangi","Shoulder rehab protocols","10 Aug 2025","Hans, Alistair","ok"],["Panmure","Not yet scheduled","—","Gwenne, Timothy, Komal","pending"]].map(([c,t,d,a,s])=><tr key={c}><TD>{c}</TD><TD style={{fontStyle:s==="pending"?"italic":"normal",color:s==="pending"?C.hint:C.text}}>{t}</TD><TD>{d}</TD><TD style={{fontSize:12}}>{a}</TD><TD><Pill s={s} label={s==="ok"?"Completed ✓":"Needed"}/></TD></tr>)}</Tbl><div style={{marginTop:"1rem"}}><Btn outline onClick={()=>alert("Use Management > Staff Meetings to log in-service sessions with notes and attendees.")}>+ Log in-service</Btn></div></Card>}
+    {isrvTab==="log"&&<Card><Tbl headers={["Clinic","Topic","Date","Attendees","Status"]}>{[["Pakuranga","Not yet scheduled","—","Alistair, Timothy, Dylan, Ibrahim, Komal","pending"],["Flat Bush","Not yet scheduled","—","Ibrahim, Isabella","pending"],["Titirangi","Shoulder rehab protocols","10 Aug 2025","Hans, Alistair","ok"],["Panmure","Not yet scheduled","—","Gwenne, Timothy, Komal","pending"]].map(([c,t,d,a,s])=><tr key={c}><TD>{c}</TD><TD style={{fontStyle:s==="pending"?"italic":"normal",color:s==="pending"?C.hint:C.text}}>{t}</TD><TD>{d}</TD><TD style={{fontSize:12}}>{a}</TD><TD><Pill s={s} label={s==="ok"?"Completed ✓":"Needed"}/></TD></tr>)}</Tbl><div style={{marginTop:"1rem"}}><Btn outline onClick={()=>{setPage("management");setMgmtTab("meetings");}}>+ Log in Management →</Btn></div></Card>}
     {isrvTab==="resources"&&<Card><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>In-service resources</div><div style={{fontSize:12,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Upload handouts, slides or reading materials. All staff can view. Creates an audit record of what was covered.</div>{CLINICS.filter(c=>c.id!=="schools").map(cl=><FileRow key={cl.id} label={`${cl.icon} ${cl.short} — in-service resource`} gkey={`isrv_${cl.id}`} onView={f=>setIvf(f)}/>)}<div style={{marginTop:"0.75rem",fontSize:11,color:C.muted}}>Accepted: PDF, Word, image. Max 3MB.</div></Card>}
     {ivf&&<FileViewer file={ivf} onClose={()=>setIvf(null)}/>}
     </div>
