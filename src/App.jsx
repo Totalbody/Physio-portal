@@ -4,6 +4,53 @@ const PORTAL_API = "https://tbp-cliniko-proxy-j6f9.vercel.app/api/portal";
 const PORTAL_SECRET = "tbp-portal-2026";
 const _apiHeaders = { "Content-Type": "application/json", "X-Portal-Secret": PORTAL_SECRET };
 
+// ── AI EXPIRY DATE DETECTION ─────────────────────────────
+async function detectExpiryDate(dataUrl, certLabel) {
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 300,
+        messages: [{
+          role: "user",
+          content: [
+            {
+              type: dataUrl.startsWith("data:application/pdf") ? "document" : "image",
+              source: { type: "base64", media_type: dataUrl.split(";")[0].split(":")[1], data: dataUrl.split(",")[1] }
+            },
+            {
+              type: "text",
+              text: `This is a ${certLabel} certificate from New Zealand. Extract ONLY the expiry date (or "valid to" / "valid until" / "renewal date" / "expires" date). Return ONLY a JSON object like {"expiry":"2026-03-31"} with the date in YYYY-MM-DD format. If you find an issue date but no expiry, return {"issued":"2024-08-10","expiry":null}. If you cannot find any date, return {"expiry":null}. Return ONLY the JSON, nothing else.`
+            }
+          ]
+        }]
+      })
+    });
+    const data = await resp.json();
+    const text = data.content?.[0]?.text || "";
+    const clean = text.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(clean);
+    console.log("[AI Expiry]", certLabel, "→", parsed);
+    return parsed;
+  } catch (e) {
+    console.error("[AI Expiry] Detection failed:", e);
+    return { expiry: null };
+  }
+}
+
+function getExpiryStatus(expiryStr) {
+  if (!expiryStr) return { status: "unknown", label: "On file ✓", color: null };
+  const expiry = new Date(expiryStr);
+  const today = new Date();
+  const daysLeft = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+  if (daysLeft < 0) return { status: "expired", label: "Expired " + expiry.toLocaleDateString("en-NZ"), color: "#E24B4A" };
+  if (daysLeft <= 30) return { status: "expiring", label: "Expires " + expiry.toLocaleDateString("en-NZ"), color: "#BA7517" };
+  return { status: "valid", label: "Valid to " + expiry.toLocaleDateString("en-NZ"), color: "#3B6D11" };
+}
+
+
 const C = {
   teal:"#0F6E56",tealL:"#E1F5EE",red:"#E24B4A",redL:"#FCEBEB",
   amber:"#BA7517",amberL:"#FAEEDA",green:"#3B6D11",greenL:"#EAF3DE",
@@ -377,7 +424,7 @@ function FileViewer({file,onClose}){
         </div>
         <div style={{flex:1,overflow:"auto",padding:"1.25rem",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0f0f0",minHeight:300}}>
           {isImg&&<img src={(file.blobUrl||file.dataUrl)} alt={file.fileName} style={{maxWidth:"100%",maxHeight:"70vh",borderRadius:6,objectFit:"contain"}}/>}
-          {isPdf&&<iframe src={(file.blobUrl||file.dataUrl)} style={{width:"100%",height:"68vh",border:"none",borderRadius:6}} title={file.fileName}/>}
+          {isPdf&&<iframe src={file.blobUrl?"https://docs.google.com/gview?embedded=true&url="+encodeURIComponent(file.blobUrl):(file.dataUrl)} style={{width:"100%",height:"68vh",border:"none",borderRadius:6}} title={file.fileName}/>}
           {!isImg&&!isPdf&&<div style={{textAlign:"center",color:C.muted}}><div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div><div style={{fontSize:14,fontWeight:500}}>{file.fileName}</div><a href={(file.blobUrl||file.dataUrl)} download={file.fileName} style={{display:"inline-block",marginTop:"1rem",color:C.teal,fontSize:13,fontWeight:500}}>⬇ Download</a></div>}
         </div>
       </div>
@@ -408,11 +455,15 @@ function FileRow({label,gkey,onView,accent=C.teal}){
 function CertCard({staffId,cert,role,onView}){
   const ref=useRef();const[file,setFile]=useState(()=>loadFile(staffId,cert.key));
   const canSee=!cert.ownerOnly||(role==="owner"||role===staffId);
-  function handle(e){const f=e.target.files[0];if(!f)return;if(f.size>3*1024*1024){alert("File over 3MB.");return;}const r=new FileReader();r.onload=ev=>{const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:cert.key};if(saveFile(staffId,cert.key,d))setFile(d);};r.readAsDataURL(f);e.target.value="";}
+  const[scanning,setScanning]=useState(false);
+  function handle(e){const f=e.target.files[0];if(!f)return;if(f.size>3*1024*1024){alert("File over 3MB.");return;}const r=new FileReader();r.onload=ev=>{const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:cert.key};if(saveFile(staffId,cert.key,d)){setFile(d);setScanning(true);detectExpiryDate(ev.target.result,cert.label).then(result=>{if(result.expiry){const updated={...d,expiry:result.expiry};saveFile(staffId,cert.key,updated);setFile(updated);}else if(result.issued){const updated={...d,issued:result.issued};saveFile(staffId,cert.key,updated);setFile(updated);}setScanning(false);}).catch(()=>setScanning(false));}};r.readAsDataURL(f);e.target.value="";}
   if(!canSee)return <div style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:6,display:"flex",alignItems:"center",justifyContent:"space-between"}}><div style={{fontWeight:500,fontSize:13,color:C.muted}}>🔒 {cert.label}</div><Pill s={file?"ok":"pending"} label={file?"On file":"Needed"}/></div>;
-  const status=file?"ok":cert.required?"pending":"na";
-  const bg={ok:"#EAF3DE",pending:cert.required?"#FAEEDA":"#F1EFE8",na:"#F1EFE8"}[status];
-  const bd={ok:"#c0dd97",pending:cert.required?"#fac775":C.border,na:C.border}[status];
+  const expInfo=file?.expiry?getExpiryStatus(file.expiry):null;
+  const isExpired=expInfo?.status==="expired";
+  const isExpiring=expInfo?.status==="expiring";
+  const status=file?(isExpired?"expired":"ok"):cert.required?"pending":"na";
+  const bg={ok:"#EAF3DE",expired:"#FCEBEB",pending:cert.required?"#FAEEDA":"#F1EFE8",na:"#F1EFE8"}[status];
+  const bd={ok:"#c0dd97",expired:"#f5a0a0",pending:cert.required?"#fac775":C.border,na:C.border}[status];
   const isImg=file?.fileType?.startsWith("image/");const isPdf=file?.fileType==="application/pdf";
   return(
     <div style={{background:bg,border:`1px solid ${bd}`,borderRadius:8,padding:"10px 12px",marginBottom:6}}>
@@ -422,10 +473,11 @@ function CertCard({staffId,cert,role,onView}){
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
             <div style={{fontWeight:500,fontSize:13}}>{cert.label}{cert.ownerOnly?" 🔒":""}</div>
-            <Pill s={status} label={file?"On file ✓":cert.required?"Required":"Optional"}/>
+            {scanning?<span style={{fontSize:11,color:C.blue,fontWeight:500}}>🔍 Reading cert...</span>:<Pill s={isExpired?"expired":isExpiring?"due":status} label={expInfo?expInfo.label:file?"On file ✓":cert.required?"Required":"Optional"}/>}
           </div>
           <div style={{fontSize:11,color:C.muted,marginTop:2}}>{cert.renews}</div>
           {file&&<div style={{fontSize:11,color:C.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.fileName} · {file.uploadedDate}</div>}
+          {file?.expiry&&<div style={{fontSize:11,color:expInfo?.color||C.muted,marginTop:1,fontWeight:600}}>{isExpired?"⚠ ":isExpiring?"⏰ ":"✓ "}{expInfo?.label}</div>}
         </div>
       </div>
       <div style={{display:"flex",gap:5,marginTop:8,flexWrap:"wrap"}}>
