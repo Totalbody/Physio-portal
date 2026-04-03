@@ -12,12 +12,16 @@ async function detectExpiryDate(dataUrl, certLabel) {
       headers: _apiHeaders,
       body: JSON.stringify({ fileData: dataUrl, certLabel: certLabel })
     });
-    if (!resp.ok) throw new Error("API " + resp.status);
+    if (!resp.ok) {
+      const errText = await resp.text();
+      alert("[Expiry] API error " + resp.status + ": " + errText);
+      return { expiry: null };
+    }
     const parsed = await resp.json();
-    console.log("[AI Expiry]", certLabel, "→", parsed);
+    alert("[Expiry] AI detected: " + JSON.stringify(parsed));
     return parsed;
   } catch (e) {
-    console.error("[AI Expiry] Detection failed:", e);
+    alert("[Expiry] Failed: " + e.message);
     return { expiry: null };
   }
 }
