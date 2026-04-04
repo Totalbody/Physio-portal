@@ -1389,7 +1389,6 @@ function PPPage({setPage,setActiveAudit}){
 
 const INIT_MEETINGS=[
   {id:1,date:"2025-11-15",clinic:"All clinics",topic:"Q4 staff meeting — H&S review, CPD updates",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"Discussed APC renewal cycle, updated first aid booking process."},
-  {id:2,date:"2025-08-10",clinic:"Titirangi",topic:"In-service — shoulder rehab protocols",attendees:"Hans, Alistair",notes:"Hans led session. Reviewed UniSportsOrtho shoulder stabilisation phases."},
 ];
 const INIT_AUDITS=[];
 
@@ -1404,6 +1403,7 @@ export default function App(){
   const[inservices,setInservices]=useState([{id:1,date:"2025-08-10",clinic:"Titirangi",topic:"Shoulder rehab protocols",presenter:"Hans Vermeulen",attendees:"Hans, Alistair",notes:"Reviewed UniSportsOrtho shoulder stabilisation phases.",year:2025}]);
   const[activeAudit,setActiveAudit]=useState(null);
   const[viewAudit,setViewAudit]=useState(null);
+  const[extAudits,setExtAudits]=useState(()=>loadGen("extAudits")||[]);
   const[urgentOpen,setUrgentOpen]=useState(true);
   const[auditTypeFilter,setAuditTypeFilter]=useState("all");
   const[auditYearFilter,setAuditYearFilter]=useState("all");
@@ -1422,6 +1422,7 @@ export default function App(){
         if(d["audits"]&&d["audits"].length)setAudits(d["audits"]);
         if(d["meetings"]&&d["meetings"].length)setMeetings(d["meetings"]);else setMeetings(INIT_MEETINGS);
         if(d["inservices"]&&d["inservices"].length)setInservices(d["inservices"]);
+        if(d["extAudits"]&&d["extAudits"].length)setExtAudits(d["extAudits"]);
         // Staff overrides
         const overrides={};
         Object.keys(STAFF).forEach(id=>{
@@ -1846,7 +1847,7 @@ export default function App(){
 
   const ManagementPage=()=>{const[mvf,setMvf]=useState(null);return(
     <div><PH title="Management" sub="Audits, staff meetings, equipment — DAA / ACC Allied Health Standards"/>
-    <TabBar items={[["audits","Audits"],["meetings","Staff Meetings"],["equipment","Equipment"],["accreditation","Accreditation"]]} current={mgmtTab} setter={setMgmtTab}/>
+    <TabBar items={[["audits","Audits"],["meetings","Staff Meetings"],["equipment","Equipment"],["external","External Audits"],["accreditation","Accreditation"]]} current={mgmtTab} setter={setMgmtTab}/>
     {mgmtTab==="audits"&&<div>
       <div style={{marginBottom:"1.25rem"}}><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>Start a new audit</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(175px,1fr))",gap:"0.75rem"}}>
@@ -1941,33 +1942,132 @@ export default function App(){
         );
       })()}
     </div>}
-    {mgmtTab==="meetings"&&<div>
-      <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly. Annual meeting covers P&P updates, business plan, H&S and privacy. Attendance compulsory. Minutes taken by admin manager and stored on shared drive.</Alert>
-      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"1rem"}}><Btn onClick={()=>setShowAdd(true)}>+ Log meeting</Btn></div>
-      {showAdd&&<Card style={{borderColor:C.teal}}>
-        <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Log new meeting</div>
-        <Input label="Date" value={nm.date} onChange={e=>setNm({...nm,date:e.target.value})} type="date"/>
-        <Input label="Clinic / location" value={nm.clinic} onChange={e=>setNm({...nm,clinic:e.target.value})}/>
-        <Input label="Topic / agenda" value={nm.topic} onChange={e=>setNm({...nm,topic:e.target.value})}/>
-        <Input label="Attendees" value={nm.attendees} onChange={e=>setNm({...nm,attendees:e.target.value})}/>
-        <Textarea label="Notes / minutes" value={nm.notes} onChange={e=>setNm({...nm,notes:e.target.value})}/>
-        <div style={{display:"flex",gap:8}}><Btn onClick={()=>{if(nm.date&&nm.topic){const updated=[...meetings,{...nm,id:Date.now()}];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:""});setShowAdd(false);}}} >Save</Btn><Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn></div>
-      </Card>}
-      {[...meetings].reverse().map(m=>(
-        <Card key={m.id}>
-          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:6}}><div><strong style={{fontSize:14}}>{m.topic}</strong><div style={{fontSize:12,color:C.muted,marginTop:2}}>{m.date} · {m.clinic}</div></div><Pill s="ok" label="Completed ✓"/></div>
-          {m.attendees&&<div style={{fontSize:12,color:C.muted,marginBottom:4}}><strong style={{color:C.text}}>Attendees:</strong> {m.attendees}</div>}
-          {m.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"7px 10px",borderRadius:6,lineHeight:1.6}}>{m.notes}</div>}
-        </Card>
-      ))}
-    </div>}
+    {mgmtTab==="meetings"&&(()=>{
+      const[mFilter,setMFilter]=useState("");
+      const visibleMeetings=[...meetings].filter(m=>!mFilter||(m.topic+m.clinic+m.attendees+m.notes).toLowerCase().includes(mFilter.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date));
+      return <div>
+        <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly. Minutes stored here. You can enter historical meetings — just set the date to the past. {meetings.length} meeting{meetings.length!==1?"s":""} logged.</Alert>
+        <div style={{display:"flex",gap:8,marginBottom:"1rem",alignItems:"center"}}>
+          <input value={mFilter} onChange={e=>setMFilter(e.target.value)} placeholder="Search meetings…" style={{flex:1,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL}}/>
+          <Btn onClick={()=>setShowAdd(true)}>+ Log meeting</Btn>
+        </div>
+        {showAdd&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Log meeting <span style={{fontSize:12,color:C.muted,fontWeight:400}}>(you can set any past date)</span></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
+            <Input label="Date" value={nm.date} onChange={e=>setNm({...nm,date:e.target.value})} type="date"/>
+            <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Clinic / location</label>
+              <select value={nm.clinic} onChange={e=>setNm({...nm,clinic:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
+                <option>All clinics</option>{CLINICS.map(c=><option key={c.id}>{c.short}</option>)}
+              </select>
+            </div>
+          </div>
+          <Input label="Topic / agenda" value={nm.topic} onChange={e=>setNm({...nm,topic:e.target.value})} placeholder="e.g. Q4 staff meeting — H&S review, CPD updates"/>
+          <Input label="Attendees" value={nm.attendees} onChange={e=>setNm({...nm,attendees:e.target.value})} placeholder="e.g. Jade, Alistair, Hans, Timothy"/>
+          <Textarea label="Notes / minutes" value={nm.notes} onChange={e=>setNm({...nm,notes:e.target.value})} rows={3}/>
+          <div style={{display:"flex",gap:8}}><Btn onClick={()=>{if(nm.date&&nm.topic){const updated=[...meetings,{...nm,id:Date.now()}];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:""});setShowAdd(false);}}} >Save</Btn><Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn></div>
+        </Card>}
+        {visibleMeetings.length===0&&<Alert type="blue" title="No meetings found">Log a meeting above or adjust the search filter.</Alert>}
+        {visibleMeetings.map(m=>(
+          <Card key={m.id} style={{marginBottom:"0.5rem"}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:m.attendees||m.notes?6:0}}>
+              <div><strong style={{fontSize:14}}>{m.topic}</strong><div style={{fontSize:12,color:C.muted,marginTop:2}}>{m.date} · {m.clinic}</div></div>
+              <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                <Pill s="ok" label="Completed ✓"/>
+                <BSm onClick={()=>{if(window.confirm("Delete this meeting record?")){const updated=meetings.filter(x=>x.id!==m.id);setMeetings(updated);saveGen("meetings",updated);}}} color={C.red}>✕</BSm>
+              </div>
+            </div>
+            {m.attendees&&<div style={{fontSize:12,color:C.muted,marginBottom:4}}><strong style={{color:C.text}}>Attendees:</strong> {m.attendees}</div>}
+            {m.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"7px 10px",borderRadius:6,lineHeight:1.6}}>{m.notes}</div>}
+          </Card>
+        ))}
+      </div>;
+    })()}
     {mgmtTab==="equipment"&&<div>
       <Alert type="amber" title="P&P Section 3.1.15 — Equipment">Annual service and test/tag. Upload service certs below. Instruction manuals on manufacturer websites. Equipment maintenance register on shared drive.</Alert>
       <Card>{CLINICS.filter(c=>c.id!=="schools").map(cl=><FileRow key={cl.id} label={`${cl.icon} ${cl.short} — service certificate`} gkey={`equip_${cl.id}`} onView={f=>setMvf(f)} accent={C.amber}/>)}</Card>
       <Btn outline onClick={()=>setActiveAudit("equipment")}>Run equipment audit →</Btn>
       {mvf&&<FileViewer file={mvf} onClose={()=>setMvf(null)}/>}
     </div>}
-    {mgmtTab==="accreditation"&&<div>
+    {mgmtTab==="external"&&(()=>{
+      const[eavf,setEavf]=useState(null);
+      const[analysing,setAnalysing]=useState(null);
+      const ref=useRef();
+      const[pendingLabel,setPendingLabel]=useState("");
+      const[labelInput,setLabelInput]=useState("");
+      const[showLabelForm,setShowLabelForm]=useState(false);
+      async function analyseAudit(ea){
+        setAnalysing(ea.id);
+        try{
+          const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:ea.fileType||"application/pdf",data:ea.dataUrl.split(",")[1]}},{type:"text",text:`You are reviewing an external audit report for Total Body Physio, a New Zealand physiotherapy practice. Analyse this document and provide:
+1. KEY FINDINGS — what the auditors identified (max 5 bullet points)
+2. AREAS FOR IMPROVEMENT — specific gaps they noted
+3. ACTION PLAN — 5 concrete steps TBP should take before the next audit, referencing specific P&P sections where relevant
+4. STRENGTHS — what was done well
+Keep each section brief and practical. Focus on ACC Allied Health and DAA Group compliance standards.`}]}]})});
+          const data=await resp.json();
+          const text=data.content?.find(c=>c.type==="text")?.text||"No analysis returned.";
+          const updated=extAudits.map(x=>x.id===ea.id?{...x,analysis:text,analysedDate:new Date().toLocaleDateString("en-NZ")}:x);
+          setExtAudits(updated);saveGen("extAudits",updated);
+        }catch(e){alert("Analysis failed: "+e.message);}
+        setAnalysing(null);
+      }
+      function uploadFile(e){
+        const f=e.target.files[0];if(!f||!pendingLabel)return;
+        if(f.size>10*1024*1024){alert("File over 10MB.");return;}
+        const r=new FileReader();
+        r.onload=ev=>{
+          const rec={id:Date.now(),label:pendingLabel,fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+          const updated=[...extAudits,rec];setExtAudits(updated);saveGen("extAudits",updated);
+          setPendingLabel("");setShowLabelForm(false);
+        };
+        r.readAsDataURL(f);e.target.value="";
+      }
+      return <div>
+        <Alert type="green" title="External audit documents — AI-powered analysis">Upload DAA Group audit reports, ACC compliance reviews, or any external audit. AI will identify key findings, gaps, and give you a concrete action plan for the next audit.</Alert>
+        <div style={{marginBottom:"1rem"}}>
+          {!showLabelForm
+            ?<Btn onClick={()=>setShowLabelForm(true)}>+ Upload audit document</Btn>
+            :<Card style={{borderColor:C.teal}}>
+              <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Name this audit document</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem"}}>e.g. "DAA Group Audit 2024", "ACC compliance review 2025"</div>
+              <input value={labelInput} onChange={e=>setLabelInput(e.target.value)} onKeyDown={ev=>ev.key==="Enter"&&labelInput.trim()&&(setPendingLabel(labelInput.trim()),setTimeout(()=>ref.current.click(),50))} placeholder="Document name…" autoFocus style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box",marginBottom:"0.625rem"}}/>
+              <div style={{display:"flex",gap:8}}>
+                <Btn onClick={()=>{if(labelInput.trim()){setPendingLabel(labelInput.trim());setTimeout(()=>ref.current.click(),50);}}} >Choose file →</Btn>
+                <Btn outline onClick={()=>{setShowLabelForm(false);setLabelInput("");}}>Cancel</Btn>
+              </div>
+            </Card>
+          }
+          <input ref={ref} type="file" accept="application/pdf,.doc,.docx,image/*" style={{display:"none"}} onChange={uploadFile}/>
+        </div>
+        {extAudits.length===0&&<Alert type="blue" title="No external audit documents yet">Upload your DAA Group or ACC audit reports above to get AI-powered analysis and improvement recommendations.</Alert>}
+        {[...extAudits].reverse().map(ea=>(
+          <Card key={ea.id} style={{marginBottom:"0.875rem"}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"0.75rem"}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:600}}>{ea.label}</div>
+                <div style={{fontSize:12,color:C.muted,marginTop:2}}>📄 {ea.fileName} · Uploaded {ea.uploadedDate}</div>
+                {ea.analysedDate&&<div style={{fontSize:11,color:C.teal,marginTop:2}}>✓ Analysed {ea.analysedDate}</div>}
+              </div>
+              <div style={{display:"flex",gap:6,flexShrink:0}}>
+                <BSm onClick={()=>setEavf(ea)} color={C.teal}>👁 View</BSm>
+                {!ea.analysis&&<BSm onClick={()=>analyseAudit(ea)} color={C.blue} bg={analysing===ea.id?"#ddd":null}>{analysing===ea.id?"🔍 Analysing…":"🤖 AI Analysis"}</BSm>}
+                {ea.analysis&&<BSm onClick={()=>analyseAudit(ea)} color={C.gray}>{analysing===ea.id?"🔍 Re-analysing…":"↻ Re-analyse"}</BSm>}
+                <BSm onClick={()=>{if(window.confirm("Remove this document?")){const updated=extAudits.filter(x=>x.id!==ea.id);setExtAudits(updated);saveGen("extAudits",updated);}}} color={C.red}>✕</BSm>
+              </div>
+            </div>
+            {analysing===ea.id&&<div style={{background:C.blueL,borderRadius:6,padding:"0.875rem",fontSize:13,color:C.blue,textAlign:"center"}}>🔍 Reading document and generating improvement plan… (may take 10–20 seconds)</div>}
+            {ea.analysis&&!analysing&&(
+              <div style={{background:C.grayXL,borderRadius:8,padding:"1rem",fontSize:13,borderLeft:`3px solid ${C.teal}`}}>
+                <div style={{fontSize:12,fontWeight:600,color:C.teal,marginBottom:"0.5rem"}}>🤖 AI Analysis</div>
+                <div style={{whiteSpace:"pre-wrap",lineHeight:1.7,color:C.text,fontSize:12}}>{ea.analysis}</div>
+              </div>
+            )}
+          </Card>
+        ))}
+        {eavf&&<FileViewer file={eavf} onClose={()=>setEavf(null)}/>}
+      </div>;
+    })()}
+        {mgmtTab==="accreditation"&&<div>
       <Alert type="green" title="DAA Group — ACC Allied Health Standards">All sections of this portal support your DAA audit readiness. P&P manual underpins all requirements below.</Alert>
       {[["Staff credentials — APC, First Aid, Cultural",Object.entries(STAFF).every(([id])=>["apc","firstaid","cultural"].every(k=>loadFile(id,k)))?"ok":"pending","All staff hold current APC, First Aid and Cultural Competency — P&P §7"],["Police vetting — all staff",Object.entries(STAFF).every(([id])=>loadFile(id,"policevetting"))?"ok":"pending","Every 3 years — NZ Police email confirmation — P&P §4.2"],["Clinical Director oversight (Alistair)","ok","ACC confirmed Nov 2023 — clinical reviews before 16th visit — P&P §1.2"],["16th-visit case reviews","pending","Document in meeting notes — P&P §1.2"],["Orientation — all staff","pending","Complete digital checklist for each staff member — P&P §7.1"],["P&P annual review","pending","Due April — P&P §1.1"],["In-service training","pending","At least one per clinic per year — P&P §7.7.3"],["H&S audits — quarterly","ok","Records in audit history — P&P §1.5.2"],["Fire drills — annual","pending","Run from Clinics page — P&P §3.1.2"],["Staff meetings — quarterly","ok","Minutes logged above — P&P §7.6"],["Equipment servicing — annual","ok","Records above — P&P §3.1.15"],["Clinical notes audit — 6-monthly","pending","10 records per physio (5 current + 5 past) — P&P §1.5.1"],["Client satisfaction survey","pending","Via website or forms — P&P §1.5.3"]].map(([t,s,d])=>(
         <Card key={t} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}>
