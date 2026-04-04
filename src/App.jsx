@@ -1998,14 +1998,15 @@ export default function App(){
       async function analyseAudit(ea){
         setAnalysing(ea.id);
         try{
-          const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:ea.fileType||"application/pdf",data:ea.dataUrl.split(",")[1]}},{type:"text",text:`You are reviewing an external audit report for Total Body Physio, a New Zealand physiotherapy practice. Analyse this document and provide:
-1. KEY FINDINGS — what the auditors identified (max 5 bullet points)
-2. AREAS FOR IMPROVEMENT — specific gaps they noted
-3. ACTION PLAN — 5 concrete steps TBP should take before the next audit, referencing specific P&P sections where relevant
-4. STRENGTHS — what was done well
-Keep each section brief and practical. Focus on ACC Allied Health and DAA Group compliance standards.`}]}]})});
+          const resp=await fetch(PORTAL_API+"/analyse-doc",{
+            method:"POST",
+            headers:_apiHeaders,
+            body:JSON.stringify({fileData:ea.dataUrl,fileType:ea.fileType||"application/pdf",label:ea.label})
+          });
+          if(!resp.ok){const t=await resp.text();throw new Error("Proxy error "+resp.status+": "+t.slice(0,200));}
           const data=await resp.json();
-          const text=data.content?.find(c=>c.type==="text")?.text||"No analysis returned.";
+          if(!data.ok)throw new Error(data.error||"Analysis failed");
+          const text=data.analysis||"No analysis returned.";
           const updated=extAudits.map(x=>x.id===ea.id?{...x,analysis:text,analysedDate:new Date().toLocaleDateString("en-NZ")}:x);
           setExtAudits(updated);saveGen("extAudits",updated);
         }catch(e){alert("Analysis failed: "+e.message);}
