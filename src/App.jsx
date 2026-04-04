@@ -817,11 +817,73 @@ function OrientationModal({staffId,onClose}){
   );
 }
 
+// audit view modal — shows a completed audit in full
+function AuditViewModal({audit,onClose}){
+  if(!audit)return null;
+  const form=AUDIT_FORMS[audit.type]||{sections:[]};
+  const sections=audit.sections||form.sections||[];
+  const checks=audit.itemChecks||{};
+  const itemNotes=audit.itemNotes||{};
+  const statusColor={pass:C.green,fail:C.red,na:C.gray};
+  const statusLabel={pass:"✓ Pass",fail:"✗ Fail",na:"— N/A"};
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:12,width:"100%",maxWidth:720,marginBottom:"2rem",overflow:"hidden"}}>
+        <div style={{background:audit.outcome==="Passed"?C.teal:C.red,padding:"1.25rem 1.5rem",display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
+          <div>
+            <div style={{color:"white",fontSize:16,fontWeight:600}}>{audit.icon} {audit.title}</div>
+            <div style={{color:"rgba(255,255,255,0.8)",fontSize:12,marginTop:4,display:"flex",gap:12,flexWrap:"wrap"}}>
+              <span>📅 {audit.date}{audit.time?` · ⏰ ${audit.time}`:""}</span>
+              <span>📍 {audit.clinic}</span>
+              <span>👤 {audit.auditor}</span>
+              {audit.duration&&<span>⏱ {audit.duration}</span>}
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{background:"rgba(255,255,255,0.2)",borderRadius:8,padding:"6px 14px",textAlign:"center"}}>
+              <div style={{color:"white",fontSize:18,fontWeight:700}}>{audit.outcome}</div>
+              <div style={{color:"rgba(255,255,255,0.7)",fontSize:11}}>{audit.passed}/{audit.total} passed</div>
+            </div>
+            <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15,flexShrink:0}}>✕</button>
+          </div>
+        </div>
+        <div style={{padding:"1.25rem 1.5rem",maxHeight:"72vh",overflowY:"auto"}}>
+          {audit.failed>0&&<div style={{background:C.redL,border:`1px solid #f5a0a0`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem"}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.red,marginBottom:4}}>⚠ {audit.failed} issue{audit.failed>1?"s":""} found</div>
+            <div style={{fontSize:12,color:C.muted}}>{audit.notes?.replace(/^Notes:.*$/m,"").trim()}</div>
+          </div>}
+          {sections.length>0?sections.map((sec,si)=>(
+            <div key={si} style={{marginBottom:"1.25rem"}}>
+              <div style={{fontSize:12,fontWeight:600,padding:"6px 10px",background:C.grayXL,borderRadius:6,marginBottom:"0.375rem",borderLeft:`3px solid ${C.teal}`}}>{sec.title}</div>
+              {sec.items.map((item,ii)=>{
+                const k=`${si}-${ii}`;const val=checks[k];const note=itemNotes[k];
+                return(
+                  <div key={ii} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"6px 0",borderBottom:`1px solid ${C.grayL}`}}>
+                    <span style={{fontSize:11,fontWeight:600,color:statusColor[val]||C.hint,minWidth:52,flexShrink:0,marginTop:1}}>{statusLabel[val]||"—"}</span>
+                    <div style={{flex:1}}>
+                      <span style={{fontSize:12,color:val==="fail"?C.text:val?C.muted:C.hint}}>{item}</span>
+                      {note&&<div style={{fontSize:11,color:C.red,marginTop:2,fontStyle:"italic"}}>↳ {note}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )):<Alert type="blue" title="Checklist not available">This audit was completed before detailed item recording was added. Only the summary is available.</Alert>}
+          {audit.notes&&<div style={{background:C.grayXL,borderRadius:8,padding:"0.875rem",marginTop:"0.5rem"}}>
+            <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Overall notes</div>
+            <div style={{fontSize:12,color:C.muted,whiteSpace:"pre-line"}}>{audit.notes.replace(/^• .*$/gm,"").replace(/Notes: /,"").trim()}</div>
+          </div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // audit modal
 function AuditModal({type,onClose,onComplete}){
   const form=AUDIT_FORMS[type];const all=form.sections.flatMap(s=>s.items);
   const[checks,setChecks]=useState({});const[notes,setNotes]=useState({});
-  const[meta,setMeta]=useState({clinic:CLINICS[0].short,auditor:"",physioAudited:"",date:new Date().toISOString().split("T")[0]});
+  const[meta,setMeta]=useState({clinic:CLINICS[0].short,auditor:"",physioAudited:"",date:new Date().toISOString().split("T")[0],time:"",duration:""});
   const[overall,setOverall]=useState("");
   const passed=Object.values(checks).filter(v=>v==="pass").length;const failed=Object.values(checks).filter(v=>v==="fail").length;const na=Object.values(checks).filter(v=>v==="na").length;
   const answered=passed+failed+na;const pct=Math.round((answered/all.length)*100);
@@ -844,12 +906,16 @@ function AuditModal({type,onClose,onComplete}){
           </div>
         </div>
         <div style={{padding:"1.25rem 1.5rem",maxHeight:"75vh",overflowY:"auto"}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.75rem",marginBottom:form.hasPhysioSelect?"0.75rem":"1.25rem"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.75rem",marginBottom:"0.75rem"}}>
             {[["Clinic","clinic","select"],["Auditor name","auditor","text"],["Date","date","date"]].map(([lbl,k,t])=>(
               <div key={k}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>{lbl}</label>
                 {t==="select"?<select value={meta[k]} onChange={e=>setMeta({...meta,[k]:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL}}>{CLINICS.map(c=><option key={c.id}>{c.short}</option>)}</select>:<input type={t} value={meta[k]} onChange={e=>setMeta({...meta,[k]:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/>}
               </div>
             ))}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"1.25rem"}}>
+            <div><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Start time (optional)</label><input type="time" value={meta.time} onChange={e=>setMeta({...meta,time:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
+            <div><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Duration (e.g. "4 mins 30 secs")</label><input type="text" value={meta.duration} onChange={e=>setMeta({...meta,duration:e.target.value})} placeholder="e.g. 4 mins 30 secs" style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
           </div>
           {form.hasPhysioSelect&&(
             <div style={{background:"#E6F1FB",border:`1px solid #b8d4f0`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1.25rem"}}>
@@ -1337,6 +1403,7 @@ export default function App(){
   const[audits,setAudits]=useState(INIT_AUDITS);
   const[inservices,setInservices]=useState([{id:1,date:"2025-08-10",clinic:"Titirangi",topic:"Shoulder rehab protocols",presenter:"Hans Vermeulen",attendees:"Hans, Alistair",notes:"Reviewed UniSportsOrtho shoulder stabilisation phases.",year:2025}]);
   const[activeAudit,setActiveAudit]=useState(null);
+  const[viewAudit,setViewAudit]=useState(null);
   const[urgentOpen,setUrgentOpen]=useState(true);
   const[auditTypeFilter,setAuditTypeFilter]=useState("all");
   const[auditYearFilter,setAuditYearFilter]=useState("all");
@@ -1621,7 +1688,7 @@ export default function App(){
   const ClinicsPage=()=>(
     <div><PH title="Clinics" sub="Run audits directly from each clinic card"/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:"0.875rem"}}>
-      {CLINICS.map(cl=>{const cs=Object.values(STAFF).filter(s=>s.clinics.includes(cl.id));return(
+      {CLINICS.map(cl=>{const cs=Object.entries(STAFF).filter(([id,s])=>es(id).clinics.includes(cl.id)).map(([id,s])=>s);return(
         <Card key={cl.id}>
           <div style={{fontSize:15,fontWeight:600,marginBottom:4}}>{cl.icon} {cl.name}</div>
           <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem",lineHeight:1.5}}>{cl.note}</div>
@@ -1856,7 +1923,10 @@ export default function App(){
                                   </div>}
                                   {a.notes&&<div style={{fontSize:11,color:C.muted,marginTop:3,fontStyle:"italic"}}>{a.notes}</div>}
                                 </div>
+                                <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end",flexShrink:0}}>
                                 <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
+                                <BSm onClick={e=>{e.stopPropagation();setViewAudit(a);}} color={C.blue}>View →</BSm>
+                              </div>
                               </div>
                             ))}
                           </div>
@@ -1962,6 +2032,7 @@ export default function App(){
         {page==="management"&&<ManagementPage/>}
       </div>
       <ProfileModal id={profile} onClose={()=>{setProfile(null);fu(n=>n+1);}} role={role} onStaffSave={(id,saved)=>setStaffOverrides(p=>({...p,[id]:saved}))} staffOverrides={staffOverrides}/>
+      {viewAudit&&<AuditViewModal audit={viewAudit} onClose={()=>setViewAudit(null)}/>}
       {activeAudit&&<AuditModal type={activeAudit} onClose={()=>setActiveAudit(null)} onComplete={r=>{setAudits(p=>{const updated=[...p,r];saveGen("audits",updated);return updated;});setActiveAudit(null);setPage("management");setMgmtTab("audits");}}/>}
       {vf&&<FileViewer file={vf} onClose={()=>setVf(null)}/>}
     </div>
