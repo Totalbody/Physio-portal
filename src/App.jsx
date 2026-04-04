@@ -100,7 +100,7 @@ const PP_SECTIONS = [
       {title:"Cultural competency",key:"cultural",body:"All staff must complete eCALD, Mauriora, and ongoing cultural CPD including reflective practice. Establish links with school cultural leadership teams. Follow disability/cultural barriers reception procedure."},
       {title:"Māori Health",key:"maori",body:"Te Tiriti o Waitangi respected at all times. All staff complete Mauriora Cultural Competency course. Specific procedures: pillows never on floor; consent before touching head/neck/face; head pillows not used under legs/feet; respect all communication; support traditional healing in home exercise programme; all Māori clients entitled to whānau support; specific treatment goals set with client and whānau; private treatment rooms available. Ethnicity data collected via client satisfaction surveys."},
     ],
-    links:[{label:"HDC Code of Rights",url:"https://hdc.org.nz/your-rights/about-the-code/code-of-health-and-disability-services-consumers-rights/"},{label:"Oranga Tamariki",url:"https://www.orangatamariki.govt.nz"},{label:"Mauriora course",url:"https://mauriora.co.nz"}]
+    links:[{label:"HDC Code of Rights",url:"https://hdc.org.nz/your-rights/about-the-code/code-of-health-and-disability-services-consumers-rights/"},{label:"Oranga Tamariki",url:"https://www.orangatamariki.govt.nz"},{label:"Mauriora course",url:"https://mauriora.co.nz"},{label:"ACC Māori Cultural Competency (ACC1625)",url:"https://www.acc.co.nz/assets/provider/acc1625-maori-cultural-competency.pdf"},{label:"PBNZ He kawa whakaruruhau",url:"https://physioboard.org.nz/standards/physiotherapy-standards/he-kawa-whakaruruhau-a-matatau-maori-maori-cultural-safety-and-competence-standard"}]
   },
   {
     id:"client", num:"5", icon:"🧑‍⚕️", title:"Client Management",
@@ -114,7 +114,7 @@ const PP_SECTIONS = [
       {title:"Discharge process",key:"discharge",body:"Completed by physio on Cliniko. Discharge summary per ACC Allied Health Services Operational Guidelines. Send discharge letter to GP if referred by GP. If client fails to attend: attempt contact, check for complaints, record in notes. Provide to ACC if requested."},
       {title:"Limitations of service",key:"limitations",body:"TBP does NOT offer: pelvic health, home visits, psychiatric care, offsite services. Guide clients requiring these to appropriate services."},
     ],
-    links:[{label:"Cliniko login",url:"https://app.cliniko.com"},{label:"ACC Allied Health schedule",url:"https://www.acc.co.nz/assets/provider/acc8310.pdf"}]
+    links:[{label:"Cliniko login",url:"https://app.cliniko.com"},{label:"ACC Allied Health schedule",url:"https://www.acc.co.nz/assets/contracts/acc8310-partnering-with-acc.pdf"}]
   },
   {
     id:"information", num:"6", icon:"📁", title:"Information Management",
@@ -143,16 +143,16 @@ const PP_SECTIONS = [
       {title:"Peer review",key:"peer_review",body:"At least annually. May be internal (within TBP) or external (Hakinakina Hauora, TBP Flat Bush, TBP Titirangi). At least one current client chosen per therapist. Client consent sought privately and documented in Cliniko. Includes: pre-session discussion (learning outcomes, feedback sought), clinical notes review, observation of assessment/treatment. Feedback given within 7 days. PBNZ peer review template on shared drive."},
       {title:"Annual performance review",key:"appraisal",body:"All staff including Directors — April/May. Minimum 1 hour meeting. Director completes appraisal form before meeting. Contract and JD also reviewed at this time. Both parties sign. CPD hours checked. Plan discussed for coming year. All appraisals filed in personnel files."},
     ],
-    links:[{label:"PBNZ Code of Ethics",url:"https://physiotherapy.org.nz/professional-standards/code-of-ethics"},{label:"Staff compliance",page:"compliance"}]
+    links:[{label:"PBNZ Code of Ethics",url:"https://physioboard.org.nz/standards/aotearoa-new-zealand-physiotherapy-code-of-ethics-and-professional-conduct"},{label:"Staff compliance",page:"compliance"}]
   },
   {
     id:"accounts", num:"8", icon:"💰", title:"Accounts",
     color:"#9C27B0", audience:"Management",
     summary:"Wages paid fortnightly by automatic payment. ACC invoiced per Allied Health Services Schedule (updated November 2025) via Submit Kit. Accounts software: Xero. Automated invoicing sends daily reminders. Manual follow-up: 30 days (friendly reminder), 60 days (overdue + phone call), 90 days (final notice). Unpaid accounts referred to Director. Preferred suppliers list on shared drive.",
     policies:[
-      {title:"Staff wages",key:"wages",body:"Paid fortnightly by automatic payment. Director processes wages and maintains full record including PAYE/WT calculations. Tax tables at ird.govt.nz. TBP prepares invoices for contracted staff, cross-checked against statistics."},
+      {title:"Staff wages",key:"wages",body:"Paid fortnightly by automatic payment. Xero calculates PAYE, KiwiSaver and student loan deductions automatically. Director reviews and approves payroll each fortnight. TBP prepares invoices for contracted staff based on hours worked, cross-checked against KPI dashboard statistics."},
       {title:"Client invoicing",key:"invoicing",body:"Accounts paid at end of each treatment where possible. Monthly report of outstanding accounts — invoiced by email. Schedule: initial invoice (payment ASAP) → 30 days ('A Friendly Reminder') → 60 days ('Reminder, Payment Overdue' — phone call) → 90 days ('Final Notice, within 7 days'). Unpaid accounts referred to Director to pursue or write off."},
-      {title:"Preferred suppliers",key:"suppliers",body:"List stored on Google Drive in orientation folder. Kept updated by admin manager."},
+      {title:"Preferred suppliers",key:"suppliers",body:"Clinical consumables: Medline NZ (gloves, disposables, wound care). Dry needling: Acumedic NZ — single-use sterile only. Sharps disposal: Chemist Warehouse — dispose at 3/4 full. Laundry: hot wash 60°C min, Director arranges. Stationery: Warehouse Stationery. Software: Cliniko · Xero · Submit Kit. ACC provider line: 0800 222 070. WorkSafe: 0800 030 040. Contact Director to update supplier details."},
     ],
     links:[{label:"Xero login",url:"https://login.xero.com"},{label:"IRD tax tables",url:"https://ird.govt.nz"}]
   },
@@ -166,10 +166,10 @@ const LEGISLATION = [
   {name:"Health and Disability Commissioner Act 1994",url:"https://legislation.govt.nz/act/public/1994/0088/latest/DLM333584.html",desc:"Patient rights and complaints process."},
   {name:"Code of Health & Disability Services Consumers' Rights",url:"https://hdc.org.nz/your-rights/about-the-code/code-of-health-and-disability-services-consumers-rights/",desc:"Ten rights of all health and disability consumers in NZ."},
   {name:"Health and Safety at Work Act 2015",url:"https://legislation.govt.nz/act/public/2015/0070/latest/DLM5976660.html",desc:"H&S obligations for employers and employees."},
-  {name:"PBNZ Code of Ethics and Professional Conduct",url:"https://physiotherapy.org.nz/professional-standards/code-of-ethics",desc:"Professional standards for all NZ physiotherapists."},
+  {name:"PBNZ Code of Ethics and Professional Conduct",url:"https://physioboard.org.nz/standards/aotearoa-new-zealand-physiotherapy-code-of-ethics-and-professional-conduct",desc:"Professional standards for all NZ physiotherapists."},
   {name:"PBNZ Cultural Competence Standard",url:"https://physioboard.org.nz/registration/cultural-competence",desc:"Māori cultural safety and competence — Physiotherapy Board NZ."},
-  {name:"ACC Māori Cultural Competency (ACC1625)",url:"https://www.acc.co.nz/assets/provider/acc1625.pdf",desc:"ACC Māori cultural competency standard for providers."},
-  {name:"ACC Allied Health Services Contract (ACC8310)",url:"https://www.acc.co.nz/assets/provider/acc8310.pdf",desc:"Allied Health contract — clinical director, in-service, audit standards."},
+  {name:"ACC Māori Cultural Competency (ACC1625)",url:"https://www.acc.co.nz/assets/provider/acc1625-maori-cultural-competency.pdf",desc:"ACC Māori cultural competency standard for providers."},
+  {name:"ACC Allied Health Services Contract (ACC8310)",url:"https://www.acc.co.nz/assets/contracts/acc8310-partnering-with-acc.pdf",desc:"Allied Health contract — clinical director, in-service, audit standards."},
   {name:"Mauriora Cultural Competency course",url:"https://mauriora.co.nz",desc:"Complete the Foundation Course for annual renewal (valid 1 year)."},
   {name:"Employment Relations Act 2000",url:"https://legislation.govt.nz/act/public/2000/0024/latest/DLM58317.html",desc:"Employment agreements, disputes, good faith obligations."},
 ];
@@ -194,7 +194,7 @@ const STAFF = {
   komal:    {name:"Komal Kaur",         ini:"KK",color:"#9C27B0",title:"Physiotherapist",                                clinics:["pakuranga","panmure"],                         type:"Contractor",info:[["Role","Physiotherapist"],["Type","Contractor"]]},
 };
 
-const PAST_STAFF = ["Alice","Aoife","Vishwali","Jean Hong","Alonzo","Sasha McBain","Steven Gray","(2 further records)"];
+const PAST_STAFF = ["Alice Keane","Aoife Hussey","Ishwari Pillay","Jennifer Hong","Maria Alonzo","Sasha McBain","Stephen Gray"];
 // staff effective type/clinics resolved via es() inside App — uses React state staffOverrides
 
 const CORE_CERTS = [
@@ -238,9 +238,9 @@ const ORI_SECTIONS = [
 
 const AUDIT_FORMS = {
   hygiene:{title:"Hygiene & Cleanliness Audit",icon:"🧼",freq:"Quarterly",sections:[
-    {title:"Treatment rooms",items:["Treatment tables wiped between every patient","Paper/pillow slip changed between every patient","Floors clean and free of debris","All surfaces disinfected","Waste bins emptied and lined","No clutter on benches or work surfaces"]},
-    {title:"Equipment",items:["All equipment wiped down after use","Ultrasound heads cleaned after each use","Exercise equipment clean and stored correctly","Single-use items disposed of immediately"]},
-    {title:"Hand hygiene stations",items:["Hand sanitiser at arrival/reception counter","Hand sanitiser at exit/departure counter","Sanitiser dispensers clean and full","Soap and paper towels at all clinical sinks"]},
+    {title:"Treatment rooms",items:["Treatment tables wiped between every patient","Floors clean and free of debris","All surfaces disinfected","Waste bins emptied and lined","No clutter on benches or work surfaces"]},
+    {title:"Equipment",items:["All equipment wiped down after use","Exercise equipment clean and stored correctly","Single-use items disposed of immediately"]},
+    {title:"Hand hygiene stations",items:["Hand sanitiser at reception counter for entry","Hand sanitiser at reception counter for exit","Sanitiser dispensers clean and full","Soap and paper towels at all clinical sinks"]},
     {title:"Common areas",items:["Waiting room chairs and surfaces clean","Reception desk clean and tidy","Kitchen/staff room clean","Staff toilets clean and stocked"]},
     {title:"PPE & infection control",items:["PPE supplies stocked (gloves, masks)","Clinical waste disposed of correctly","No expired single-use items in clinical areas"]},
   ]},
@@ -265,8 +265,8 @@ const AUDIT_FORMS = {
   ]},
   equipment:{title:"Equipment & Electrical Check",icon:"⚡",freq:"Annual",sections:[
     {title:"Testing & tagging",items:["All portable appliances have current test tag","Test tag dates within 12-month period","No equipment with expired/missing tags in use","Switchboard clearly labelled"]},
-    {title:"Clinical equipment",items:["Ultrasound machines functioning correctly","TENS/IFC machines functioning correctly","Exercise equipment safe and functional","Traction equipment checked (if applicable)"]},
-    {title:"Treatment room equipment",items:["Treatment tables in good condition","Pillow frames and headrests secure","Step stools stable","Sharps disposal containers not over-filled — dispose at Chemist Warehouse at 3/4 full"]},
+    {title:"Clinical equipment",items:["TENS machine functioning correctly","Exercise equipment safe and functional"]},
+    {title:"Treatment room equipment",items:["Treatment tables in good condition","Pillow frames and headrests secure","Wheeled stool / chair stable","Sharps disposal containers not over-filled — dispose at Chemist Warehouse at 3/4 full"]},
     {title:"Records",items:["Equipment register up to date","Service provider details recorded","Last service date recorded for each major item","Next service date scheduled"]},
   ]},
 };
@@ -1018,8 +1018,8 @@ function AuditModal({type,onClose,onComplete}){
             ))}
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"1.25rem"}}>
-            <div><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Start time (optional)</label><input type="time" value={meta.time} onChange={e=>setMeta({...meta,time:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
-            <div><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Duration (e.g. "4 mins 30 secs")</label><input type="text" value={meta.duration} onChange={e=>setMeta({...meta,duration:e.target.value})} placeholder="e.g. 4 mins 30 secs" style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
+            <div style={{minWidth:0}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Start time</label><input type="time" value={meta.time} onChange={e=>setMeta({...meta,time:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
+            <div style={{minWidth:0}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Duration</label><input type="text" value={meta.duration} onChange={e=>setMeta({...meta,duration:e.target.value})} placeholder="e.g. 4 mins 30 secs" style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
           </div>
           {form.hasPhysioSelect&&(
             <div style={{background:"#E6F1FB",border:`1px solid #b8d4f0`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1.25rem"}}>
@@ -1895,7 +1895,7 @@ export default function App(){
 
   const ArchivePage=()=>(
     <div><PH title="Past employees" sub="Archived records — kept for DAA / ACC audit purposes"/>
-    <Card><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>Former staff — 9 records</div>{["Alice","Aoife","Vishwali","Jean Hong","Alonzo","Sasha McBain","Steven Gray","(2 further records)"].map(n=><div key={n} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}><div style={{width:32,height:32,borderRadius:"50%",background:C.grayL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:C.gray,flexShrink:0}}>{n.slice(0,2).toUpperCase()}</div><div><strong style={{fontSize:13}}>{n}</strong><div style={{fontSize:12,color:C.muted}}>Former physiotherapist · Records archived</div></div><span style={{marginLeft:"auto"}}><Chip color="gray">Archived</Chip></span></div>)}</Card></div>
+    <Card><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>Former staff — 7 records</div>{["Alice Keane","Aoife Hussey","Ishwari Pillay","Jennifer Hong","Maria Alonzo","Sasha McBain","Stephen Gray"].map(n=><div key={n} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}><div style={{width:32,height:32,borderRadius:"50%",background:C.grayL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:C.gray,flexShrink:0}}>{n.slice(0,2).toUpperCase()}</div><div><strong style={{fontSize:13}}>{n}</strong><div style={{fontSize:12,color:C.muted}}>Former physiotherapist · Records archived</div></div><span style={{marginLeft:"auto"}}><Chip color="gray">Archived</Chip></span></div>)}</Card></div>
   );
 
   const ClinicsPage=()=>(
@@ -2008,7 +2008,7 @@ export default function App(){
           ))}
         </div>
       )}
-      {isrvTab==="resources"&&<Card><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>In-service resources</div><div style={{fontSize:12,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Upload handouts, slides or reading materials. All staff can view.</div>{CLINICS.filter(c=>c.id!=="schools").map(cl=><FileRow key={cl.id} label={`${cl.icon} ${cl.short} — in-service resource`} gkey={`isrv_${cl.id}`} onView={f=>setIvf(f)}/>)}<div style={{marginTop:"0.75rem",fontSize:11,color:C.muted}}>Accepted: PDF, Word, image. Max 3MB.</div></Card>}
+      {isrvTab==="resources"&&<Card><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>In-service resources — all clinics</div><div style={{fontSize:12,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Shared resource library. Upload handouts, slides or reading materials. All staff can view.</div><MultiFileRow label="📚 Shared in-service resources — all clinics" gkey="isrv_communal" onView={f=>setIvf(f)}/><div style={{marginTop:"0.75rem",fontSize:11,color:C.muted}}>Accepted: PDF, Word, image. Max 3MB.</div></Card>}
       {ivf&&<FileViewer file={ivf} onClose={()=>setIvf(null)}/>}
     </div>
   );};
@@ -2051,7 +2051,7 @@ export default function App(){
     <div><PH title="Documents" sub="Contracts, job descriptions & legislation"/>
     <TabBar items={[["contracts","Contracts"],["jd","Job descriptions"],["leg","Legislation"]]} current={docsTab} setter={setDocsTab}/>
     {docsTab==="contracts"&&<div><Alert type="blue" title="🔒 Contract privacy — P&P Section 7.2">Contracts visible to Jade (owner) and the individual staff member only. Others see a locked indicator. Two signed copies: one for employee, one in personnel file.</Alert><Card>{Object.entries(STAFF).map(([id,s])=>{const canSee=role==="owner"||role===id;return <ContractRow key={id} staffId={id} s={s} canSee={canSee} onView={f=>setDvf(f)}/>;})}</Card></div>}
-    {docsTab==="jd"&&<Card><div style={{fontSize:13,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Each staff member may have multiple JDs for different roles. Upload all signed copies — P&P Section 7.3.</div>{Object.entries(STAFF).map(([id,s])=><MultiFileRow key={id} label={`${s.name} — Job Description`} gkey={`jd_${id}`} onView={f=>setDvf(f)} accent={s.color}/>)}</Card>}
+    {docsTab==="jd"&&<Card><div style={{fontSize:13,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Tap 👁 View to open the current job description. Use 📄 Add another to upload a new or updated version. All signed copies kept on file — P&P §7.3.</div>{Object.entries(STAFF).map(([id,s])=><MultiFileRow key={id} label={`${s.name} — Job Description`} gkey={`jd_${id}`} onView={f=>setDvf(f)} accent={s.color}/>)}</Card>}
     {docsTab==="leg"&&<div><Alert type="blue" title="Key legislation — all staff read during orientation">Click any link to open the source document.</Alert>{LEGISLATION.map(leg=><Card key={leg.name} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}><div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}><div><a href={leg.url} target="_blank" rel="noreferrer" style={{fontSize:13,fontWeight:600,color:C.blue,textDecoration:"none"}}>{leg.name} ↗</a><div style={{fontSize:12,color:C.muted,marginTop:3,lineHeight:1.5}}>{leg.desc}</div></div><a href={leg.url} target="_blank" rel="noreferrer" style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:C.blueL,color:C.blue,textDecoration:"none",fontWeight:500,whiteSpace:"nowrap",flexShrink:0}}>Open ↗</a></div></Card>)}</div>}
     {dvf&&<FileViewer file={dvf} onClose={()=>setDvf(null)}/>}
     </div>
