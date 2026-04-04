@@ -303,9 +303,21 @@ async function _loadStore() {
 
 const sKey = (id, k) => `cert_${id}_${k}`;
 
+function _archiveFile(key, oldFile) {
+  if (!oldFile || !oldFile.fileName) return;
+  const histKey = key + "_hist";
+  const hist = (_portalStore.data[histKey] || []).slice(0, 9);
+  const archived = { fileName:oldFile.fileName, fileType:oldFile.fileType, uploadedDate:oldFile.uploadedDate, blobUrl:oldFile.blobUrl, dataUrl:oldFile.dataUrl, expiry:oldFile.expiry, issued:oldFile.issued, archivedDate:new Date().toLocaleDateString("en-NZ") };
+  const newHist = [archived, ...hist];
+  _portalStore.data[histKey] = newHist;
+  fetch(PORTAL_API + "/store", { method:"POST", headers:_apiHeaders, body:JSON.stringify({ key:histKey, value:newHist }) }).catch(()=>{});
+}
+
 function saveFile(id, k, d) {
   const key = sKey(id, k);
   if (_portalReady) {
+    // Archive old file before overwriting
+    _archiveFile(key, _portalStore.files[key]);
     _portalStore.files[key] = d;
     fetch(PORTAL_API + "/upload", {
       method: "POST", headers: _apiHeaders,
@@ -313,7 +325,6 @@ function saveFile(id, k, d) {
     }).then(r => r.json()).then(result => {
       if (result.ok && result.file) {
         _portalStore.files[key] = result.file;
-        // Explicitly persist file metadata to store so other browsers see it
         fetch(PORTAL_API + "/store", {
           method: "POST", headers: _apiHeaders,
           body: JSON.stringify({ key, value: result.file, store: "files" }),
@@ -330,6 +341,12 @@ function loadFile(id, k) {
   const key = sKey(id, k);
   if (_portalReady) return _portalStore.files[key] || null;
   try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : null; } catch { return null; }
+}
+
+function loadFileHistory(id, k) {
+  const histKey = sKey(id, k) + "_hist";
+  if (_portalReady) return _portalStore.data[histKey] || [];
+  try { return JSON.parse(localStorage.getItem(histKey) || "[]"); } catch { return []; }
 }
 
 function removeFile(id, k) {
@@ -502,7 +519,7 @@ function FileRow({label,gkey,onView,accent=C.teal}){
 function CertCard({staffId,cert,role,onView}){
   const ref=useRef();const[file,setFile]=useState(()=>loadFile(staffId,cert.key));
   const canSee=!cert.ownerOnly||(role==="owner"||role===staffId);
-  const[scanning,setScanning]=useState(false);
+  const[scanning,setScanning]=useState(false);const[showHist,setShowHist]=useState(false);
   function handle(e){
     const f=e.target.files[0];if(!f)return;
     if(f.size>3*1024*1024){alert("File over 3MB.");return;}
@@ -573,7 +590,133 @@ function CertCard({staffId,cert,role,onView}){
           if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
         }} color={C.amber}>Clear expiry</BSm>}
         {file&&<BSm onClick={()=>{if(window.confirm("Remove?")){removeFile(staffId,cert.key);setFile(null);}}} color={C.red}>Remove</BSm>}
+        {file&&<BSm onClick={()=>setShowHist(h=>!h)} color={C.gray}>{showHist?"Hide history":"History"+(loadFileHistory(staffId,cert.key).length>0?` (${loadFileHistory(staffId,cert.key).length})":"")}</BSm>}
       </div>
+      {showHist&&(()=>{const hist=loadFileHistory(staffId,cert.key);return hist.length===0?<div style={{fontSize:11,color:C.hint,marginTop:6,paddingLeft:4}}>No previous uploads.</div>:<div style={{marginTop:6,borderTop:`1px solid ${C.border}`,paddingTop:6}}>
+        <div style={{fontSize:10,color:C.hint,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Previous uploads</div>
+        {hist.map((h,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:i<hist.length-1?`1px solid ${C.border}`:""}}> 
+            <div style={{flex:1}}><div style={{fontSize:11,color:C.text,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.fileName}</div><div style={{fontSize:10,color:C.muted}}>Uploaded {h.uploadedDate}{h.expiry?" · Expired "+new Date(h.expiry).toLocaleDateString("en-NZ"):""}</div></div>
+            {(h.blobUrl||h.dataUrl)&&<BSm onClick={()=>onView(h)} color={C.muted}>View</BSm>}
+          </div>
+        ))}
+      </div>;})()}
+      <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
+    </div>
+  );
+}
+
+// multi-file row — stores array of files under one key
+function MultiFileRow({label,gkey,onView,accent=C.teal}){
+  const ref=useRef();
+  const[files,setFiles]=useState(()=>{
+    const d=loadGen(gkey);
+    if(!d)return[];
+    return Array.isArray(d)?d:[d]; // migrate single → array
+  });
+  function handle(e){
+    const f=e.target.files[0];if(!f)return;
+    if(f.size>3*1024*1024){alert("File over 3MB.");return;}
+    const r=new FileReader();
+    r.onload=ev=>{
+      const d={id:Date.now(),fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+      // Upload to cloud
+      if(_portalReady){
+        fetch(PORTAL_API+"/upload",{method:"POST",headers:_apiHeaders,body:JSON.stringify({fileKey:gkey+"_"+d.id,fileName:d.fileName,fileType:d.fileType,fileData:d.dataUrl})}).then(r=>r.json()).then(result=>{
+          if(result.ok&&result.file){
+            setFiles(prev=>{const updated=prev.map(x=>x.id===d.id?{...x,...result.file}:x);saveGen(gkey,updated);return updated;});
+          }
+        }).catch(()=>{});
+      }
+      const updated=[...files,d];setFiles(updated);saveGen(gkey,updated);
+    };
+    r.readAsDataURL(f);e.target.value="";
+  }
+  function remove(id){
+    const updated=files.filter(f=>f.id!==id);
+    setFiles(updated);saveGen(gkey,updated.length?updated:null);
+  }
+  return(
+    <div style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:files.length?6:0}}>
+        <div style={{flex:1,fontSize:13,fontWeight:500}}>{label}</div>
+        <BSm onClick={()=>ref.current.click()} color={accent}>📄 {files.length?"Add another":"Upload"}</BSm>
+      </div>
+      {files.map((file,i)=>(
+        <div key={file.id||i} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 0 5px 4px",borderTop:i>0?`1px solid ${C.border}`:""}}> 
+          <div style={{flex:1}}>
+            <div style={{fontSize:12,fontWeight:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.fileName}</div>
+            <div style={{fontSize:11,color:C.muted}}>Uploaded {file.uploadedDate}</div>
+          </div>
+          <BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>
+          <BSm onClick={()=>{if(window.confirm("Remove?"))remove(file.id||i);}} color={C.red}>✕</BSm>
+        </div>
+      ))}
+      <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
+    </div>
+  );
+}
+
+// extra documents — custom-named uploads per staff member
+function ExtraDocsSection({staffId,onView}){
+  const key=`extra_${staffId}`;
+  const[docs,setDocs]=useState(()=>loadGen(key)||[]);
+  const[addingLabel,setAddingLabel]=useState(false);
+  const[newLabel,setNewLabel]=useState("");
+  const[pendingLabel,setPendingLabel]=useState(null);
+  const ref=useRef();
+  function confirmLabel(){
+    if(!newLabel.trim())return;
+    setPendingLabel(newLabel.trim());
+    setAddingLabel(false);
+    setTimeout(()=>ref.current.click(),50);
+  }
+  function handle(e){
+    const f=e.target.files[0];if(!f||!pendingLabel)return;
+    if(f.size>3*1024*1024){alert("File over 3MB.");return;}
+    const r=new FileReader();
+    r.onload=ev=>{
+      const d={id:Date.now(),label:pendingLabel,fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+      if(_portalReady){
+        fetch(PORTAL_API+"/upload",{method:"POST",headers:_apiHeaders,body:JSON.stringify({fileKey:key+"_"+d.id,fileName:d.fileName,fileType:d.fileType,fileData:d.dataUrl})}).then(r=>r.json()).then(result=>{
+          if(result.ok&&result.file){
+            setDocs(prev=>{const updated=prev.map(x=>x.id===d.id?{...x,...result.file,label:x.label}:x);saveGen(key,updated);return updated;});
+          }
+        }).catch(()=>{});
+      }
+      const updated=[...docs,d];setDocs(updated);saveGen(key,updated);
+      setPendingLabel(null);
+    };
+    r.readAsDataURL(f);e.target.value="";
+  }
+  function remove(id){const updated=docs.filter(d=>d.id!==id);setDocs(updated);saveGen(key,updated.length?updated:null);}
+  return(
+    <div style={{marginTop:"1rem"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+        <SL>Additional documents</SL>
+        {!addingLabel&&<BSm onClick={()=>{setAddingLabel(true);setNewLabel("");}} color={C.teal}>+ Add document</BSm>}
+      </div>
+      {addingLabel&&(
+        <div style={{background:C.grayXL,borderRadius:8,padding:"0.75rem",marginBottom:"0.75rem"}}>
+          <div style={{fontSize:12,color:C.muted,marginBottom:6}}>Document name (e.g. "Dry needling cert", "ACC training", "CPD record")</div>
+          <div style={{display:"flex",gap:6}}>
+            <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} onKeyDown={e=>e.key==="Enter"&&confirmLabel()} placeholder="Document name..." autoFocus style={{flex:1,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:"white"}}/>
+            <Btn onClick={confirmLabel}>Choose file →</Btn>
+            <Btn outline onClick={()=>setAddingLabel(false)}>Cancel</Btn>
+          </div>
+        </div>
+      )}
+      {docs.length===0&&!addingLabel&&<div style={{fontSize:12,color:C.hint,padding:"6px 0"}}>No additional documents. Tap "+ Add document" for anything not in the standard list above.</div>}
+      {docs.map((doc,i)=>(
+        <div key={doc.id||i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:500}}>{doc.label}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:1}}>{doc.fileName} · {doc.uploadedDate}</div>
+          </div>
+          <BSm onClick={()=>onView(doc)} color={C.teal}>👁 View</BSm>
+          <BSm onClick={()=>{if(window.confirm("Remove?"))remove(doc.id||i);}} color={C.red}>✕</BSm>
+        </div>
+      ))}
       <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
     </div>
   );
@@ -1002,6 +1145,7 @@ function ProfileModal({id,onClose,role}){
                   <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:80,height:6,background:C.grayL,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:comp.pct===100?C.teal:comp.pct>50?C.amber:C.red,width:`${comp.pct}%`,borderRadius:3}}/></div><span style={{fontSize:11,color:C.muted}}>{comp.done}/{comp.total}</span></div>
                 </div>
                 {CORE_CERTS.map(cert=><CertCard key={cert.key} staffId={id} cert={cert} role={role} onView={f=>setVf(f)}/>)}
+                <ExtraDocsSection staffId={id} onView={f=>setVf(f)}/>
                 <div style={{fontSize:11,color:C.muted,marginTop:"0.625rem",lineHeight:1.5}}>📷 Tap Upload to take a photo or pick a file. Images and PDFs display inline. Max 3MB.</div>
               </div>
             )}
@@ -1486,7 +1630,7 @@ export default function App(){
     <div><PH title="Documents" sub="Contracts, job descriptions & legislation"/>
     <TabBar items={[["contracts","Contracts"],["jd","Job descriptions"],["leg","Legislation"]]} current={docsTab} setter={setDocsTab}/>
     {docsTab==="contracts"&&<div><Alert type="blue" title="🔒 Contract privacy — P&P Section 7.2">Contracts visible to Jade (owner) and the individual staff member only. Others see a locked indicator. Two signed copies: one for employee, one in personnel file.</Alert><Card>{Object.entries(STAFF).map(([id,s])=>{const canSee=role==="owner"||role===id;return <ContractRow key={id} staffId={id} s={s} canSee={canSee} onView={f=>setDvf(f)}/>;})}</Card></div>}
-    {docsTab==="jd"&&<Card><div style={{fontSize:13,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Each staff member uploads their own signed JD. JD is attached to contract of employment and both parties sign — P&P Section 7.3.</div>{Object.entries(STAFF).map(([id,s])=><FileRow key={id} label={`${s.name} — Job Description`} gkey={`jd_${id}`} onView={f=>setDvf(f)} accent={s.color}/>)}</Card>}
+    {docsTab==="jd"&&<Card><div style={{fontSize:13,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Each staff member may have multiple JDs for different roles. Upload all signed copies — P&P Section 7.3.</div>{Object.entries(STAFF).map(([id,s])=><MultiFileRow key={id} label={`${s.name} — Job Description`} gkey={`jd_${id}`} onView={f=>setDvf(f)} accent={s.color}/>)}</Card>}
     {docsTab==="leg"&&<div><Alert type="blue" title="Key legislation — all staff read during orientation">Click any link to open the source document.</Alert>{LEGISLATION.map(leg=><Card key={leg.name} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}><div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}><div><a href={leg.url} target="_blank" rel="noreferrer" style={{fontSize:13,fontWeight:600,color:C.blue,textDecoration:"none"}}>{leg.name} ↗</a><div style={{fontSize:12,color:C.muted,marginTop:3,lineHeight:1.5}}>{leg.desc}</div></div><a href={leg.url} target="_blank" rel="noreferrer" style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:C.blueL,color:C.blue,textDecoration:"none",fontWeight:500,whiteSpace:"nowrap",flexShrink:0}}>Open ↗</a></div></Card>)}</div>}
     {dvf&&<FileViewer file={dvf} onClose={()=>setDvf(null)}/>}
     </div>
