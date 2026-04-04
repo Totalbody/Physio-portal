@@ -195,20 +195,7 @@ const STAFF = {
 };
 
 const PAST_STAFF = ["Alice","Aoife","Vishwali","Jean Hong","Alonzo","Sasha McBain","Steven Gray","(2 further records)"];
-// Returns staff data merged with any saved employee-info overrides
-// (type + clinics can change without redeploying)
-function getEffectiveStaff(id) {
-  const base = STAFF[id] || {};
-  // Try store data first, then localStorage fallback
-  const ei = (_portalReady ? _portalStore.data[`empinfo_${id}`] : null)
-    || (()=>{ try{ const d=localStorage.getItem(`empinfo_${id}`); return d?JSON.parse(d):null; } catch{ return null; } })()
-    || null;
-  if (!ei) return base;
-  const typeMap = { "Employed":"Employee", "Sub Contractor":"Contractor", "Owner":"Owner" };
-  const type = typeMap[ei.employmentType] || base.type;
-  const clinics = ei.clinics && ei.clinics.length ? ei.clinics : base.clinics;
-  return { ...base, type, clinics };
-}
+// staff effective type/clinics resolved via es() inside App — uses React state staffOverrides
 
 const CORE_CERTS = [
   {key:"apc",        label:"APC 2025/2026",                  renews:"Annual — 1 April",  required:true},
@@ -1009,7 +996,7 @@ const EI_SEED = {
   },
 };
 
-function EmployeeInfoTab({staffId,staffName,role}){
+function EmployeeInfoTab({staffId,staffName,role,onSave}){
   const eiKey=`empinfo_${staffId}`;
   const canSeePrivate=role==="owner"||role===staffId;
   const[ei,setEi]=useState(()=>loadGen(eiKey)||EI_SEED[staffId]||{});
@@ -1023,7 +1010,7 @@ function EmployeeInfoTab({staffId,staffName,role}){
     const saved={...draft,savedDate:new Date().toLocaleDateString("en-NZ"),savedBy:staffName};
     saveGen(eiKey,saved);
     setEi(saved);setEditing(false);
-    if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
+    if(onSave)onSave(staffId,saved);
   }
 
   // shorthand so call sites stay tidy
@@ -1154,9 +1141,10 @@ function EmployeeInfoTab({staffId,staffName,role}){
   );
 }
 
-function ProfileModal({id,onClose,role}){
+function ProfileModal({id,onClose,role,onStaffSave,staffOverrides}){
+  function _es(sid){const base=STAFF[sid]||{};const ei=staffOverrides?.[sid]||null;if(!ei)return base;const tm={"Employed":"Employee","Sub Contractor":"Contractor","Owner":"Owner"};return{...base,type:tm[ei.employmentType]||base.type,clinics:ei.clinics&&ei.clinics.length?ei.clinics:base.clinics};}
   const[tab,setTab]=useState("certs");const[showOri,setShowOri]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
-  if(!id)return null;const s=STAFF[id];const es=getEffectiveStaff(id);const comp=staffComp(id);
+  if(!id)return null;const s=STAFF[id];const esObj=_es(id);const comp=staffComp(id);
   return(
     <>
       <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
@@ -1191,7 +1179,7 @@ function ProfileModal({id,onClose,role}){
                 <div style={{fontSize:11,color:C.muted,marginTop:"0.625rem",lineHeight:1.5}}>📷 Tap Upload to take a photo or pick a file. Images and PDFs display inline. Max 3MB.</div>
               </div>
             )}
-            {tab==="empinfo"&&<EmployeeInfoTab staffId={id} staffName={s.name} role={role}/>}
+            {tab==="empinfo"&&<EmployeeInfoTab staffId={id} staffName={s.name} role={role} onSave={onStaffSave}/>}
             {tab==="profile"&&(
               <div>
                 <div style={{fontSize:13,color:C.muted,lineHeight:1.7,marginBottom:"1.25rem",padding:"0.75rem 1rem",background:C.grayXL,borderRadius:8}}>{s.title} · {s.type}</div>
@@ -1326,9 +1314,9 @@ export default function App(){
   const[portalConnected,setPortalConnected]=useState(false);
   const[,forceRender]=useState(0);
   const[compTab,setCompTab]=useState("overview");const[mgmtTab,setMgmtTab]=useState("audits");const[docsTab,setDocsTab]=useState("contracts");const[isrvTab,setIsrvTab]=useState("log");
-  const[meetings,setMeetings]=useState(()=>loadGen("meetings")||INIT_MEETINGS);
-  const[audits,setAudits]=useState(()=>loadGen("audits")||INIT_AUDITS);
-  const[inservices,setInservices]=useState(()=>loadGen("inservices")||[{id:1,date:"2025-08-10",clinic:"Titirangi",topic:"Shoulder rehab protocols",presenter:"Hans Vermeulen",attendees:"Hans, Alistair",notes:"Reviewed UniSportsOrtho shoulder stabilisation phases.",year:2025}]);
+  const[meetings,setMeetings]=useState([]);
+  const[audits,setAudits]=useState(INIT_AUDITS);
+  const[inservices,setInservices]=useState([{id:1,date:"2025-08-10",clinic:"Titirangi",topic:"Shoulder rehab protocols",presenter:"Hans Vermeulen",attendees:"Hans, Alistair",notes:"Reviewed UniSportsOrtho shoulder stabilisation phases.",year:2025}]);
   const[activeAudit,setActiveAudit]=useState(null);
   const[urgentOpen,setUrgentOpen]=useState(true);
   const[auditTypeFilter,setAuditTypeFilter]=useState("all");
@@ -1336,8 +1324,37 @@ export default function App(){
   const[collapsedYears,setCollapsedYears]=useState({});
   const[showAdd,setShowAdd]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
   const[nm,setNm]=useState({date:"",clinic:"All clinics",topic:"",attendees:"",notes:""});
+  const[staffOverrides,setStaffOverrides]=useState({});
   const roleNames={owner:"Jade Warren",alistair:"Alistair Burgess",hans:"Hans Vermeulen",staff:"Staff member"};
-  useEffect(()=>{_portalForceUpdate=forceRender;_loadStore().then((ok)=>{setPortalConnected(ok&&_portalReady);setPortalLoading(false);});},[]);
+  useEffect(()=>{
+    _portalForceUpdate=forceRender;
+    _loadStore().then((ok)=>{
+      setPortalConnected(ok&&_portalReady);
+      if(ok){
+        // Populate all cloud-stored state AFTER load completes
+        const d=_portalStore.data;
+        if(d["audits"]&&d["audits"].length)setAudits(d["audits"]);
+        if(d["meetings"]&&d["meetings"].length)setMeetings(d["meetings"]);else setMeetings(INIT_MEETINGS);
+        if(d["inservices"]&&d["inservices"].length)setInservices(d["inservices"]);
+        // Staff overrides
+        const overrides={};
+        Object.keys(STAFF).forEach(id=>{
+          const ei=d[`empinfo_${id}`]||null;
+          if(ei)overrides[id]=ei;
+        });
+        setStaffOverrides(overrides);
+      }
+      setPortalLoading(false);
+    });
+  },[]);
+  // Derive effective staff from React state — reactive to changes
+  function es(id){
+    const base=STAFF[id]||{};
+    const ei=staffOverrides[id]||null;
+    if(!ei)return base;
+    const typeMap={"Employed":"Employee","Sub Contractor":"Contractor","Owner":"Owner"};
+    return{...base,type:typeMap[ei.employmentType]||base.type,clinics:ei.clinics&&ei.clinics.length?ei.clinics:base.clinics};
+  }
   const reminders=getReminders();const urgentCount=reminders.filter(r=>r.status!=="ok").length;
 
   const navItems=[
@@ -1417,7 +1434,7 @@ export default function App(){
             <thead><TH headers={["Staff","Type","Clinics","APC","First Aid","Cultural","Police Vetting","Orientation","Progress"]}/></thead>
             <tbody>
               {Object.entries(STAFF).map(([id,s])=>{
-                const fs=k=>certStatus(id,k);const comp=staffComp(id);const es=getEffectiveStaff(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[es.type]||"gray";
+                const fs=k=>certStatus(id,k);const comp=staffComp(id);const esData=es(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[esData.type]||"gray";
                 return(
                   <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
                     <TD><strong>{s.name}</strong></TD><TD><Chip color={tc}>{es.type}</Chip></TD>
@@ -1484,7 +1501,7 @@ export default function App(){
       <PH title="All Staff" sub="Tap any card to view compliance, upload certs or complete orientation"/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(265px,1fr))",gap:"0.875rem"}}>
         {Object.entries(STAFF).map(([id,s])=>{
-          const comp=staffComp(id);const bc=comp.pct===100?C.teal:comp.pct>50?C.amber:C.red;const es=getEffectiveStaff(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[es.type]||"gray";
+          const comp=staffComp(id);const bc=comp.pct===100?C.teal:comp.pct>50?C.amber:C.red;const esData=es(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[esData.type]||"gray";
           return(
             <div key={id} onClick={()=>setProfile(id)} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 16px rgba(15,110,86,0.12)"} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
               <div style={{padding:"1rem 1rem 0.75rem",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${C.border}`}}>
@@ -1655,7 +1672,7 @@ export default function App(){
         <div style={{width:34,height:34,borderRadius:"50%",background:s.color+"25",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:s.color,flexShrink:0}}>{s.ini}</div>
         <div style={{flex:1}}>
           <strong style={{fontSize:13}}>{s.name}</strong>
-          <div style={{fontSize:12,color:C.muted}}>{getEffectiveStaff(staffId).type} · {getEffectiveStaff(staffId).clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</div>
+          <div style={{fontSize:12,color:C.muted}}>{es(staffId).type} · {es(staffId).clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</div>
           {file&&<div style={{fontSize:11,color:C.muted,marginTop:1}}>{file.fileName} · {file.uploadedDate}</div>}
         </div>
         {canSee
@@ -1865,7 +1882,7 @@ export default function App(){
         {page==="documents"&&<DocumentsPage/>}
         {page==="management"&&<ManagementPage/>}
       </div>
-      <ProfileModal id={profile} onClose={()=>{setProfile(null);fu(n=>n+1);}} role={role}/>
+      <ProfileModal id={profile} onClose={()=>{setProfile(null);fu(n=>n+1);}} role={role} onStaffSave={(id,saved)=>setStaffOverrides(p=>({...p,[id]:saved}))} staffOverrides={staffOverrides}/>
       {activeAudit&&<AuditModal type={activeAudit} onClose={()=>setActiveAudit(null)} onComplete={r=>{setAudits(p=>{const updated=[...p,r];saveGen("audits",updated);return updated;});setActiveAudit(null);setPage("management");setMgmtTab("audits");}}/>}
       {vf&&<FileViewer file={vf} onClose={()=>setVf(null)}/>}
     </div>
