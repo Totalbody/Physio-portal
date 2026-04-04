@@ -49,20 +49,20 @@ const PP_SECTIONS = [
   {
     id:"quality", num:"1", icon:"📊", title:"Quality & Risk Management",
     color:"#0F6E56", audience:"Management",
-    summary:"P&P manual reviewed annually by Directors. Risk management is part of the business plan. Statistics collected monthly (financial) and annually (service delivery). Clinical notes audited every 6 months per physiotherapist (5 current + 5 past records). H&S audit quarterly.",
+    summary:"P&P manual reviewed annually by Director(s) — changes presented at annual staff meeting. Covers all 6 clinic locations. Business Plan reviewed annually with quality improvement and risk management plans. Financial statistics monthly, service delivery stats annually. Clinical notes audited every 6 months per physiotherapist (5 current + 5 past). H&S audit quarterly at each site. KPI dashboard monitored weekly.",
     policies:[
-      {title:"Policies & Procedures Manual",key:"pp_manual",body:"Reviewed annually by Director(s). Changes presented at annual staff meeting. Hard copy with admin manager, digital copy on shared drive. No photocopying without Director authorisation. Confidential to current staff only."},
-      {title:"Clinical Director — Alistair Burgess",key:"clinical_director",body:"Minimum 5 years experience + postgrad cert. Responsibilities: internal audits, clinical oversight, diagnosis/causation review, ensuring staff competency. Clinical review required before 16th visit (unless specialist oversight exists) covering: mechanism of injury, diagnosis, causation, treatment plan review, recommendations. Email ACC at health.procurement@acc.co.nz if subcontracting case review."},
+      {title:"Policies & Procedures Manual",key:"pp_manual",body:"Reviewed annually by Director(s). Changes presented at annual staff meeting. Covers all clinic locations: Pakuranga, Titirangi, Flat Bush, Panmure, Howick School, Edgewater School. Hard copy with admin manager, digital copy on shared drive and Staff Compliance Portal. Confidential to current TBP staff only. No part may be copied or shared without Director authorisation."},
+      {title:"Clinical oversight (2025 update)",key:"clinical_director",body:"Note: The ACC Allied Health Services contract (November 2024) no longer requires a Clinical Director role. Clinical oversight responsibilities now rest with the supplier (Director) directly. Case reviews before the 16th visit are still best practice and should be documented in meeting notes where clinically indicated. All physiotherapists maintain their own scope of practice under their APC."},
       {title:"Business Plan",key:"biz_plan",body:"Reviewed annually by Directors. Three copies: Master (Directors + Business Advisor — includes financials, confidential), Clinic copy (shared drive, no financials). Contains Quality Improvement Plan and Risk Management Plan."},
       {title:"Statistics",key:"statistics",body:"Financial stats collected monthly. Service delivery stats collated annually before staff meeting. Reports generated via Cliniko and Google Forms. Ethnicity recorded at initial intake for service delivery assessment."},
-      {title:"Audits",key:"audits_policy",body:"Clinical notes audit: every 6 months per physio, 10 records (5 current, 5 past). H&S audit: quarterly, by physio staff checked by H&S Officer. Client satisfaction: feedback via website, forms, or verbal — all complaints follow complaints procedure."},
+      {title:"Audits",key:"audits_policy",body:"Clinical notes audit: every 6 months per physiotherapist, 10 records (5 current + 5 past). Audit form on Google Drive — completed forms emailed to Administrative Manager. H&S audit: quarterly at each clinic location, by physio staff reviewed by H&S Officer. Client satisfaction: feedback via website, satisfaction forms, or verbal — all complaints follow complaints procedure (§3.9). Audit records stored in Management section of Staff Compliance Portal."},
     ],
     links:[{label:"Run H&S audit",page:"management",tab:"audits"},{label:"Run clinical notes audit",page:"management",tab:"audits"},{label:"Staff meetings",page:"management",tab:"meetings"}]
   },
   {
     id:"professional", num:"2", icon:"⚖️", title:"Professional Standards",
     color:"#185FA5", audience:"All staff",
-    summary:"All staff must understand Privacy Act 2020 and Health Information Privacy Code 2020. Informed verbal consent is sufficient for routine treatment. Client consent required for any information disclosure. Confidentiality policy governs all communications.",
+    summary:"All staff must understand Privacy Act 2020 and Health Information Privacy Code 2020. Free online training at privacy.org.nz. Annual privacy refresher at staff meeting. Informed verbal consent is sufficient for routine treatment — must be ticked in Cliniko. Digital intake form captures consent electronically. Client consent required for any information disclosure. Telehealth consent must be documented separately.",
     policies:[
       {title:"Privacy Policy",key:"privacy",body:"Staff must understand Privacy Act 2020 and HIPC 2020 — copies in orientation folder. Annual privacy refresher at staff meeting held by Privacy Officer. Free online training at privacy.org.nz (Health 101 and Health ABC modules). Client info collected fairly, stored securely, disposed of securely. Staff may access their own personnel information."},
       {title:"Privacy Officer responsibilities",key:"privacy_officer",body:"Manage access requests and complaints. Handle breaches with Directors. Liaise with Office of Privacy Commissioner. Acknowledge complaints within 24 hours. Respond with findings within 20 days. Report serious harm breaches to Privacy Commissioner at privacy.org.nz. Hold annual privacy refresher for all staff."},
@@ -75,7 +75,7 @@ const PP_SECTIONS = [
   {
     id:"hs", num:"3", icon:"🦺", title:"Health & Safety",
     color:"#BA7517", audience:"All staff",
-    summary:"H&S plan is part of the business plan. Alistair Burgess is H&S Officer. All staff need current First Aid/CPR (every 2 years). Quarterly H&S audits. Fire extinguisher on site — staff reminded annually how to use it. Incident reports go in Cliniko and to WorkSafe if serious. Dry needling requires trained staff only, specific consent, and sharps box disposal at Chemist Warehouse.",
+    summary:"H&S plan is part of the Business Plan. H&S Officer assesses all clinic locations quarterly. All staff need current First Aid/CPR (every 2 years). Fire extinguisher at each clinic — staff reminded annually. All equipment audited annually by Administrative Manager. Digital systems: Cliniko (2FA required), PhysioNote, Submit Kit, KPI Dashboard, Staff Compliance Portal. Incident reports in Cliniko; WorkSafe if serious harm. Dry needling: trained staff only, single-use needles, sharps disposal at Chemist Warehouse.",
     policies:[
       {title:"Fire",key:"fire",body:"Centre fitted with fire extinguisher. Staff reminded annually on operation. Smoke-free area. Last physio to leave must switch off all electronic equipment. If fire: activate alarm, call 111, extinguish if safe using one extinguisher, remove people from danger, close windows/doors on exit. After event: complete incident report."},
       {title:"Clinical emergency (DRSABCD)",key:"clinical_emergency",body:"All staff must hold current First Aid + CPR (every 2 years). Call 111. DRSABCD: Danger → Response → Send for help → Airway → Breathing → CPR (30 compressions, 2 breaths; compressions only if blood/vomit) → Defibrillator. Get AED, do not stop CPR. After recovery: stable side position if no spinal injury. All emergencies documented as incident report."},
@@ -92,7 +92,7 @@ const PP_SECTIONS = [
   {
     id:"rights", num:"4", icon:"🤝", title:"Rights & Responsibilities",
     color:"#533AB7", audience:"All staff",
-    summary:"All staff must know the HDC Act 1994 and Code of Health & Disability Services Consumers' Rights. Vulnerable clients include children, older adults and people with disabilities. All staff undergo police vetting (every 3 years). Cultural competency training (eCALD + Mauriora) required. Specific Māori cultural safety procedures apply at all clinics.",
+    summary:"All staff must know the HDC Act 1994 and Code of Health & Disability Services Consumers' Rights (displayed in waiting rooms). Vulnerable clients include children, older adults and people with disabilities — Oranga Tamariki helpline 0508 463 674. All staff undergo police vetting (every 3 years). Cultural competency: eCALD + Mauriora course required annually. Specific Māori cultural safety procedures apply at all clinics including pillow handling and whānau support.",
     policies:[
       {title:"Client rights (HDC Code)",key:"client_rights",body:"Clients treated with respect and privacy — gowns/shorts provided. All clients may bring a support person. Provider preference met where practicable. Effective communication per client needs — ACC interpreters 0800 101966. Rights displayed in waiting room and in client information booklet. Code of Rights available at hdc.org.nz."},
       {title:"Vulnerable clients",key:"vulnerable",body:"Vulnerable clients: children, older adults, people with disabilities. Where abuse suspected: seek expert advice. Oranga Tamariki helpline: 0508 463 674. All staff must know Children's Act 2014. Safety checks required: identity verification, reference checks, employment checks, PBNZ registration check, interview, police vetting, risk assessment. Police vetting and risk assessment renewed every 3 years."},
@@ -105,7 +105,7 @@ const PP_SECTIONS = [
   {
     id:"client", num:"5", icon:"🧑‍⚕️", title:"Client Management",
     color:"#1D9E75", audience:"Physiotherapists",
-    summary:"Clients seen within 5 days of referral. Initial appointments minimum 45 minutes. All records in Cliniko using SOATAP format with SMART goals. Clinical Director review required before 16th visit. Discharge summary required for all ACC clients. Telehealth available but not where physical exam required — both parties must be in NZ.",
+    summary:"Clients seen within 5 working days of referral. Initial appointments minimum 45 minutes. Triage: urgent (1-2 days), semi-urgent (3-5 days), routine (next available). Multi-site scheduling — offer alternative clinic if needed. All records in Cliniko using SOATAP format with SMART goals. Outcome measures at every visit. Discharge summary required for all ACC clients. Telehealth available where physical exam not required — both parties must be in NZ. TBP does not offer pelvic health, home visits, or psychiatric care.",
     policies:[
       {title:"Initial consultation",key:"initial",body:"Clients may self-refer. Seen within 5 days of referral. Booking details: name, injury site, daytime contact number. Min 45 minutes for ACC or private. Ask re interpreter need — ACC: 0800 101966. Outside scope: refer to GP or school nurse. Must complete: full assessment, accurate diagnosis, clinical records, treatment plan with functional goals, outcome measures (numerical pain scale + patient specific functional scale), education, self-management. Document on Cliniko initial assessment template."},
       {title:"Follow-up consultations",key:"followup",body:"Per treatment plan. Document on Cliniko standard consultation template. Review goals each visit — alter plan if client needs change. Include ACC clinical evidence, outcome measures, referral details where applicable."},
@@ -119,11 +119,11 @@ const PP_SECTIONS = [
   {
     id:"information", num:"6", icon:"📁", title:"Information Management",
     color:"#D85A30", audience:"All staff",
-    summary:"All clinical records in Cliniko within 24 hours of treatment. Cliniko requires 2-factor authentication. SOATAP format with SMART goals. Outcome measures at every visit: numerical pain rating scale + patient specific functional scale. ACC claims submitted via Submit Kit. If ACC requests audit of notes: provide within 10 working days. No hard copies kept in clinic.",
+    summary:"All clinical records in Cliniko within 24 hours. 2FA required. SOATAP format, SMART goals. PhysioNote integration — physiotherapist responsible for reviewing AI-generated notes within 24 hours. Outcome measures at every visit (numerical pain scale + patient specific functional scale). Digital intake form captures registration and consent. Submit Kit for all ACC claims. ACC audit requests: provide notes within 10 working days. No hard copies in clinic. Shared drive: pakuranga@totalbodyphysio.co.nz (staff documents only — not client records or financials).",
     policies:[
       {title:"Clinical records",key:"clinical_records",body:"Completed for every visit within 24 hours. Cliniko requires 2FA. Templates: initial consultation, follow-up, discharge summary, telehealth. SOATAP format, SMART goals. Outcome measures at every visit. Each record must include: physio's Cliniko login, date, ACC45 number. ACC claims via Submit Kit. Manual forms if internet interrupted — input to Cliniko ASAP and destroy manual form. Client details required: full name, preferred name, DOB, sex, contact, address, ethnicity, occupation, emergency contact, referral source, consent. If ACC requests notes audit: provide within 10 working days."},
       {title:"Communication",key:"communication",body:"All ACC communication conducted by Clinical Director (Alistair). All client communications documented in Cliniko communications section. Open communication maintained with referring healthcare providers."},
-      {title:"Shared drive",key:"shared_drive",body:"Accessed via pakuranga@totalbodyphysio.co.nz (password protected). Contains: caseload list, orientation info, audits, shared documents. Personnel files, financial info and client records are NOT stored on shared drive."},
+      {title:"Shared drive",key:"shared_drive",body:"Accessed via pakuranga@totalbodyphysio.co.nz (password protected). Contains: caseload lists, orientation materials, audit templates, job descriptions, and general documents. Personnel files, financial info and client records are NOT stored on the shared drive. Backed up to portable hard drive stored offsite."},
       {title:"ACC reports",key:"acc_reports",body:"TBP provides information to ACC when reasonably requested — free of charge. May include: functional objectives, treatment achievements, clinical rationale, treatment plan, outcome measures, return-to-work plan, discharge summary. ACC may conduct audits — Directors and staff available for performance meetings."},
       {title:"Website & client booklet",key:"website",body:"Website totalbodyphysio.co.nz managed by admin manager. Client information booklet provided to all new clients at first visit. Physio must direct new clients to consent and outcome measures pages. Admin manager keeps booklet up to date."},
     ],
@@ -132,15 +132,15 @@ const PP_SECTIONS = [
   {
     id:"hr", num:"7", icon:"👥", title:"Human Resources",
     color:"#639922", audience:"Management",
-    summary:"All new staff complete orientation within first month. Contracts signed by end of orientation. Annual performance reviews in April/May. CPD: 100 hours every 3 years (rolling average) per PBNZ. Peer review at least annually. Staff meetings quarterly. 3 reflective statements required annually (one specific to Māori culture).",
+    summary:"All new staff complete orientation within first month (at least 2–3 hours on day one). Employment agreements and job descriptions signed by end of orientation. Annual performance reviews in April/May. CPD: 100 hours every 3 years per PBNZ 2024 Practice Thresholds. PNZ membership is encouraged but is not a contractual ACC requirement (November 2024 contract update). Peer review at least annually. Staff meetings quarterly — attendance compulsory. Three reflective statements required annually (one specific to Māori culture). Owner/Director does not require a contract of employment. Clinical Director role is no longer required by ACC (November 2024).",
     policies:[
       {title:"Orientation",key:"orientation",body:"Completed within one month of start date. At least 2–3 hours on first day. Director or delegate covers treatment policies; clerical staff cover facility/admin orientation. Orientation checklist signed and filed in personnel file. ACC-specific induction required before independent practice."},
       {title:"Contracts of employment",key:"contracts",body:"Current contract for all staff. Negotiated at commencement. Job description attached and signed. Two copies signed — one to employee, one in personnel file. Reviewed annually at performance review. Contractor agreement between Hakinakina Hauora and TBP for contracted staff. Contractors provide own stock/materials."},
       {title:"Codes of conduct",key:"codes",body:"All physiotherapists bound by Aotearoa NZ Physiotherapy Code of Ethics and Professional Conduct (Physiotherapy Board NZ). Copy stored on shared drive."},
       {title:"Personnel files",key:"personnel_files",body:"Stored securely by admin manager. Staff entitled to view on request. Contains: employee details + emergency contact, ACC partnership agreement, contract + JD, APC, PNZ membership, First Aid cert, cultural competency CPD certs, signed orientation checklist, annual reviews, peer reviews, clinical notes audits."},
       {title:"Staff meetings",key:"staff_meetings",body:"Quarterly. Annual meeting covers P&P updates, business plan changes, H&S and privacy updates. Attendance compulsory for all staff. Minutes taken by admin manager, stored on shared drive."},
-      {title:"CPD requirements",key:"cpd",body:"100 hours CPD every 3 years (rolling average) per PBNZ. Annual Professional Development Plan per PBNZ template — reviewed at performance review. Minimum 3 reflective statements annually: one on Māori culture and practice, two on culture/ethics/professionalism. Participate in in-services, peer reviews. ACC training as required."},
-      {title:"Peer review",key:"peer_review",body:"At least annually. May be internal (TBP staff) or external (associate clinics: Hakinakina Hauora, TBP Flat Bush, TBP Titirangi). Includes: pre-treatment discussion, clinical notes review, observation of assessment/treatment. Client consent obtained away from observer. PBNZ peer review template stored on shared drive."},
+      {title:"CPD requirements",key:"cpd",body:"100 hours CPD every 3 years (rolling average) per PBNZ 2024 Practice Thresholds. Annual Professional Development Plan reviewed at performance review. Minimum 3 reflective statements annually: one on Māori culture and practice, two on culture/ethics/professionalism. PNZ membership is encouraged but is not a contractual requirement under the November 2024 ACC Allied Health Services contract. All physiotherapists must hold a current APC — expiry is tracked in the Staff Compliance Portal. In-service training and peer review contribute to CPD hours. ACC-specific training completed as required by ACC."},
+      {title:"Peer review",key:"peer_review",body:"At least annually. May be internal (within TBP) or external (Hakinakina Hauora, TBP Flat Bush, TBP Titirangi). At least one current client chosen per therapist. Client consent sought privately and documented in Cliniko. Includes: pre-session discussion (learning outcomes, feedback sought), clinical notes review, observation of assessment/treatment. Feedback given within 7 days. PBNZ peer review template on shared drive."},
       {title:"Annual performance review",key:"appraisal",body:"All staff including Directors — April/May. Minimum 1 hour meeting. Director completes appraisal form before meeting. Contract and JD also reviewed at this time. Both parties sign. CPD hours checked. Plan discussed for coming year. All appraisals filed in personnel files."},
     ],
     links:[{label:"PBNZ Code of Ethics",url:"https://physiotherapy.org.nz/professional-standards/code-of-ethics"},{label:"Staff compliance",page:"compliance"}]
@@ -148,7 +148,7 @@ const PP_SECTIONS = [
   {
     id:"accounts", num:"8", icon:"💰", title:"Accounts",
     color:"#9C27B0", audience:"Management",
-    summary:"Wages paid fortnightly by automatic payment. ACC invoiced per service schedule. Accounts software: Xero. Client invoices sent at end of each month for outstanding accounts. 30/60/90 day reminder sequence. Preferred suppliers list on Google Drive.",
+    summary:"Wages paid fortnightly by automatic payment. ACC invoiced per Allied Health Services Schedule (updated November 2025) via Submit Kit. Accounts software: Xero. Automated invoicing sends daily reminders. Manual follow-up: 30 days (friendly reminder), 60 days (overdue + phone call), 90 days (final notice). Unpaid accounts referred to Director. Preferred suppliers list on shared drive.",
     policies:[
       {title:"Staff wages",key:"wages",body:"Paid fortnightly by automatic payment. Director processes wages and maintains full record including PAYE/WT calculations. Tax tables at ird.govt.nz. TBP prepares invoices for contracted staff, cross-checked against statistics."},
       {title:"Client invoicing",key:"invoicing",body:"Accounts paid at end of each treatment where possible. Monthly report of outstanding accounts — invoiced by email. Schedule: initial invoice (payment ASAP) → 30 days ('A Friendly Reminder') → 60 days ('Reminder, Payment Overdue' — phone call) → 90 days ('Final Notice, within 7 days'). Unpaid accounts referred to Director to pursue or write off."},
@@ -184,7 +184,7 @@ const CLINICS = [
 
 const STAFF = {
   jade:     {name:"Jade Warren",        ini:"JW",color:"#0a3d2e",title:"Owner / Director · Physiotherapist",             clinics:["pakuranga","flatbush","titirangi","panmure"],type:"Owner"},
-  alistair: {name:"Alistair Burgess",   ini:"AB",color:"#0F6E56",title:"Senior Physio · Clinical Director · H&S Officer", clinics:["pakuranga","schools"],                       type:"Employee",info:[["Role","Senior Physiotherapist"],["Additional","Clinical Director · H&S Officer"],["Qualification","M.Phty, B.App.Sc, NZRP"],["Registration","70-14433 / HPI: 29CMBK"],["Started","24 October 2023"]]},
+  alistair: {name:"Alistair Burgess",   ini:"AB",color:"#0F6E56",title:"Senior Physiotherapist · H&S Officer", clinics:["pakuranga","schools"],                       type:"Employee",info:[["Role","Senior Physiotherapist"],["Additional","H&S Officer"],["Qualification","M.Phty, B.App.Sc, NZRP"],["Registration","70-14433 / HPI: 29CMBK"],["Started","24 October 2023"]]},
   timothy:  {name:"Timothy Keung",      ini:"TK",color:"#185FA5",title:"Physiotherapist",                                clinics:["pakuranga","titirangi","panmure"],             type:"Contractor",info:[["Role","Physiotherapist"],["Type","Contractor"],["Languages","Mandarin, Cantonese, English"]]},
   hans:     {name:"Hans Vermeulen",     ini:"HV",color:"#533AB7",title:"Physiotherapist · Clinic Lead",                  clinics:["titirangi"],                                  type:"Contractor",info:[["Role","Physiotherapist · Clinic Lead"],["Type","Contractor"],["Tenure","~20 years"]]},
   dylan:    {name:"Dylan Connolly",     ini:"DC",color:"#D85A30",title:"Physiotherapist",                                clinics:["pakuranga"],                                  type:"Employee",  info:[["Role","Physiotherapist"],["Started","December 2025"]]},
@@ -198,16 +198,16 @@ const PAST_STAFF = ["Alice","Aoife","Vishwali","Jean Hong","Alonzo","Sasha McBai
 // staff effective type/clinics resolved via es() inside App — uses React state staffOverrides
 
 const CORE_CERTS = [
-  {key:"apc",        label:"APC 2025/2026",                  renews:"Annual — 1 April",  required:true},
-  {key:"firstaid",   label:"First Aid / CPR",                 renews:"Every 2 years",     required:true},
-  {key:"cultural",   label:"Cultural Competency (Māori)",     renews:"Annual",            required:true},
-  {key:"contract",   label:"Employment Agreement / Contract", renews:"One-off",           required:true,ownerOnly:true},
-  {key:"jd",         label:"Job Description",                 renews:"One-off",           required:true},
-  {key:"orientation",label:"Orientation checklist",           renews:"One-off",           required:true},
-  {key:"peerreview", label:"Peer Review",                     renews:"Annual",            required:false},
-  {key:"appraisal",  label:"Performance Appraisal",           renews:"Annual",            required:false},
-  {key:"pnz",        label:"PNZ Membership",                  renews:"Annual",            required:false},
-  {key:"policevetting", label:"Police Vetting",               renews:"Every 3 years",     required:true},
+  {key:"apc",           label:"APC 2025/2026",                  renews:"Annual — 1 April",  required:true},
+  {key:"firstaid",      label:"First Aid / CPR",                 renews:"Every 2 years",     required:true},
+  {key:"cultural",      label:"Cultural Competency (Māori)",     renews:"Annual",            required:true},
+  {key:"contract",      label:"Employment Agreement / Contract", renews:"One-off",           required:true,ownerOnly:true,notForOwner:true},
+  {key:"jd",            label:"Job Description",                 renews:"One-off",           required:true},
+  {key:"orientation",   label:"Orientation checklist",           renews:"One-off",           required:true},
+  {key:"policevetting", label:"Police Vetting",                  renews:"Every 3 years",     required:true},
+  {key:"peerreview",    label:"Peer Review",                     renews:"Annual",            required:false},
+  {key:"appraisal",     label:"Performance Appraisal",           renews:"Annual",            required:false},
+  {key:"clinicalnotes", label:"Clinical Notes Audit",              renews:"Every 6 months",    required:true, auditBased:true},
 ];
 
 const REMINDER_SCHEDULE = [
@@ -249,7 +249,7 @@ const AUDIT_FORMS = {
     {title:"Consent & patient information",items:["Informed verbal consent documented at first visit","'Informed Verbal Consent Obtained' ticked on initial assessment","Patient details accurate and up to date","Privacy statement signed","ACC claim details correct","If PhysioNote AI used in session — client consent documented in notes"]},
     {title:"Treatment planning",items:["Initial assessment findings fully documented","Clinical diagnosis recorded","Treatment plan with functional goals documented","SMART goals set with patient","Baseline outcome measures recorded"]},
     {title:"Progress & outcomes",items:["Progress notes reflect treatment plan","Numerical pain rating scale recorded every visit","Patient Specific Functional Scale recorded","Any change in condition noted and plan updated","Referrals documented where made"]},
-    {title:"ACC compliance",items:["Clinical Director 16th-visit review completed where required","Discharge summary completed per ACC guidelines","Discharge letter sent to GP where referred","ACC forms completed accurately","Treatment codes correct","Submit Kit used for claims"]},
+    {title:"ACC compliance",items:["Discharge summary completed per ACC guidelines","Discharge letter sent to GP where referred","ACC forms completed accurately — correct read codes and injury details","Treatment codes correct per ACC Allied Health schedule","Submit Kit used for all claims","Prior approval obtained where required (vocational, pain specialist, social rehab)"]},
   ]},
   hs_audit:{title:"H&S Workplace Audit",icon:"⚠️",freq:"Quarterly",sections:[
     {title:"Fire safety",items:["Fire exits clear and unobstructed","Fire exit signage visible and in good condition","Fire extinguisher present, tagged and in date","Evacuation plan posted in visible location","All staff aware of evacuation procedure and meeting point","Date of last fire drill recorded — within 12 months"]},
@@ -402,8 +402,15 @@ function removeGen(k) {
 }
 
 function staffComp(id) {
-  const req = CORE_CERTS.filter(c => c.required);
+  const isOwner = STAFF[id]?.type === "Owner";
+  const req = CORE_CERTS.filter(c => c.required && !(c.notForOwner && isOwner));
   const done = req.filter(c => {
+    if(c.auditBased){
+      // Clinical notes audit — check audits store key (audits array)
+      const name=STAFF[id]?.name||"";
+      const auditList=_portalStore.data["audits"]||[];
+      return auditList.some(a=>a.type==="clinical_notes"&&a.physioAudited===name);
+    }
     const f = loadFile(id, c.key);
     if (!f) return false;
     if (f.expiry) return getExpiryStatus(f.expiry).status !== "expired";
@@ -413,9 +420,15 @@ function staffComp(id) {
 }
 
 function certStatus(id, key) {
+  const cert = CORE_CERTS.find(c => c.key === key);
+  if (cert?.notForOwner && STAFF[id]?.type === "Owner") return "na";
+  if (cert?.auditBased) {
+    const name=STAFF[id]?.name||"";
+    const auditList=_portalStore.data["audits"]||[];const found=auditList.some(a=>a.type==="clinical_notes"&&a.physioAudited===name);
+    return found?"ok":"pending";
+  }
   const f = loadFile(id, key);
   if (!f) return "pending";
-  // Check both sources — same logic as CertCard display
   const expiryData = _portalReady ? (_portalStore.data["expiry_"+sKey(id,key)] || null) : null;
   const expiry = f.expiry || expiryData?.expiry || null;
   if (expiry && getExpiryStatus(expiry).status === "expired") return "expired";
@@ -1462,7 +1475,7 @@ function PPPage({setPage,setActiveAudit,ppDocs,setPpDocs,ppReviews,setPpReviews}
       <Divider/>
       <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Quick reference — key contacts & actions</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:"0.625rem"}}>
-        {[["🚨 Emergency","Call 111",null,"#E24B4A"],["💼 ACC","claims@acc.co.nz",null,C.blue],["🏥 Incident","WorkSafe + ACC — see H&S","https://worksafe.govt.nz",C.amber],["👶 Child concern","Oranga Tamariki: 0508 326 459",null,"#533AB7"],["🔒 Privacy breach","privacy.org.nz notification tool","https://privacy.org.nz",C.teal],["📋 Clinical Director","Alistair — ACC reviews & oversight",null,C.green],["🌿 Cultural","Mauriora course renewal","https://mauriora.co.nz","#639922"],["📞 Interpreter","ACC: 0800 101 966",null,C.blue]].map(([title,desc,url,col])=>(
+        {[["🚨 Emergency","Call 111",null,"#E24B4A"],["💼 ACC","claims@acc.co.nz",null,C.blue],["🏥 Incident","WorkSafe + ACC — see H&S","https://worksafe.govt.nz",C.amber],["👶 Child concern","Oranga Tamariki: 0508 326 459",null,"#533AB7"],["🔒 Privacy breach","privacy.org.nz notification tool","https://privacy.org.nz",C.teal],["📋 Alistair — H&S","H&S Officer · Senior Physio",null,C.green],["🌿 Cultural","Mauriora course renewal","https://mauriora.co.nz","#639922"],["📞 Interpreter","ACC: 0800 101 966",null,C.blue]].map(([title,desc,url,col])=>(
           <div key={title} style={{background:col+"10",border:`1px solid ${col}25`,borderRadius:8,padding:"0.75rem"}}>
             <div style={{fontSize:12,fontWeight:600,color:col,marginBottom:3}}>{title}</div>
             {url?<a href={url} target="_blank" rel="noreferrer" style={{fontSize:12,color:C.muted,textDecoration:"none"}}>{desc} ↗</a>:<div style={{fontSize:12,color:C.muted}}>{desc}</div>}
@@ -1557,12 +1570,12 @@ export default function App(){
   function TabBar({items,current,setter}){return <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,marginBottom:"1rem",overflowX:"auto"}}>{items.map(([id,label])=><div key={id} onClick={()=>setter(id)} style={{padding:"7px 14px",fontSize:13,color:current===id?C.teal:C.muted,cursor:"pointer",borderBottom:current===id?`2px solid ${C.teal}`:"2px solid transparent",fontWeight:current===id?500:400,whiteSpace:"nowrap"}}>{label}</div>)}</div>;}
 
   const Dashboard=()=>{
-    const sa=Object.entries(STAFF);const tr=sa.length*CORE_CERTS.filter(c=>c.required).length;const td=sa.reduce((a,[id])=>a+staffComp(id).done,0);const pct=Math.round((td/tr)*100);
+    const sa=Object.entries(STAFF);const tr=sa.reduce((acc,[id])=>acc+staffComp(id).total,0);const td=sa.reduce((a,[id])=>a+staffComp(id).done,0);const pct=tr>0?Math.round((td/tr)*100):0;
     return(
       <div>
         <PH title="Good morning, Jade 👋" sub={"Total Body Physio — Compliance & HR Portal · April 2026" + (portalConnected ? " · ☁️ Cloud connected" : " · ⚠️ Local storage only")}/>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.75rem",marginBottom:"1rem"}}>
-          {[["9","Staff",C.teal],[`${pct}%`,"Compliance",pct>=80?C.teal:pct>50?C.amber:C.red],[String(urgentCount),"Due/overdue",urgentCount>0?C.red:C.teal],[String(audits.length),"Audit records",C.blue]].map(([n,l,c])=>(
+          {[[String(Object.keys(STAFF).length),"Staff",C.teal],[`${pct}%`,"Compliance",pct>=80?C.teal:pct>50?C.amber:C.red],[String(urgentCount),"Due/overdue",urgentCount>0?C.red:C.teal],[String(audits.length),"Audit records",C.blue]].map(([n,l,c])=>(
             <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",textAlign:"center"}}>
               <div style={{fontSize:26,fontWeight:700,color:c}}>{n}</div><div style={{fontSize:11,color:C.muted,marginTop:3}}>{l}</div>
             </div>
@@ -1571,7 +1584,8 @@ export default function App(){
         {(()=>{
           const issues=Object.entries(STAFF).flatMap(([id,s])=>{
             const found=[];
-            CORE_CERTS.filter(c=>c.required).forEach(cert=>{
+            const isOwner=STAFF[id]?.type==="Owner";
+            CORE_CERTS.filter(c=>c.required&&!(c.notForOwner&&isOwner)).forEach(cert=>{
               const f=loadFile(id,cert.key);
               if(!f){found.push({name:s.name,id,issue:cert.label+" — missing",level:"missing"});}
               else if(f.expiry&&getExpiryStatus(f.expiry).status==="expired"){found.push({name:s.name,id,issue:cert.label+" — expired "+new Date(f.expiry).toLocaleDateString("en-NZ"),level:"expired"});}
@@ -1615,7 +1629,7 @@ export default function App(){
         </div>
         <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-            <thead><TH headers={["Staff","Type","Clinics","APC","First Aid","Cultural","Police Vetting","Orientation","Progress"]}/></thead>
+            <thead><TH headers={["Staff","Type","Clinics","APC","First Aid","Cultural","Contract","JD","Vetting","Orientation","Notes Audit","Progress"]}/></thead>
             <tbody>
               {Object.entries(STAFF).map(([id,s])=>{
                 const fs=k=>certStatus(id,k);const comp=staffComp(id);const esData=es(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[esData.type]||"gray";
@@ -1623,7 +1637,7 @@ export default function App(){
                   <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
                     <TD><strong>{s.name}</strong></TD><TD><Chip color={tc}>{esData.type}</Chip></TD>
                     <TD style={{fontSize:11,color:C.muted}}>{esData.clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</TD>
-                    <TD><Pill s={fs("apc")}/></TD><TD><Pill s={fs("firstaid")}/></TD><TD><Pill s={fs("cultural")}/></TD><TD><Pill s={fs("policevetting")}/></TD><TD><Pill s={fs("orientation")}/></TD>
+                    <TD><Pill s={fs("apc")}/></TD><TD><Pill s={fs("firstaid")}/></TD><TD><Pill s={fs("cultural")}/></TD><TD>{CORE_CERTS.find(c=>c.key==="contract")?.notForOwner&&esData.type==="Owner"?<span style={{fontSize:11,color:C.hint}}>N/A</span>:<Pill s={fs("contract")}/>}</TD><TD><Pill s={fs("jd")}/></TD><TD><Pill s={fs("policevetting")}/></TD><TD><Pill s={fs("orientation")}/></TD><TD><Pill s={(()=>{const a=[...(_portalStore.data["audits"]||[])].filter(x=>x.type==="clinical_notes"&&x.physioAudited===s.name);return a.length>0?"ok":"pending";})()}/></TD>
                     <TD><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:52,height:5,background:C.grayL,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:comp.pct===100?C.teal:comp.pct>50?C.amber:C.red,width:`${comp.pct}%`}}/></div><span style={{fontSize:11,color:C.muted}}>{comp.done}/{comp.total}</span></div></TD>
                   </tr>
                 );
@@ -1710,7 +1724,7 @@ export default function App(){
       <Alert type="blue" title="📌 Universal requirements — everyone">APC · First Aid / CPR · Cultural Competency · Contract · Job Description · Orientation. Peer review & appraisal for staff 12+ months.</Alert>
       <TabBar items={[["overview","Overview"],["apc","APC"],["firstaid","First Aid"],["cultural","Cultural"],["vetting","🚔 Police Vetting"],["reviews","Reviews & Audits"],["clinicaudit","Clinic Audits"]]} current={compTab} setter={setCompTab}/>
       {compTab==="vetting"&&<><Alert type="blue" title="Police Vetting — §4.2 P&P Manual">Required for all staff working with vulnerable clients (children, older adults, people with disabilities). Renewed every 3 years. Evidence is the email from NZ Police showing a clear result. Upload the email or PDF confirmation to each staff member's profile.</Alert><Tbl headers={["Staff","Vetting on file","File","Notes"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"policevetting");const note={gwenne:"Vetting completed — clear ✓",ibrahim:"Vetting completed — clear ✓"}[id]||"Upload email confirmation";return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={f?"ok":"pending"} label={f?`Uploaded ${f.uploadedDate}`:"Not uploaded"}/></TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD><TD style={{fontSize:11,color:C.muted}}>{note}</TD></tr>;})}</Tbl><div style={{fontSize:12,color:C.muted,marginTop:"0.75rem",lineHeight:1.6,padding:"0.75rem 1rem",background:C.grayXL,borderRadius:8}}>📌 Per §4.2 P&P Manual: police vetting and risk assessment must be completed every 3 years. The NZ Police vetting email or PDF showing "no information to release" is sufficient evidence. Tap any staff member to upload their certificate.</div></>}
-      {compTab==="overview"&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><TH headers={["Staff","APC","First Aid","Cultural","Contract","JD","Orientation","Peer Review","Appraisal"]}/></thead><tbody>{Object.entries(STAFF).map(([id,s])=><tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD>{CORE_CERTS.map(c=><TD key={c.key}>{c.ownerOnly&&role!=="owner"&&role!==id?<span style={{fontSize:11,color:C.hint}}>🔒</span>:<Pill s={certStatus(id,c.key)}/>}</TD>)}</tr>)}</tbody></table></div>}
+      {compTab==="overview"&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><TH headers={["Staff","APC","First Aid","Cultural","Contract","JD","Orientation","Police Vetting","Peer Review","Appraisal","Notes Audit"]}/></thead><tbody>{Object.entries(STAFF).map(([id,s])=><tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD>{CORE_CERTS.map(c=><TD key={c.key}>{c.ownerOnly&&role!=="owner"&&role!==id?<span style={{fontSize:11,color:C.hint}}>🔒</span>:<Pill s={certStatus(id,c.key)}/>}</TD>)}</tr>)}</tbody></table></div>}
       {compTab==="apc"&&<><Alert type="amber" title="Annual Practising Certificate">Issued by PBNZ. Renews 1 April. Must be sighted and copy on file for all staff.</Alert><Tbl headers={["Staff","Status","Expiry","File"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"apc");const st=certStatus(id,"apc");const exp=f?.expiry?getExpiryStatus(f.expiry):null;return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={st} label={st==="expired"?"Expired ⚠":st==="ok"?`On file ✓`:"Not uploaded"}/></TD><TD style={{fontSize:12,color:exp?exp.color:C.hint}}>{exp?exp.label:"—"}</TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD></tr>;})}</Tbl></>}
       {compTab==="firstaid"&&<><Alert type="amber" title="First Aid / CPR — all staff required">Valid 2 years. Renewed every 2 years. All staff must hold current cert.</Alert><Tbl headers={["Staff","Status","Expiry","File"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"firstaid");const st=certStatus(id,"firstaid");const exp=f?.expiry?getExpiryStatus(f.expiry):null;return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={st} label={st==="expired"?"Expired ⚠":st==="ok"?"On file ✓":"Not uploaded"}/></TD><TD style={{fontSize:12,color:exp?exp.color:C.hint}}>{exp?exp.label:"—"}</TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD></tr>;})}</Tbl></>}
       {compTab==="cultural"&&<><Alert type="amber" title="Cultural Competency (Māori) — all staff required">Annual renewal required. Complete Mauriora course at <a href="https://mauriora.co.nz" target="_blank" rel="noreferrer" style={{color:C.blue}}>mauriora.co.nz</a>. Upload certificate to each staff profile.</Alert><Tbl headers={["Staff","Status","Expiry","File"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"cultural");const st=certStatus(id,"cultural");const exp=f?.expiry?getExpiryStatus(f.expiry):null;return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={st} label={st==="expired"?"Expired ⚠":st==="ok"?"On file ✓":"Not uploaded"}/></TD><TD style={{fontSize:12,color:exp?exp.color:C.hint}}>{exp?exp.label:"—"}</TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD></tr>;})}</Tbl></>}
@@ -2158,7 +2172,7 @@ export default function App(){
     })()}
         {mgmtTab==="accreditation"&&<div>
       <Alert type="green" title="DAA Group — ACC Allied Health Standards">All sections of this portal support your DAA audit readiness. P&P manual underpins all requirements below.</Alert>
-      {[["Staff credentials — APC, First Aid, Cultural",Object.entries(STAFF).every(([id])=>["apc","firstaid","cultural"].every(k=>loadFile(id,k)))?"ok":"pending","All staff hold current APC, First Aid and Cultural Competency — P&P §7"],["Police vetting — all staff",Object.entries(STAFF).every(([id])=>loadFile(id,"policevetting"))?"ok":"pending","Every 3 years — NZ Police email confirmation — P&P §4.2"],["Clinical Director oversight (Alistair)","ok","ACC confirmed Nov 2023 — clinical reviews before 16th visit — P&P §1.2"],["16th-visit case reviews","pending","Document in meeting notes — P&P §1.2"],["Orientation — all staff","pending","Complete digital checklist for each staff member — P&P §7.1"],["P&P annual review","pending","Due April — P&P §1.1"],["In-service training","pending","At least one per clinic per year — P&P §7.7.3"],["H&S audits — quarterly","ok","Records in audit history — P&P §1.5.2"],["Fire drills — annual","pending","Run from Clinics page — P&P §3.1.2"],["Staff meetings — quarterly","ok","Minutes logged above — P&P §7.6"],["Equipment servicing — annual","ok","Records above — P&P §3.1.15"],["Clinical notes audit — 6-monthly","pending","10 records per physio (5 current + 5 past) — P&P §1.5.1"],["Client satisfaction survey","pending","Via website or forms — P&P §1.5.3"]].map(([t,s,d])=>(
+      {[["Staff credentials — APC, First Aid, Cultural",Object.entries(STAFF).every(([id])=>["apc","firstaid","cultural"].every(k=>loadFile(id,k)))?"ok":"pending","All staff hold current APC, First Aid and Cultural Competency — P&P §7"],["Police vetting — all staff",Object.entries(STAFF).every(([id])=>loadFile(id,"policevetting"))?"ok":"pending","Every 3 years — NZ Police email confirmation — P&P §4.2"],["16th-visit clinical reviews","pending","Document case reviews in meeting notes — P&P §1.2"],["Orientation — all staff","pending","Complete digital checklist for each staff member — P&P §7.1"],["P&P annual review","pending","Due April — P&P §1.1"],["In-service training","pending","At least one per clinic per year — P&P §7.7.3"],["H&S audits — quarterly","ok","Records in audit history — P&P §1.5.2"],["Fire drills — annual","pending","Run from Clinics page — P&P §3.1.2"],["Staff meetings — quarterly","ok","Minutes logged above — P&P §7.6"],["Equipment servicing — annual","ok","Records above — P&P §3.1.15"],["Clinical notes audit — 6-monthly","pending","10 records per physio (5 current + 5 past) — P&P §1.5.1"],["Client satisfaction survey","pending","Via website or forms — P&P §1.5.3"]].map(([t,s,d])=>(
         <Card key={t} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
             <div><div style={{fontSize:13,fontWeight:600}}>{t}</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>{d}</div></div>
