@@ -466,45 +466,74 @@ function Tbl({headers,children}){return <div style={{background:C.card,border:`1
 function PH({title,sub}){return <><div style={{fontSize:20,fontWeight:600,marginBottom:3}}>{title}</div><div style={{fontSize:13,color:C.muted,marginBottom:"1.25rem"}}>{sub}</div></>;}
 function TabBar({items,current,setter}){return <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,marginBottom:"1rem",overflowX:"auto"}}>{items.map(([id,label])=><div key={id} onClick={()=>setter(id)} style={{padding:"7px 14px",fontSize:13,color:current===id?C.teal:C.muted,cursor:"pointer",borderBottom:current===id?`2px solid ${C.teal}`:"2px solid transparent",fontWeight:current===id?500:400,whiteSpace:"nowrap"}}>{label}</div>)}</div>;}
 
+
+// Upload a file to Vercel Blob and return the file record with blobUrl
+async function _uploadToBlob(fileKey, fileName, fileType, dataUrl) {
+  try {
+    const resp = await fetch(PORTAL_API + "/upload", {
+      method: "POST", headers: _apiHeaders,
+      body: JSON.stringify({ fileKey, fileName, fileType, fileData: dataUrl }),
+    });
+    const result = await resp.json();
+    if (result.ok && result.file) return result.file;
+  } catch(e) { console.error("[Blob upload]", e.message); }
+  return null;
+}
+
 // file viewer
 function FileViewer({file,onClose}){
   if(!file)return null;
   const isImg=file.fileType?.startsWith("image/");const isPdf=file.fileType==="application/pdf";
   const url=file.blobUrl||file.dataUrl;
   const[pdfLoading,setPdfLoading]=useState(true);const[pdfError,setPdfError]=useState(false);
+  // Google Docs viewer for cloud files — renders all pages
   const gdocsUrl=file.blobUrl?"https://docs.google.com/gview?embedded=true&url="+encodeURIComponent(file.blobUrl):null;
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:12,overflow:"hidden",maxWidth:800,width:"100%",maxHeight:"92vh",display:"flex",flexDirection:"column"}}>
-        <div style={{background:C.teal,padding:"1rem 1.25rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <div style={{color:"white",fontWeight:600,fontSize:14}}>{file.fileName}</div>
-          <div style={{display:"flex",gap:10,alignItems:"center"}}>
-            <span style={{color:"rgba(255,255,255,0.7)",fontSize:11}}>Uploaded {file.uploadedDate}</span>
-            {url&&<a href={url} target="_blank" rel="noreferrer" style={{color:"white",fontSize:11,padding:"3px 10px",background:"rgba(255,255,255,0.2)",borderRadius:20,textDecoration:"none"}}>↗ Open</a>}
-            {url&&<a href={url} download={file.fileName} style={{color:"white",fontSize:11,padding:"3px 10px",background:"rgba(255,255,255,0.2)",borderRadius:20,textDecoration:"none"}}>⬇ Download</a>}
-            <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:15}}>✕</button>
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:600,display:"flex",flexDirection:"column"}}>
+      <div style={{background:C.teal,padding:"0.875rem 1.25rem",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <div style={{color:"white",fontWeight:600,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:12}}>{file.fileName}</div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+          {url&&<a href={url} target="_blank" rel="noreferrer" style={{color:"white",fontSize:12,padding:"4px 12px",background:"rgba(255,255,255,0.25)",borderRadius:20,textDecoration:"none",fontWeight:500}}>↗ Open full document</a>}
+          {url&&<a href={url} download={file.fileName} style={{color:"white",fontSize:12,padding:"4px 12px",background:"rgba(255,255,255,0.2)",borderRadius:20,textDecoration:"none"}}>⬇ Download</a>}
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:17,flexShrink:0}}>✕</button>
+        </div>
+      </div>
+      {isPdf&&<div style={{background:C.amberL,borderTop:`1px solid ${C.amber}`,padding:"6px 1.25rem",fontSize:12,color:C.amber,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+        <span>📄 Multi-page PDF</span>
+        <span style={{color:C.muted}}>·</span>
+        <span>Scroll down to see all pages in preview below, or tap</span>
+        <a href={url} target="_blank" rel="noreferrer" style={{color:C.blue,fontWeight:600,textDecoration:"none"}}>↗ Open full document</a>
+        <span>for the best viewing experience</span>
+      </div>}
+      <div onClick={e=>e.stopPropagation()} style={{flex:1,overflow:"auto",display:"flex",alignItems:"stretch",justifyContent:"stretch",background:"#1a1a1a",position:"relative"}}>
+        {isImg&&<img src={url} alt={file.fileName} style={{maxWidth:"100%",maxHeight:"100%",margin:"auto",objectFit:"contain",display:"block"}}/>}
+        {isPdf&&!pdfError&&gdocsUrl&&(
+          <>
+            {pdfLoading&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#1a1a1a"}}><div style={{textAlign:"center",color:"white"}}><div style={{fontSize:40,marginBottom:8}}>📄</div><div style={{fontSize:14}}>Loading all pages…</div><div style={{fontSize:11,color:"#aaa",marginTop:4}}>May take a moment for large documents</div></div></div>}
+            <iframe
+              src={gdocsUrl}
+              style={{width:"100%",height:"100%",border:"none",opacity:pdfLoading?0:1,transition:"opacity 0.4s",display:"block"}}
+              title={file.fileName}
+              onLoad={()=>setPdfLoading(false)}
+              onError={()=>{setPdfLoading(false);setPdfError(true);}}
+            />
+          </>
+        )}
+        {isPdf&&!gdocsUrl&&url&&(
+          // dataUrl fallback — object tag works better than iframe for multi-page in most browsers
+          <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",padding:"1rem",boxSizing:"border-box"}}>
+            <object data={url} type="application/pdf" style={{width:"100%",flex:1,minHeight:"70vh",borderRadius:6}}>
+              <div style={{textAlign:"center",padding:"2rem",color:"white"}}>
+                <div style={{fontSize:40,marginBottom:"0.75rem"}}>📄</div>
+                <div style={{fontSize:14,marginBottom:"0.5rem"}}>{file.fileName}</div>
+                <div style={{fontSize:12,color:"#aaa",marginBottom:"1.25rem"}}>PDF preview not available in this browser</div>
+                {url&&<a href={url} target="_blank" rel="noreferrer" style={{color:C.tealL,fontSize:13,fontWeight:600}}>↗ Open PDF in new tab to view all pages</a>}
+              </div>
+            </object>
           </div>
-        </div>
-        <div style={{flex:1,overflow:"auto",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0f0f0",minHeight:300,position:"relative"}}>
-          {isImg&&<img src={url} alt={file.fileName} style={{maxWidth:"100%",maxHeight:"70vh",borderRadius:6,objectFit:"contain"}}/>}
-          {isPdf&&!pdfError&&gdocsUrl&&(
-            <>
-              {pdfLoading&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",textAlign:"center",color:C.muted}}><div style={{fontSize:32,marginBottom:8}}>📄</div><div style={{fontSize:13}}>Loading PDF…</div></div>}
-              <iframe
-                src={gdocsUrl}
-                style={{width:"100%",height:"68vh",border:"none",borderRadius:6,opacity:pdfLoading?0:1,transition:"opacity 0.3s"}}
-                title={file.fileName}
-                onLoad={()=>setPdfLoading(false)}
-                onError={()=>{setPdfLoading(false);setPdfError(true);}}
-              />
-            </>
-          )}
-          {isPdf&&!gdocsUrl&&url&&(
-            <iframe src={url} style={{width:"100%",height:"68vh",border:"none",borderRadius:6}} title={file.fileName}/>
-          )}
-          {isPdf&&pdfError&&<div style={{textAlign:"center",color:C.muted,padding:"2rem"}}><div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div><div style={{fontSize:14,fontWeight:500,marginBottom:"0.5rem"}}>{file.fileName}</div><div style={{fontSize:12,marginBottom:"1rem"}}>Preview unavailable</div>{url&&<a href={url} target="_blank" rel="noreferrer" style={{color:C.teal,fontSize:13,fontWeight:500}}>↗ Open PDF in new tab</a>}</div>}
-          {!isImg&&!isPdf&&<div style={{textAlign:"center",color:C.muted,padding:"2rem"}}><div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div><div style={{fontSize:14,fontWeight:500}}>{file.fileName}</div>{url&&<a href={url} download={file.fileName} style={{display:"inline-block",marginTop:"1rem",color:C.teal,fontSize:13,fontWeight:500}}>⬇ Download</a>}</div>}
-        </div>
+        )}
+        {isPdf&&pdfError&&<div style={{textAlign:"center",padding:"3rem",color:"white",margin:"auto"}}><div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div><div style={{fontSize:14,marginBottom:"0.5rem"}}>{file.fileName}</div><div style={{fontSize:12,color:"#aaa",marginBottom:"1.25rem"}}>Preview unavailable</div>{url&&<a href={url} target="_blank" rel="noreferrer" style={{color:C.tealL,fontSize:14,fontWeight:600}}>↗ Open PDF in new tab</a>}</div>}
+        {!isImg&&!isPdf&&<div style={{textAlign:"center",padding:"3rem",color:"white",margin:"auto"}}><div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div><div style={{fontSize:14,fontWeight:500,marginBottom:"1rem"}}>{file.fileName}</div>{url&&<a href={url} download={file.fileName} style={{color:C.tealL,fontSize:13,fontWeight:600}}>⬇ Download file</a>}</div>}
       </div>
     </div>
   );
@@ -830,6 +859,35 @@ function OrientationModal({staffId,onClose}){
         )}
       </div>
     </div>
+  );
+}
+
+// evidence upload button for audit records — attach scanned/manual documents
+function AuditEvidenceBtn({audit,audits,setAudits,onView}){
+  const ref=useRef();
+  function handle(e){
+    const f=e.target.files[0];if(!f)return;
+    if(f.size>10*1024*1024){alert("File over 10MB.");return;}
+    const r=new FileReader();
+    r.onload=async ev=>{
+      const evidence={id:Date.now(),fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+      // Upload to blob for multi-page viewing
+      const blobFile=await _uploadToBlob("auditevid_"+audit.id,f.name,f.type,ev.target.result);
+      if(blobFile)evidence.blobUrl=blobFile.blobUrl;
+      const updated={...audit,evidence};
+      const newAudits=audits.map(a=>a.id===audit.id?updated:a);
+      setAudits(newAudits);saveGen("audits",newAudits);
+    };
+    r.readAsDataURL(f);e.target.value="";
+  }
+  return(
+    <>
+      {audit.evidence
+        ?<BSm onClick={()=>onView(audit.evidence)} color={C.teal}>📎 View evidence</BSm>
+        :<BSm onClick={()=>ref.current.click()} color={C.gray}>📎 Attach</BSm>
+      }
+      <input ref={ref} type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={handle}/>
+    </>
   );
 }
 
@@ -1325,10 +1383,20 @@ function PPPage({setPage,setActiveAudit,ppDocs,setPpDocs,ppReviews,setPpReviews}
     const f=e.target.files[0];if(!f||!ppLabel)return;
     if(f.size>15*1024*1024){alert("File over 15MB.");return;}
     const r=new FileReader();
-    r.onload=ev=>{
-      const rec={id:Date.now(),label:ppLabel,fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
-      const updated=[...ppDocs,rec];setPpDocs(updated);saveGen("ppDocs",updated);
+    r.onload=async ev=>{
+      const id=Date.now();
+      const rec={id,label:ppLabel,fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+      // First add with dataUrl so it's viewable immediately
+      const updated=[...ppDocs,rec];setPpDocs(updated);
       setPpLabel("");setShowPpUpload(false);
+      // Then upload to blob for proper multi-page viewing
+      const blobFile=await _uploadToBlob("ppdoc_"+id,f.name,f.type,ev.target.result);
+      if(blobFile){
+        const withBlob=updated.map(d=>d.id===id?{...d,blobUrl:blobFile.blobUrl,dataUrl:undefined}:d);
+        setPpDocs(withBlob);saveGen("ppDocs",withBlob);
+      } else {
+        saveGen("ppDocs",updated);
+      }
     };
     r.readAsDataURL(f);e.target.value="";
   }
@@ -2033,12 +2101,14 @@ export default function App(){
                                     {a.na>0&&<span style={{color:C.muted}}>{a.na} N/A</span>}
                                     <span style={{color:C.muted}}>{a.total} total</span>
                                   </div>}
-                                  {a.notes&&<div style={{fontSize:11,color:C.muted,marginTop:3,fontStyle:"italic"}}>{a.notes}</div>}
+                                  {a.notes&&<div style={{fontSize:11,color:C.muted,marginTop:3,fontStyle:"italic"}}>{a.notes.slice(0,80)}{a.notes.length>80?"…":""}</div>}
+                                  {a.evidence&&<div style={{fontSize:11,color:C.teal,marginTop:2}}>📎 {a.evidence.fileName}</div>}
                                 </div>
                                 <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end",flexShrink:0}}>
-                                <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
-                                <BSm onClick={e=>{e.stopPropagation();setViewAudit(a);}} color={C.blue}>View →</BSm>
-                              </div>
+                                  <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
+                                  <BSm onClick={e=>{e.stopPropagation();setViewAudit(a);}} color={C.blue}>View →</BSm>
+                                  <AuditEvidenceBtn audit={a} audits={audits} setAudits={setAudits} onView={setEavf}/>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -2116,10 +2186,18 @@ export default function App(){
         const f=e.target.files[0];if(!f||!extLabel)return;
         if(f.size>10*1024*1024){alert("File over 10MB.");return;}
         const r=new FileReader();
-        r.onload=ev=>{
-          const rec={id:Date.now(),label:extLabel,fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
-          const updated=[...extAudits,rec];setExtAudits(updated);saveGen("extAudits",updated);
+        r.onload=async ev=>{
+          const id=Date.now();
+          const rec={id,label:extLabel,fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+          const updated=[...extAudits,rec];setExtAudits(updated);
           setExtLabel("");setShowExtForm(false);
+          const blobFile=await _uploadToBlob("extaudit_"+id,f.name,f.type,ev.target.result);
+          if(blobFile){
+            const withBlob=updated.map(d=>d.id===id?{...d,blobUrl:blobFile.blobUrl,dataUrl:undefined}:d);
+            setExtAudits(withBlob);saveGen("extAudits",withBlob);
+          } else {
+            saveGen("extAudits",updated);
+          }
         };
         r.readAsDataURL(f);e.target.value="";
       }
