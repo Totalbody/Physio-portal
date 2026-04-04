@@ -195,6 +195,18 @@ const STAFF = {
 };
 
 const PAST_STAFF = ["Alice","Aoife","Vishwali","Jean Hong","Alonzo","Sasha McBain","Steven Gray","(2 further records)"];
+// Returns staff data merged with any saved employee-info overrides
+// (type + clinics can change without redeploying)
+function getEffectiveStaff(id) {
+  const base = STAFF[id] || {};
+  if (!_portalReady) return base;
+  const ei = _portalStore.data[`empinfo_${id}`] || null;
+  if (!ei) return base;
+  const typeMap = { "Employed":"Employee", "Sub Contractor":"Contractor", "Owner":"Owner" };
+  const type = typeMap[ei.employmentType] || base.type;
+  const clinics = ei.clinics && ei.clinics.length ? ei.clinics : base.clinics;
+  return { ...base, type, clinics };
+}
 
 const CORE_CERTS = [
   {key:"apc",        label:"APC 2025/2026",                  renews:"Annual — 1 April",  required:true},
@@ -1004,10 +1016,12 @@ function EmployeeInfoTab({staffId,staffName,role}){
 
   function startEdit(){setDraft({...ei});setEditing(true);}
   function save(){
-    if(!draft.sigName?.trim()){alert("Please type your full name in the Declaration field to confirm.");return;}
+    // Owner can save on behalf of staff; otherwise require staff member's own signature
+    if(role!=="owner"&&!draft.sigName?.trim()){alert("Please type your full name in the Declaration field to confirm.");return;}
     const saved={...draft,savedDate:new Date().toLocaleDateString("en-NZ"),savedBy:staffName};
     saveGen(eiKey,saved);
     setEi(saved);setEditing(false);
+    if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
   }
 
   // shorthand so call sites stay tidy
@@ -1072,6 +1086,20 @@ function EmployeeInfoTab({staffId,staffName,role}){
               </div>
             </div>
             <div style={{marginBottom:"0.75rem"}}>
+              <div style={{fontSize:12,color:C.muted,marginBottom:6}}>Clinics</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"0.5rem"}}>
+                {CLINICS.map(cl=>{
+                  const sel=(draft.clinics||STAFF[staffId]?.clinics||[]).includes(cl.id);
+                  return(
+                    <div key={cl.id} onClick={()=>setDraft(p=>{const cur=p.clinics||STAFF[staffId]?.clinics||[];const next=sel?cur.filter(x=>x!==cl.id):[...cur,cl.id];return{...p,clinics:next};})}
+                      style={{padding:"6px 12px",borderRadius:6,border:`1.5px solid ${sel?C.blue:C.border}`,background:sel?C.blueL:"white",fontSize:12,cursor:"pointer",fontWeight:sel?600:400}}>
+                      {cl.icon} {cl.short}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{marginBottom:"0.75rem"}}>
               <div style={{fontSize:12,color:C.muted,marginBottom:6}}>Hours</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem"}}>
                 {["Full time","Part time"].map(opt=>(
@@ -1126,7 +1154,7 @@ function EmployeeInfoTab({staffId,staffName,role}){
 
 function ProfileModal({id,onClose,role}){
   const[tab,setTab]=useState("certs");const[showOri,setShowOri]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
-  if(!id)return null;const s=STAFF[id];const comp=staffComp(id);
+  if(!id)return null;const s=STAFF[id];const es=getEffectiveStaff(id);const comp=staffComp(id);
   return(
     <>
       <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:200,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
@@ -1137,8 +1165,8 @@ function ProfileModal({id,onClose,role}){
               <div style={{color:"white",fontSize:18,fontWeight:600}}>{s.name}</div>
               <div style={{color:"rgba(255,255,255,0.85)",fontSize:12,marginTop:3}}>{s.title}</div>
               <div style={{display:"flex",gap:5,marginTop:6,flexWrap:"wrap",alignItems:"center"}}>
-                <span style={{background:"rgba(255,255,255,0.25)",color:"white",fontSize:10,padding:"2px 9px",borderRadius:20,fontWeight:600}}>{s.type}</span>
-                {s.clinics.map(c=>{const cl=CLINICS.find(x=>x.id===c);return cl?<span key={c} style={{background:"rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.9)",fontSize:10,padding:"2px 8px",borderRadius:20}}>{cl.short}</span>:null;})}
+                <span style={{background:"rgba(255,255,255,0.25)",color:"white",fontSize:10,padding:"2px 9px",borderRadius:20,fontWeight:600}}>{es.type}</span>
+                {es.clinics.map(c=>{const cl=CLINICS.find(x=>x.id===c);return cl?<span key={c} style={{background:"rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.9)",fontSize:10,padding:"2px 8px",borderRadius:20}}>{cl.short}</span>:null;})}
                 <span style={{background:`rgba(255,255,255,${comp.pct===100?0.35:0.15})`,color:"white",fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:600}}>{comp.done}/{comp.total} required</span>
               </div>
             </div>
@@ -1384,11 +1412,11 @@ export default function App(){
             <thead><TH headers={["Staff","Type","Clinics","APC","First Aid","Cultural","Police Vetting","Orientation","Progress"]}/></thead>
             <tbody>
               {Object.entries(STAFF).map(([id,s])=>{
-                const fs=k=>certStatus(id,k);const comp=staffComp(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[s.type]||"gray";
+                const fs=k=>certStatus(id,k);const comp=staffComp(id);const es=getEffectiveStaff(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[es.type]||"gray";
                 return(
                   <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
-                    <TD><strong>{s.name}</strong></TD><TD><Chip color={tc}>{s.type}</Chip></TD>
-                    <TD style={{fontSize:11,color:C.muted}}>{s.clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</TD>
+                    <TD><strong>{s.name}</strong></TD><TD><Chip color={tc}>{es.type}</Chip></TD>
+                    <TD style={{fontSize:11,color:C.muted}}>{es.clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</TD>
                     <TD><Pill s={fs("apc")}/></TD><TD><Pill s={fs("firstaid")}/></TD><TD><Pill s={fs("cultural")}/></TD><TD><Pill s={fs("policevetting")}/></TD><TD><Pill s={fs("orientation")}/></TD>
                     <TD><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:52,height:5,background:C.grayL,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:comp.pct===100?C.teal:comp.pct>50?C.amber:C.red,width:`${comp.pct}%`}}/></div><span style={{fontSize:11,color:C.muted}}>{comp.done}/{comp.total}</span></div></TD>
                   </tr>
@@ -1451,7 +1479,7 @@ export default function App(){
       <PH title="All Staff" sub="Tap any card to view compliance, upload certs or complete orientation"/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(265px,1fr))",gap:"0.875rem"}}>
         {Object.entries(STAFF).map(([id,s])=>{
-          const comp=staffComp(id);const bc=comp.pct===100?C.teal:comp.pct>50?C.amber:C.red;const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[s.type]||"gray";
+          const comp=staffComp(id);const bc=comp.pct===100?C.teal:comp.pct>50?C.amber:C.red;const es=getEffectiveStaff(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[es.type]||"gray";
           return(
             <div key={id} onClick={()=>setProfile(id)} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 16px rgba(15,110,86,0.12)"} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
               <div style={{padding:"1rem 1rem 0.75rem",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${C.border}`}}>
@@ -1622,7 +1650,7 @@ export default function App(){
         <div style={{width:34,height:34,borderRadius:"50%",background:s.color+"25",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:s.color,flexShrink:0}}>{s.ini}</div>
         <div style={{flex:1}}>
           <strong style={{fontSize:13}}>{s.name}</strong>
-          <div style={{fontSize:12,color:C.muted}}>{s.type} · {s.clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</div>
+          <div style={{fontSize:12,color:C.muted}}>{getEffectiveStaff(staffId).type} · {getEffectiveStaff(staffId).clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</div>
           {file&&<div style={{fontSize:11,color:C.muted,marginTop:1}}>{file.fileName} · {file.uploadedDate}</div>}
         </div>
         {canSee
