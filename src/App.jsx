@@ -397,7 +397,10 @@ function staffComp(id) {
 function certStatus(id, key) {
   const f = loadFile(id, key);
   if (!f) return "pending";
-  if (f.expiry && getExpiryStatus(f.expiry).status === "expired") return "expired";
+  // Check both sources — same logic as CertCard display
+  const expiryData = _portalReady ? (_portalStore.data["expiry_"+sKey(id,key)] || null) : null;
+  const expiry = f.expiry || expiryData?.expiry || null;
+  if (expiry && getExpiryStatus(expiry).status === "expired") return "expired";
   return "ok";
 }
 
@@ -500,7 +503,40 @@ function CertCard({staffId,cert,role,onView}){
   const ref=useRef();const[file,setFile]=useState(()=>loadFile(staffId,cert.key));
   const canSee=!cert.ownerOnly||(role==="owner"||role===staffId);
   const[scanning,setScanning]=useState(false);
-  function handle(e){const f=e.target.files[0];if(!f)return;if(f.size>3*1024*1024){alert("File over 3MB.");return;}const r=new FileReader();r.onload=ev=>{const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:cert.key};if(saveFile(staffId,cert.key,d)){setFile(d);setScanning(true);detectExpiryDate(ev.target.result,cert.label).then(result=>{if(result.expiry||result.issued){const updated={...d,expiry:result.expiry||null,issued:result.issued||null};setFile(updated);const key=sKey(staffId,cert.key);if(_portalReady&&_portalStore.files[key]){_portalStore.files[key].expiry=result.expiry||null;_portalStore.files[key].issued=result.issued||null;fetch(PORTAL_API+"/store",{method:"POST",headers:_apiHeaders,body:JSON.stringify({key:"expiry_"+key,value:{expiry:result.expiry||null,issued:result.issued||null}})}).catch(()=>{});}}setScanning(false);}).catch(()=>setScanning(false));}};r.readAsDataURL(f);e.target.value="";}
+  function handle(e){
+    const f=e.target.files[0];if(!f)return;
+    if(f.size>3*1024*1024){alert("File over 3MB.");return;}
+    const r=new FileReader();
+    r.onload=ev=>{
+      const key=sKey(staffId,cert.key);
+      // Clear old expiry immediately so stale data doesn't linger
+      if(_portalReady){
+        delete _portalStore.data["expiry_"+key];
+        fetch(PORTAL_API+"/store?key="+encodeURIComponent("expiry_"+key)+"&secret="+encodeURIComponent(PORTAL_SECRET),{method:"DELETE",headers:{"X-Portal-Secret":PORTAL_SECRET}}).catch(()=>{});
+      }
+      const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:cert.key,expiry:null,issued:null};
+      if(saveFile(staffId,cert.key,d)){
+        setFile(d);
+        if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
+        setScanning(true);
+        detectExpiryDate(ev.target.result,cert.label).then(result=>{
+          const expiry=result.expiry||null;const issued=result.issued||null;
+          const updated={...d,expiry,issued};
+          setFile(updated);
+          if(_portalReady){
+            if(_portalStore.files[key]){_portalStore.files[key].expiry=expiry;_portalStore.files[key].issued=issued;}
+            if(expiry||issued){
+              _portalStore.data["expiry_"+key]={expiry,issued};
+              fetch(PORTAL_API+"/store",{method:"POST",headers:_apiHeaders,body:JSON.stringify({key:"expiry_"+key,value:{expiry,issued}})}).catch(()=>{});
+            }
+            if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
+          }
+          setScanning(false);
+        }).catch(()=>setScanning(false));
+      }
+    };
+    r.readAsDataURL(f);e.target.value="";
+  }
   if(!canSee)return <div style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:6,display:"flex",alignItems:"center",justifyContent:"space-between"}}><div style={{fontWeight:500,fontSize:13,color:C.muted}}>🔒 {cert.label}</div><Pill s={file?"ok":"pending"} label={file?"On file":"Needed"}/></div>;
   const expiryData=_portalReady?(_portalStore.data["expiry_"+sKey(staffId,cert.key)]||null):null;
   const certExpiry=file?.expiry||expiryData?.expiry||null;
@@ -523,12 +559,19 @@ function CertCard({staffId,cert,role,onView}){
           </div>
           <div style={{fontSize:11,color:C.muted,marginTop:2}}>{cert.renews}</div>
           {file&&<div style={{fontSize:11,color:C.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.fileName} · {file.uploadedDate}</div>}
-          {file?.expiry&&<div style={{fontSize:11,color:expInfo?.color||C.muted,marginTop:1,fontWeight:600}}>{isExpired?"⚠ ":isExpiring?"⏰ ":"✓ "}{expInfo?.label}</div>}
+          {certExpiry&&<div style={{fontSize:11,color:expInfo?.color||C.muted,marginTop:1,fontWeight:600}}>{isExpired?"⚠ ":isExpiring?"⏰ ":"✓ "}{expInfo?.label}</div>}
         </div>
       </div>
       <div style={{display:"flex",gap:5,marginTop:8,flexWrap:"wrap"}}>
         {file&&<BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>}
         <BSm onClick={()=>ref.current.click()} color={file?C.gray:cert.required?C.teal:C.gray}>{file?"Replace":"📷 Upload"}</BSm>
+        {file&&isExpired&&<BSm onClick={()=>{
+          const key=sKey(staffId,cert.key);
+          if(_portalReady){delete _portalStore.data["expiry_"+key];fetch(PORTAL_API+"/store?key="+encodeURIComponent("expiry_"+key)+"&secret="+encodeURIComponent(PORTAL_SECRET),{method:"DELETE",headers:{"X-Portal-Secret":PORTAL_SECRET}}).catch(()=>{});}
+          if(_portalStore.files[key]){_portalStore.files[key].expiry=null;_portalStore.files[key].issued=null;}
+          setFile(f=>({...f,expiry:null,issued:null}));
+          if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
+        }} color={C.amber}>Clear expiry</BSm>}
         {file&&<BSm onClick={()=>{if(window.confirm("Remove?")){removeFile(staffId,cert.key);setFile(null);}}} color={C.red}>Remove</BSm>}
       </div>
       <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
