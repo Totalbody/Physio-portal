@@ -515,6 +515,26 @@ function FileRow({label,gkey,onView,accent=C.teal}){
   );
 }
 
+// cert history panel
+function CertHistory({staffId,certKey,onView}){
+  const hist=loadFileHistory(staffId,certKey);
+  if(hist.length===0)return <div style={{fontSize:11,color:C.hint,marginTop:6,paddingLeft:4}}>No previous uploads recorded.</div>;
+  return(
+    <div style={{marginTop:6,borderTop:`1px solid ${C.border}`,paddingTop:6}}>
+      <div style={{fontSize:10,color:C.hint,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Previous uploads</div>
+      {hist.map((h,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:i<hist.length-1?`1px solid ${C.border}`:""}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:11,color:C.text,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.fileName}</div>
+            <div style={{fontSize:10,color:C.muted}}>Uploaded {h.uploadedDate}{h.expiry?" · Expired "+new Date(h.expiry).toLocaleDateString("en-NZ"):""}</div>
+          </div>
+          {(h.blobUrl||h.dataUrl)&&<BSm onClick={()=>onView(h)} color={C.muted}>View</BSm>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // cert card
 function CertCard({staffId,cert,role,onView}){
   const ref=useRef();const[file,setFile]=useState(()=>loadFile(staffId,cert.key));
@@ -590,17 +610,9 @@ function CertCard({staffId,cert,role,onView}){
           if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
         }} color={C.amber}>Clear expiry</BSm>}
         {file&&<BSm onClick={()=>{if(window.confirm("Remove?")){removeFile(staffId,cert.key);setFile(null);}}} color={C.red}>Remove</BSm>}
-        {file&&<BSm onClick={()=>setShowHist(h=>!h)} color={C.gray}>{showHist?"Hide history":"History"+(loadFileHistory(staffId,cert.key).length>0?` (${loadFileHistory(staffId,cert.key).length})":"")}</BSm>}
+        {file&&<BSm onClick={()=>setShowHist(h=>!h)} color={C.gray}>{showHist?"Hide history":"History"+(loadFileHistory(staffId,cert.key).length>0?` (${loadFileHistory(staffId,cert.key).length})`:"")}</BSm>}
       </div>
-      {showHist&&(()=>{const hist=loadFileHistory(staffId,cert.key);return hist.length===0?<div style={{fontSize:11,color:C.hint,marginTop:6,paddingLeft:4}}>No previous uploads.</div>:<div style={{marginTop:6,borderTop:`1px solid ${C.border}`,paddingTop:6}}>
-        <div style={{fontSize:10,color:C.hint,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Previous uploads</div>
-        {hist.map((h,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:i<hist.length-1?`1px solid ${C.border}`:""}}> 
-            <div style={{flex:1}}><div style={{fontSize:11,color:C.text,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.fileName}</div><div style={{fontSize:10,color:C.muted}}>Uploaded {h.uploadedDate}{h.expiry?" · Expired "+new Date(h.expiry).toLocaleDateString("en-NZ"):""}</div></div>
-            {(h.blobUrl||h.dataUrl)&&<BSm onClick={()=>onView(h)} color={C.muted}>View</BSm>}
-          </div>
-        ))}
-      </div>;})()}
+      {showHist&&<CertHistory staffId={staffId} certKey={cert.key} onView={onView}/>}
       <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
     </div>
   );
