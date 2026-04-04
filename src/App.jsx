@@ -233,7 +233,7 @@ const ORI_SECTIONS = [
   {title:"Health & safety emergency procedures",items:["Fire exits, alarms and extinguisher locations known","Evacuation procedure and meeting areas understood","DRSABCD emergency procedure understood","Incident reporting for patients explained","Incident reporting for staff explained","Electrical mains location known","First aid kit location known","Fire drill procedure explained"]},
   {title:"Administration",items:["CPR certificate seen and copy in file","APC seen and copy in file","Employee Information sheet completed","Physio registration number recorded","Performance review dates set","CPD goals set and hours assessed","Contract signed, dated and in file"]},
   {title:"Clinic policy & procedures",items:["P&P manuals location confirmed (Google Drive)","Phone list and contact numbers location confirmed","Patient consent and confidentiality understood","Hand sanitiser stations — arrival desk and exit counter","Receiving and making calls understood","Privacy Act 2020 read","Health and Safety Act read","All P&P sections read in orientation folder"]},
-  {title:"Pool complex — Pakuranga only",items:["Reception area and reception staff met","First aid room located","Manager introduced","Fire exits and extinguishers located","Gym and gym staff met","Staff toilets and showers located","Staff room located","Car parking explained"]},
+  {title:"Pool complex",poolOnly:true,items:["Reception area and reception staff met","First aid room located","Manager introduced","Fire exits and extinguishers located","Gym and gym staff met","Staff toilets and showers located","Staff room located","Car parking explained"]},
 ];
 
 const AUDIT_FORMS = {
@@ -742,8 +742,11 @@ function OrientationModal({staffId,onClose}){
   const[checks,setChecks]=useState(oriData.checks||{});
   const[sig,setSig]=useState("");const[done,setDone]=useState(!!oriData.done);
   const[doneDate]=useState(oriData.doneDate||"");
-  const all=ORI_SECTIONS.flatMap(s=>s.items);const checked=Object.values(checks).filter(Boolean).length;const pct=Math.round((checked/all.length)*100);
-  function toggle(k){const n={...checks,[k]:!checks[k]};setChecks(n);saveGen(sk,{...oriData,checks:n});}
+  const staffClinics=(STAFF[staffId]?.clinics||[]);
+  const hasPool=staffClinics.includes("pakuranga")||staffClinics.includes("panmure");
+  const activeSections=ORI_SECTIONS.filter(s=>!s.poolOnly||hasPool);
+  const all=activeSections.flatMap(s=>s.items);const checked=Object.values(checks).filter(Boolean).length;const pct=Math.round((checked/all.length)*100);
+  function toggle(k){const n={...checks,[k]:!checks[k]};setChecks(n);saveGen(sk,{...oriData,checks:n,hasPool});}
   function submit(){
     if(checked<all.length){alert(`${all.length-checked} items not ticked.`);return;}
     if(!sig.trim()){alert("Please type your full name to sign.");return;}
@@ -770,9 +773,9 @@ function OrientationModal({staffId,onClose}){
               <div><div style={{fontSize:14,fontWeight:600,color:C.green}}>Orientation completed</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>Signed by {oriData.sig||s.name} · {doneDate}</div></div>
             </div>
             <div style={{height:6,background:C.tealL,borderRadius:3,overflow:"hidden",marginBottom:"1.25rem"}}><div style={{height:"100%",borderRadius:3,background:C.teal,width:"100%"}}/></div>
-            {ORI_SECTIONS.map((sec,si)=>(
+            {activeSections.map((sec,si)=>(
               <div key={si} style={{marginBottom:"1rem"}}>
-                <div style={{fontSize:12,fontWeight:600,marginBottom:"0.375rem",paddingBottom:"0.375rem",borderBottom:`1px solid ${C.border}`,color:C.text}}>{sec.title}</div>
+                <div style={{fontSize:12,fontWeight:600,marginBottom:"0.375rem",paddingBottom:"0.375rem",borderBottom:`1px solid ${C.border}`,color:C.text}}>{sec.title}{sec.poolOnly&&<span style={{fontSize:10,color:C.muted,marginLeft:6,fontWeight:400}}>(pool)</span>}</div>
                 {sec.items.map((item,ii)=>{const k=`${si}-${ii}`;const t=!!(oriData.checks||{})[k];return(
                   <div key={ii} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"5px 0",borderBottom:`1px solid ${C.grayL}`}}>
                     <div style={{width:18,height:18,borderRadius:3,border:`2px solid ${t?C.teal:C.border}`,background:t?C.teal:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1}}>{t&&<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}</div>
@@ -792,9 +795,9 @@ function OrientationModal({staffId,onClose}){
         ):(
           <div style={{padding:"1.25rem 1.5rem",maxHeight:"72vh",overflowY:"auto"}}>
             <div style={{height:8,background:C.grayL,borderRadius:4,overflow:"hidden",marginBottom:"1.25rem"}}><div style={{height:"100%",borderRadius:4,background:pct===100?C.teal:C.amber,width:`${pct}%`,transition:"width 0.3s"}}/></div>
-            {ORI_SECTIONS.map((sec,si)=>(
+            {activeSections.map((sec,si)=>(
               <div key={si} style={{marginBottom:"1.25rem"}}>
-                <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",paddingBottom:"0.375rem",borderBottom:`1px solid ${C.border}`}}>{sec.title}</div>
+                <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",paddingBottom:"0.375rem",borderBottom:`1px solid ${C.border}`}}>{sec.title}{sec.poolOnly&&<span style={{fontSize:10,color:C.muted,marginLeft:6,fontWeight:400}}>(pool clinics)</span>}</div>
                 {sec.items.map((item,ii)=>{const k=`${si}-${ii}`;const t=!!checks[k];return(
                   <div key={ii} onClick={()=>toggle(k)} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"7px 0",cursor:"pointer",borderBottom:`1px solid ${C.grayL}`}}>
                     <div style={{width:20,height:20,borderRadius:4,border:`2px solid ${t?C.teal:C.border}`,background:t?C.teal:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1}}>{t&&<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}</div>
@@ -1290,11 +1293,32 @@ function ProfileModal({id,onClose,role,onStaffSave,staffOverrides}){
 }
 
 // P&P PAGE
-function PPPage({setPage,setActiveAudit}){
+function PPPage({setPage,setActiveAudit,ppDocs,setPpDocs,ppReviews,setPpReviews}){
   const[activeSection,setActiveSection]=useState(null);
   const[expandedPolicy,setExpandedPolicy]=useState(null);
   const[filter,setFilter]=useState("all");
   const[search,setSearch]=useState("");
+  const[ppTab,setPpTab]=useState("sections");
+  const ppRef=useRef();
+  const[ppLabel,setPpLabel]=useState("");
+  const[showPpUpload,setShowPpUpload]=useState(false);
+  const[ppViewFile,setPpViewFile]=useState(null);
+
+  function markReviewed(sectionId){
+    const updated={...ppReviews,[sectionId]:{date:new Date().toLocaleDateString("en-NZ"),reviewer:"Jade Warren"}};
+    setPpReviews(updated);saveGen("ppReviews",updated);
+  }
+  function uploadPpDoc(e){
+    const f=e.target.files[0];if(!f||!ppLabel)return;
+    if(f.size>15*1024*1024){alert("File over 15MB.");return;}
+    const r=new FileReader();
+    r.onload=ev=>{
+      const rec={id:Date.now(),label:ppLabel,fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+      const updated=[...ppDocs,rec];setPpDocs(updated);saveGen("ppDocs",updated);
+      setPpLabel("");setShowPpUpload(false);
+    };
+    r.readAsDataURL(f);e.target.value="";
+  }
 
   const audiences=["all","All staff","Physiotherapists","Management"];
   const filtered=PP_SECTIONS.filter(s=>{
@@ -1302,6 +1326,8 @@ function PPPage({setPage,setActiveAudit}){
     const matchSearch=!search||s.title.toLowerCase().includes(search.toLowerCase())||s.policies.some(p=>p.title.toLowerCase().includes(search.toLowerCase())||p.body.toLowerCase().includes(search.toLowerCase()));
     return matchAud&&matchSearch;
   });
+  const reviewedCount=Object.keys(ppReviews).length;
+  const totalSections=PP_SECTIONS.length;
 
   if(activeSection){
     const sec=PP_SECTIONS.find(s=>s.id===activeSection);
@@ -1344,8 +1370,68 @@ function PPPage({setPage,setActiveAudit}){
 
   return(
     <div>
-      <PH title="📖 Policies & Procedures" sub="Total Body Physio — Policy and Procedures Manual · Annual review: April"/>
-      <Alert type="green" title="P&P Manual — Annual review">The P&P manual is reviewed annually by the Director(s). Changes are presented at the annual staff meeting. All staff must be familiar with the sections relevant to their role. Manual is confidential to current TBP staff only.</Alert>
+      <PH title="📖 Policies & Procedures" sub={`Total Body Physio — Policy and Procedures Manual · Annual review: April · ${reviewedCount}/${totalSections} sections reviewed`}/>
+      <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,marginBottom:"1rem",overflowX:"auto"}}>
+        {[["sections","📖 Sections"],["documents","📄 Documents & Review"],["annual","✓ Annual Review Tracker"]].map(([id,label])=>(
+          <div key={id} onClick={()=>setPpTab(id)} style={{padding:"7px 14px",fontSize:13,color:ppTab===id?C.teal:C.muted,cursor:"pointer",borderBottom:ppTab===id?`2px solid ${C.teal}`:"2px solid transparent",fontWeight:ppTab===id?500:400,whiteSpace:"nowrap"}}>{label}</div>
+        ))}
+      </div>
+      {ppTab==="documents"&&<div>
+        <Alert type="blue" title="P&P document versions">Upload your full P&P manual here. Keep previous versions for audit trail. Upload 2024, 2025, and 2026 versions separately.</Alert>
+        <div style={{marginBottom:"1rem"}}>
+          {!showPpUpload
+            ?<Btn onClick={()=>setShowPpUpload(true)}>+ Upload P&P document</Btn>
+            :<Card style={{borderColor:C.teal}}>
+              <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Name this document version</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem"}}>e.g. "P&P Manual 2024", "P&P Manual 2025 — reviewed April"</div>
+              <input value={ppLabel} onChange={e=>setPpLabel(e.target.value)} placeholder="Document name…" autoFocus style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box",marginBottom:"0.625rem"}}/>
+              <div style={{display:"flex",gap:8}}>
+                <Btn onClick={()=>{if(ppLabel.trim())setTimeout(()=>ppRef.current.click(),50);}}>Choose file →</Btn>
+                <Btn outline onClick={()=>{setShowPpUpload(false);setPpLabel("");}}>Cancel</Btn>
+              </div>
+            </Card>
+          }
+          <input ref={ppRef} type="file" accept="application/pdf,.doc,.docx" style={{display:"none"}} onChange={uploadPpDoc}/>
+        </div>
+        {ppDocs.length===0&&<Alert type="blue" title="No P&P documents uploaded">Upload your manual above to keep version history and share with staff.</Alert>}
+        {[...ppDocs].reverse().map(doc=>(
+          <Card key={doc.id} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <div><div style={{fontSize:13,fontWeight:600}}>{doc.label}</div><div style={{fontSize:12,color:C.muted,marginTop:1}}>📄 {doc.fileName} · Uploaded {doc.uploadedDate}</div></div>
+              <div style={{display:"flex",gap:5,flexShrink:0}}>
+                <BSm onClick={()=>setPpViewFile(doc)} color={C.teal}>👁 View</BSm>
+                <BSm onClick={()=>{if(window.confirm("Remove?")){const u=ppDocs.filter(x=>x.id!==doc.id);setPpDocs(u);saveGen("ppDocs",u);}}} color={C.red}>✕</BSm>
+              </div>
+            </div>
+          </Card>
+        ))}
+        {ppViewFile&&<FileViewer file={ppViewFile} onClose={()=>setPpViewFile(null)}/>}
+      </div>}
+      {ppTab==="annual"&&<div>
+        <Alert type={reviewedCount===totalSections?"green":"amber"} title={`Annual review — ${reviewedCount}/${totalSections} sections reviewed`}>Tick each section once reviewed and updated for the current year. This creates an audit trail for DAA and ACC inspectors.</Alert>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:"0.625rem"}}>
+          {PP_SECTIONS.map(sec=>{
+            const rev=ppReviews[sec.id]||null;
+            return(
+              <div key={sec.id} style={{background:C.card,border:`1px solid ${rev?C.teal:C.border}`,borderRadius:8,padding:"0.875rem 1rem",display:"flex",alignItems:"flex-start",gap:10}}>
+                <div style={{width:36,height:36,borderRadius:8,background:sec.color+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{sec.icon}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600}}>§{sec.num} {sec.title}</div>
+                  {rev?<div style={{fontSize:11,color:C.green,marginTop:2}}>✓ Reviewed {rev.date} · {rev.reviewer}</div>:<div style={{fontSize:11,color:C.muted,marginTop:2}}>Not yet reviewed this year</div>}
+                  <div style={{marginTop:6}}>
+                    {rev?<BSm onClick={()=>{if(window.confirm("Clear review status for this section?")){const u={...ppReviews};delete u[sec.id];setPpReviews(u);saveGen("ppReviews",u);}}} color={C.muted}>Clear ✕</BSm>:<BSm onClick={()=>markReviewed(sec.id)} color={C.teal}>✓ Mark reviewed</BSm>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{marginTop:"1rem",padding:"0.875rem 1rem",background:C.grayXL,borderRadius:8,fontSize:12,color:C.muted}}>
+          💡 After marking all sections reviewed, go to Documents tab and upload the updated P&P manual to complete your annual review record.
+        </div>
+      </div>}
+      {ppTab==="sections"&&<div>
+      <Alert type="green" title="P&P Manual — Annual review">Reviewed annually by Directors. Presented at annual staff meeting. Confidential to current TBP staff. Use the Annual Review Tracker tab to record this year's review.</Alert>
       <div style={{display:"flex",gap:8,marginBottom:"1rem",flexWrap:"wrap",alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search policies…" style={{flex:1,minWidth:180,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL}}/>
         <div style={{display:"flex",gap:5}}>
@@ -1383,6 +1469,7 @@ function PPPage({setPage,setActiveAudit}){
           </div>
         ))}
       </div>
+    </div>}
     </div>
   );
 }
@@ -1404,6 +1491,14 @@ export default function App(){
   const[activeAudit,setActiveAudit]=useState(null);
   const[viewAudit,setViewAudit]=useState(null);
   const[extAudits,setExtAudits]=useState(()=>loadGen("extAudits")||[]);
+  const[eavf,setEavf]=useState(null);
+  const[analysing,setAnalysing]=useState(null);
+  const[showExtForm,setShowExtForm]=useState(false);
+  const[extLabel,setExtLabel]=useState("");
+  const[mFilter,setMFilter]=useState("");
+  const[ppDocs,setPpDocs]=useState(()=>loadGen("ppDocs")||[]);
+  const[ppReviews,setPpReviews]=useState(()=>loadGen("ppReviews")||{});
+  const[ppAiAnalysis,setPpAiAnalysis]=useState({});
   const[urgentOpen,setUrgentOpen]=useState(true);
   const[auditTypeFilter,setAuditTypeFilter]=useState("all");
   const[auditYearFilter,setAuditYearFilter]=useState("all");
@@ -1423,6 +1518,8 @@ export default function App(){
         if(d["meetings"]&&d["meetings"].length)setMeetings(d["meetings"]);else setMeetings(INIT_MEETINGS);
         if(d["inservices"]&&d["inservices"].length)setInservices(d["inservices"]);
         if(d["extAudits"]&&d["extAudits"].length)setExtAudits(d["extAudits"]);
+        if(d["ppDocs"])setPpDocs(d["ppDocs"]||[]);
+        if(d["ppReviews"])setPpReviews(d["ppReviews"]||{});
         // Staff overrides
         const overrides={};
         Object.keys(STAFF).forEach(id=>{
@@ -1943,16 +2040,15 @@ export default function App(){
       })()}
     </div>}
     {mgmtTab==="meetings"&&(()=>{
-      const[mFilter,setMFilter]=useState("");
-      const visibleMeetings=[...meetings].filter(m=>!mFilter||(m.topic+m.clinic+m.attendees+m.notes).toLowerCase().includes(mFilter.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date));
+      const visibleMeetings=[...meetings].filter(m=>!mFilter||(m.topic+m.clinic+(m.attendees||"")+(m.notes||"")).toLowerCase().includes(mFilter.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date));
       return <div>
-        <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly. Minutes stored here. You can enter historical meetings — just set the date to the past. {meetings.length} meeting{meetings.length!==1?"s":""} logged.</Alert>
+        <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly. Minutes stored here. Enter historical meetings by setting any past date. {meetings.length} meeting{meetings.length!==1?"s":""} logged.</Alert>
         <div style={{display:"flex",gap:8,marginBottom:"1rem",alignItems:"center"}}>
           <input value={mFilter} onChange={e=>setMFilter(e.target.value)} placeholder="Search meetings…" style={{flex:1,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL}}/>
           <Btn onClick={()=>setShowAdd(true)}>+ Log meeting</Btn>
         </div>
         {showAdd&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
-          <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Log meeting <span style={{fontSize:12,color:C.muted,fontWeight:400}}>(you can set any past date)</span></div>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Log meeting <span style={{fontSize:12,color:C.muted,fontWeight:400}}>(set any past date for historical records)</span></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
             <Input label="Date" value={nm.date} onChange={e=>setNm({...nm,date:e.target.value})} type="date"/>
             <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Clinic / location</label>
@@ -1966,14 +2062,14 @@ export default function App(){
           <Textarea label="Notes / minutes" value={nm.notes} onChange={e=>setNm({...nm,notes:e.target.value})} rows={3}/>
           <div style={{display:"flex",gap:8}}><Btn onClick={()=>{if(nm.date&&nm.topic){const updated=[...meetings,{...nm,id:Date.now()}];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:""});setShowAdd(false);}}} >Save</Btn><Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn></div>
         </Card>}
-        {visibleMeetings.length===0&&<Alert type="blue" title="No meetings found">Log a meeting above or adjust the search filter.</Alert>}
+        {visibleMeetings.length===0&&<Alert type="blue" title="No meetings found">Log a meeting above or adjust the search.</Alert>}
         {visibleMeetings.map(m=>(
           <Card key={m.id} style={{marginBottom:"0.5rem"}}>
             <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:m.attendees||m.notes?6:0}}>
               <div><strong style={{fontSize:14}}>{m.topic}</strong><div style={{fontSize:12,color:C.muted,marginTop:2}}>{m.date} · {m.clinic}</div></div>
               <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
                 <Pill s="ok" label="Completed ✓"/>
-                <BSm onClick={()=>{if(window.confirm("Delete this meeting record?")){const updated=meetings.filter(x=>x.id!==m.id);setMeetings(updated);saveGen("meetings",updated);}}} color={C.red}>✕</BSm>
+                <BSm onClick={()=>{if(window.confirm("Delete this meeting record?")){const u=meetings.filter(x=>x.id!==m.id);setMeetings(u);saveGen("meetings",u);}}} color={C.red}>✕</BSm>
               </div>
             </div>
             {m.attendees&&<div style={{fontSize:12,color:C.muted,marginBottom:4}}><strong style={{color:C.text}}>Attendees:</strong> {m.attendees}</div>}
@@ -1981,7 +2077,7 @@ export default function App(){
           </Card>
         ))}
       </div>;
-    })()}
+    })()}}
     {mgmtTab==="equipment"&&<div>
       <Alert type="amber" title="P&P Section 3.1.15 — Equipment">Annual service and test/tag. Upload service certs below. Instruction manuals on manufacturer websites. Equipment maintenance register on shared drive.</Alert>
       <Card>{CLINICS.filter(c=>c.id!=="schools").map(cl=><FileRow key={cl.id} label={`${cl.icon} ${cl.short} — service certificate`} gkey={`equip_${cl.id}`} onView={f=>setMvf(f)} accent={C.amber}/>)}</Card>
@@ -1989,78 +2085,70 @@ export default function App(){
       {mvf&&<FileViewer file={mvf} onClose={()=>setMvf(null)}/>}
     </div>}
     {mgmtTab==="external"&&(()=>{
-      const[eavf,setEavf]=useState(null);
-      const[analysing,setAnalysing]=useState(null);
-      const ref=useRef();
-      const[pendingLabel,setPendingLabel]=useState("");
-      const[labelInput,setLabelInput]=useState("");
-      const[showLabelForm,setShowLabelForm]=useState(false);
+      const extRef=useRef();
       async function analyseAudit(ea){
         setAnalysing(ea.id);
         try{
-          const resp=await fetch(PORTAL_API+"/analyse-doc",{
-            method:"POST",
-            headers:_apiHeaders,
-            body:JSON.stringify({fileData:ea.dataUrl,fileType:ea.fileType||"application/pdf",label:ea.label})
-          });
-          if(!resp.ok){const t=await resp.text();throw new Error("Proxy error "+resp.status+": "+t.slice(0,200));}
+          const resp=await fetch(PORTAL_API+"/analyse-doc",{method:"POST",headers:_apiHeaders,body:JSON.stringify({fileData:ea.dataUrl,fileType:ea.fileType||"application/pdf",label:ea.label})});
+          if(!resp.ok){const t=await resp.text();throw new Error("Proxy error "+resp.status+": "+t);}
           const data=await resp.json();
           if(!data.ok)throw new Error(data.error||"Analysis failed");
-          const text=data.analysis||"No analysis returned.";
-          const updated=extAudits.map(x=>x.id===ea.id?{...x,analysis:text,analysedDate:new Date().toLocaleDateString("en-NZ")}:x);
+          const updated=extAudits.map(x=>x.id===ea.id?{...x,analysis:data.analysis,analysedDate:new Date().toLocaleDateString("en-NZ")}:x);
           setExtAudits(updated);saveGen("extAudits",updated);
         }catch(e){alert("Analysis failed: "+e.message);}
         setAnalysing(null);
       }
-      function uploadFile(e){
-        const f=e.target.files[0];if(!f||!pendingLabel)return;
+      function uploadExt(e){
+        const f=e.target.files[0];if(!f||!extLabel)return;
         if(f.size>10*1024*1024){alert("File over 10MB.");return;}
         const r=new FileReader();
         r.onload=ev=>{
-          const rec={id:Date.now(),label:pendingLabel,fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+          const rec={id:Date.now(),label:extLabel,fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
           const updated=[...extAudits,rec];setExtAudits(updated);saveGen("extAudits",updated);
-          setPendingLabel("");setShowLabelForm(false);
+          setExtLabel("");setShowExtForm(false);
         };
         r.readAsDataURL(f);e.target.value="";
       }
       return <div>
-        <Alert type="green" title="External audit documents — AI-powered analysis">Upload DAA Group audit reports, ACC compliance reviews, or any external audit. AI will identify key findings, gaps, and give you a concrete action plan for the next audit.</Alert>
+        <Alert type="green" title="External audit documents — AI-powered analysis">Upload DAA Group reports, ACC compliance reviews, or any external audit. AI identifies key findings, gaps, and gives you a concrete action plan. Also use this for your P&P document — upload and get AI rewrite suggestions.</Alert>
         <div style={{marginBottom:"1rem"}}>
-          {!showLabelForm
-            ?<Btn onClick={()=>setShowLabelForm(true)}>+ Upload audit document</Btn>
+          {!showExtForm
+            ?<Btn onClick={()=>setShowExtForm(true)}>+ Upload document</Btn>
             :<Card style={{borderColor:C.teal}}>
-              <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Name this audit document</div>
-              <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem"}}>e.g. "DAA Group Audit 2024", "ACC compliance review 2025"</div>
-              <input value={labelInput} onChange={e=>setLabelInput(e.target.value)} onKeyDown={ev=>ev.key==="Enter"&&labelInput.trim()&&(setPendingLabel(labelInput.trim()),setTimeout(()=>ref.current.click(),50))} placeholder="Document name…" autoFocus style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box",marginBottom:"0.625rem"}}/>
+              <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Name this document</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem"}}>e.g. "DAA Group Audit 2024", "P&P Manual 2025", "ACC review 2025"</div>
+              <input value={extLabel} onChange={e=>setExtLabel(e.target.value)} onKeyDown={ev=>ev.key==="Enter"&&extLabel.trim()&&setTimeout(()=>extRef.current.click(),50)} placeholder="Document name…" autoFocus style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box",marginBottom:"0.625rem"}}/>
               <div style={{display:"flex",gap:8}}>
-                <Btn onClick={()=>{if(labelInput.trim()){setPendingLabel(labelInput.trim());setTimeout(()=>ref.current.click(),50);}}} >Choose file →</Btn>
-                <Btn outline onClick={()=>{setShowLabelForm(false);setLabelInput("");}}>Cancel</Btn>
+                <Btn onClick={()=>{if(extLabel.trim())setTimeout(()=>extRef.current.click(),50);}}>Choose file →</Btn>
+                <Btn outline onClick={()=>{setShowExtForm(false);setExtLabel("");}}>Cancel</Btn>
               </div>
             </Card>
           }
-          <input ref={ref} type="file" accept="application/pdf,.doc,.docx,image/*" style={{display:"none"}} onChange={uploadFile}/>
+          <input ref={extRef} type="file" accept="application/pdf,.doc,.docx,image/*" style={{display:"none"}} onChange={uploadExt}/>
         </div>
-        {extAudits.length===0&&<Alert type="blue" title="No external audit documents yet">Upload your DAA Group or ACC audit reports above to get AI-powered analysis and improvement recommendations.</Alert>}
+        {extAudits.length===0&&<Alert type="blue" title="No documents yet">Upload DAA audit reports, ACC compliance reviews, or your P&P document to get AI-powered analysis.</Alert>}
         {[...extAudits].reverse().map(ea=>(
           <Card key={ea.id} style={{marginBottom:"0.875rem"}}>
-            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"0.75rem"}}>
-              <div>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"0.75rem",gap:8}}>
+              <div style={{flex:1}}>
                 <div style={{fontSize:14,fontWeight:600}}>{ea.label}</div>
                 <div style={{fontSize:12,color:C.muted,marginTop:2}}>📄 {ea.fileName} · Uploaded {ea.uploadedDate}</div>
-                {ea.analysedDate&&<div style={{fontSize:11,color:C.teal,marginTop:2}}>✓ Analysed {ea.analysedDate}</div>}
+                {ea.analysedDate&&<div style={{fontSize:11,color:C.teal,marginTop:2}}>✓ AI analysed {ea.analysedDate}</div>}
               </div>
-              <div style={{display:"flex",gap:6,flexShrink:0}}>
-                <BSm onClick={()=>setEavf(ea)} color={C.teal}>👁 View</BSm>
-                {!ea.analysis&&<BSm onClick={()=>analyseAudit(ea)} color={C.blue} bg={analysing===ea.id?"#ddd":null}>{analysing===ea.id?"🔍 Analysing…":"🤖 AI Analysis"}</BSm>}
-                {ea.analysis&&<BSm onClick={()=>analyseAudit(ea)} color={C.gray}>{analysing===ea.id?"🔍 Re-analysing…":"↻ Re-analyse"}</BSm>}
-                <BSm onClick={()=>{if(window.confirm("Remove this document?")){const updated=extAudits.filter(x=>x.id!==ea.id);setExtAudits(updated);saveGen("extAudits",updated);}}} color={C.red}>✕</BSm>
+              <div style={{display:"flex",gap:5,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                <BSm onClick={()=>setEavf(ea)} color={C.teal}>👁 View file</BSm>
+                {!ea.analysis
+                  ?<BSm onClick={()=>analyseAudit(ea)} color={C.blue} bg={analysing===ea.id?"#ddd":null}>{analysing===ea.id?"🔍 Analysing…":"🤖 AI Analysis"}</BSm>
+                  :<BSm onClick={()=>analyseAudit(ea)} color={C.gray}>{analysing===ea.id?"🔍 Re-analysing…":"↻ Re-analyse"}</BSm>
+                }
+                <BSm onClick={()=>{if(window.confirm("Remove?")){const u=extAudits.filter(x=>x.id!==ea.id);setExtAudits(u);saveGen("extAudits",u);}}} color={C.red}>✕</BSm>
               </div>
             </div>
-            {analysing===ea.id&&<div style={{background:C.blueL,borderRadius:6,padding:"0.875rem",fontSize:13,color:C.blue,textAlign:"center"}}>🔍 Reading document and generating improvement plan… (may take 10–20 seconds)</div>}
-            {ea.analysis&&!analysing&&(
-              <div style={{background:C.grayXL,borderRadius:8,padding:"1rem",fontSize:13,borderLeft:`3px solid ${C.teal}`}}>
+            {analysing===ea.id&&<div style={{background:C.blueL,borderRadius:6,padding:"0.875rem",fontSize:13,color:C.blue,textAlign:"center"}}>🔍 Reading document and generating analysis… (10–30 seconds for large documents)</div>}
+            {ea.analysis&&analysing!==ea.id&&(
+              <div style={{background:C.grayXL,borderRadius:8,padding:"1rem",borderLeft:`3px solid ${C.teal}`}}>
                 <div style={{fontSize:12,fontWeight:600,color:C.teal,marginBottom:"0.5rem"}}>🤖 AI Analysis</div>
-                <div style={{whiteSpace:"pre-wrap",lineHeight:1.7,color:C.text,fontSize:12}}>{ea.analysis}</div>
+                <div style={{whiteSpace:"pre-wrap",lineHeight:1.75,color:C.text,fontSize:12}}>{ea.analysis}</div>
               </div>
             )}
           </Card>
@@ -2123,7 +2211,7 @@ export default function App(){
       <div style={{marginLeft:220,flex:1,padding:"1.5rem",minHeight:"100vh"}}>
         {page==="dashboard"&&<Dashboard/>}
         {page==="reminders"&&<RemindersPage/>}
-        {page==="pp"&&<PPPage setPage={setPage} setActiveAudit={setActiveAudit}/>}
+        {page==="pp"&&<PPPage setPage={setPage} setActiveAudit={setActiveAudit} ppDocs={ppDocs} setPpDocs={setPpDocs} ppReviews={ppReviews} setPpReviews={setPpReviews}/>}
         {page==="staff"&&<StaffPage/>}
         {page==="compliance"&&<CompliancePage/>}
         {page==="archive"&&<ArchivePage/>}
