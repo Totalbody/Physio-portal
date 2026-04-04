@@ -507,7 +507,7 @@ function FileRow({label,gkey,onView,accent=C.teal}){
       <div style={{flex:1}}><div style={{fontSize:13,fontWeight:500}}>{label}</div>{file&&<div style={{fontSize:11,color:C.muted,marginTop:1}}>{file.fileName} · {file.uploadedDate}</div>}</div>
       <div style={{display:"flex",gap:5,flexShrink:0}}>
         {file&&<BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>}
-        <BSm onClick={()=>ref.current.click()} color={accent}>{file?"Replace":"📷 Upload"}</BSm>
+        <BSm onClick={()=>ref.current.click()} color={accent}>📷 {file?"Upload new":"Upload"}</BSm>
         {file&&<BSm onClick={()=>{if(window.confirm("Remove?")){removeGen(gkey);setFile(null);}}} color={C.red}>✕</BSm>}
       </div>
       <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
@@ -601,7 +601,7 @@ function CertCard({staffId,cert,role,onView}){
       </div>
       <div style={{display:"flex",gap:5,marginTop:8,flexWrap:"wrap"}}>
         {file&&<BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>}
-        <BSm onClick={()=>ref.current.click()} color={file?C.gray:cert.required?C.teal:C.gray}>{file?"Replace":"📷 Upload"}</BSm>
+        <BSm onClick={()=>ref.current.click()} color={cert.required?C.teal:C.gray}>📷 {file?"Upload new":"Upload"}</BSm>
         {file&&isExpired&&<BSm onClick={()=>{
           const key=sKey(staffId,cert.key);
           if(_portalReady){delete _portalStore.data["expiry_"+key];fetch(PORTAL_API+"/store?key="+encodeURIComponent("expiry_"+key)+"&secret="+encodeURIComponent(PORTAL_SECRET),{method:"DELETE",headers:{"X-Portal-Secret":PORTAL_SECRET}}).catch(()=>{});}
@@ -1628,7 +1628,7 @@ export default function App(){
         {canSee
           ?<div style={{display:"flex",gap:5,alignItems:"center",flexShrink:0}}>
             {file&&<BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>}
-            <BSm onClick={()=>ref.current.click()} color={file?C.gray:C.teal}>{file?"Replace":"📄 Upload"}</BSm>
+            <BSm onClick={()=>ref.current.click()} color={C.teal}>📄 {file?"Upload new":"Upload"}</BSm>
             {file&&<BSm onClick={()=>{if(window.confirm("Remove contract?")){ removeFile(staffId,"contract");setFile(null);}}} color={C.red}>✕</BSm>}
           </div>
           :<span style={{fontSize:12,color:C.hint,flexShrink:0}}>🔒 Restricted</span>
