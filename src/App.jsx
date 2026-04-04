@@ -862,6 +862,36 @@ function OrientationModal({staffId,onClose}){
   );
 }
 
+// evidence row for the "Log past audit" form
+function LogAuditEvidenceRow({logAudit,setLogAudit}){
+  const ref=useRef();
+  function handle(e){
+    const f=e.target.files[0];if(!f)return;
+    if(f.size>10*1024*1024){alert("File over 10MB.");return;}
+    const r=new FileReader();
+    r.onload=async ev=>{
+      const evidence={id:Date.now(),fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+      setLogAudit(a=>({...a,evidence}));
+      const blobFile=await _uploadToBlob("logauditevid_"+Date.now(),f.name,f.type,ev.target.result);
+      if(blobFile)setLogAudit(a=>({...a,evidence:{...a.evidence,blobUrl:blobFile.blobUrl}}));
+    };
+    r.readAsDataURL(f);e.target.value="";
+  }
+  return(
+    <div style={{marginBottom:"0.625rem"}}>
+      <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Attach evidence (optional)</label>
+      {logAudit.evidence
+        ?<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:C.grayXL,borderRadius:6}}>
+          <span style={{fontSize:12,flex:1}}>📎 {logAudit.evidence.fileName}</span>
+          <BSm onClick={()=>setLogAudit(a=>({...a,evidence:null}))} color={C.red}>✕</BSm>
+        </div>
+        :<BSm onClick={()=>ref.current.click()} color={C.gray}>📎 Attach scanned form or photo</BSm>
+      }
+      <input ref={ref} type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={handle}/>
+    </div>
+  );
+}
+
 // evidence upload button for audit records — attach scanned/manual documents
 function AuditEvidenceBtn({audit,audits,setAudits,onView}){
   const ref=useRef();
@@ -1571,6 +1601,8 @@ export default function App(){
   const[inservices,setInservices]=useState([{id:1,date:"2025-08-10",clinic:"Titirangi",topic:"Shoulder rehab protocols",presenter:"Hans Vermeulen",attendees:"Hans, Alistair",notes:"Reviewed UniSportsOrtho shoulder stabilisation phases.",year:2025}]);
   const[activeAudit,setActiveAudit]=useState(null);
   const[viewAudit,setViewAudit]=useState(null);
+  const[showLogAudit,setShowLogAudit]=useState(false);
+  const[logAudit,setLogAudit]=useState({type:"hygiene",date:"",clinic:CLINICS[0].short,auditor:"",outcome:"Passed",notes:""});
   const[extAudits,setExtAudits]=useState(()=>loadGen("extAudits")||[]);
   const[eavf,setEavf]=useState(null);
   const[analysing,setAnalysing]=useState(null);
@@ -1585,7 +1617,8 @@ export default function App(){
   const[auditYearFilter,setAuditYearFilter]=useState("all");
   const[collapsedYears,setCollapsedYears]=useState({});
   const[showAdd,setShowAdd]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
-  const[nm,setNm]=useState({date:"",clinic:"All clinics",topic:"",attendees:"",notes:""});
+  const[nm,setNm]=useState({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});
+  const meetRef=useRef();
   const[staffOverrides,setStaffOverrides]=useState({});
   const roleNames={owner:"Jade Warren",alistair:"Alistair Burgess",hans:"Hans Vermeulen",staff:"Staff member"};
   useEffect(()=>{
@@ -2026,9 +2059,48 @@ export default function App(){
 
   const ManagementPage=()=>{const[mvf,setMvf]=useState(null);return(
     <div><PH title="Management" sub="Audits, staff meetings, equipment — DAA / ACC Allied Health Standards"/>
-    <TabBar items={[["audits","Audits"],["meetings","Staff Meetings"],["equipment","Equipment"],["external","External Audits"],["accreditation","Accreditation"]]} current={mgmtTab} setter={setMgmtTab}/>
+    <TabBar items={[["audits","Audits"],["meetings","Staff Meetings"],["equipment","Equipment"],["accreditation","Accreditation"]]} current={mgmtTab} setter={setMgmtTab}/>
     {mgmtTab==="audits"&&<div>
-      <div style={{marginBottom:"1.25rem"}}><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>Start a new audit</div>
+      <div style={{marginBottom:"1.25rem"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem"}}>
+          <div style={{fontSize:14,fontWeight:600}}>Start a new audit</div>
+          <BSm onClick={()=>setShowLogAudit(v=>!v)} color={C.gray}>📋 {showLogAudit?"Cancel":"Log past / manual audit"}</BSm>
+        </div>
+        {showLogAudit&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:"0.875rem"}}>Log a past or manual audit <span style={{fontSize:11,color:C.muted,fontWeight:400}}>(no checklist required — just record the outcome and optionally attach evidence)</span></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
+            <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Audit type</label>
+              <select value={logAudit.type} onChange={e=>setLogAudit({...logAudit,type:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
+                {Object.entries(AUDIT_FORMS).map(([k,f])=><option key={k} value={k}>{f.icon} {f.title}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Clinic</label>
+              <select value={logAudit.clinic} onChange={e=>setLogAudit({...logAudit,clinic:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
+                {CLINICS.map(c=><option key={c.id}>{c.short}</option>)}
+              </select>
+            </div>
+            <Input label="Date" value={logAudit.date} onChange={e=>setLogAudit({...logAudit,date:e.target.value})} type="date"/>
+            <Input label="Auditor name" value={logAudit.auditor} onChange={e=>setLogAudit({...logAudit,auditor:e.target.value})} placeholder="e.g. Jade Warren"/>
+          </div>
+          <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Outcome</label>
+            <div style={{display:"flex",gap:8}}>
+              {["Passed","Issues found","N/A"].map(o=><div key={o} onClick={()=>setLogAudit({...logAudit,outcome:o})} style={{padding:"6px 14px",borderRadius:6,border:`1.5px solid ${logAudit.outcome===o?C.teal:C.border}`,background:logAudit.outcome===o?C.tealL:"white",fontSize:13,cursor:"pointer",fontWeight:logAudit.outcome===o?600:400}}>{o}</div>)}
+            </div>
+          </div>
+          <Textarea label="Notes" value={logAudit.notes} onChange={e=>setLogAudit({...logAudit,notes:e.target.value})} rows={2} placeholder="Any issues found, actions taken, general observations…"/>
+          <LogAuditEvidenceRow logAudit={logAudit} setLogAudit={setLogAudit}/>
+          <div style={{display:"flex",gap:8,marginTop:"0.5rem"}}>
+            <Btn onClick={()=>{
+              if(!logAudit.date||!logAudit.auditor.trim()){alert("Date and auditor name required.");return;}
+              const form=AUDIT_FORMS[logAudit.type];
+              const rec={id:Date.now(),type:logAudit.type,title:form.title,icon:form.icon,clinic:logAudit.clinic,auditor:logAudit.auditor,date:logAudit.date,outcome:logAudit.outcome,notes:logAudit.notes,manual:true,...(logAudit.evidence?{evidence:logAudit.evidence}:{})};
+              const updated=[...audits,rec];setAudits(updated);saveGen("audits",updated);
+              setLogAudit({type:"hygiene",date:"",clinic:CLINICS[0].short,auditor:"",outcome:"Passed",notes:""});
+              setShowLogAudit(false);
+            }}>Save record</Btn>
+            <Btn outline onClick={()=>setShowLogAudit(false)}>Cancel</Btn>
+          </div>
+        </Card>}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(175px,1fr))",gap:"0.75rem"}}>
         {Object.entries(AUDIT_FORMS).map(([k,f])=>(
           <div key={k} onClick={()=>setActiveAudit(k)} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",cursor:"pointer"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=C.teal;e.currentTarget.style.boxShadow="0 2px 12px rgba(15,110,86,0.1)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.boxShadow="none";}}>
@@ -2144,7 +2216,18 @@ export default function App(){
           <Input label="Topic / agenda" value={nm.topic} onChange={e=>setNm({...nm,topic:e.target.value})} placeholder="e.g. Q4 staff meeting — H&S review, CPD updates"/>
           <Input label="Attendees" value={nm.attendees} onChange={e=>setNm({...nm,attendees:e.target.value})} placeholder="e.g. Jade, Alistair, Hans, Timothy"/>
           <Textarea label="Notes / minutes" value={nm.notes} onChange={e=>setNm({...nm,notes:e.target.value})} rows={3}/>
-          <div style={{display:"flex",gap:8}}><Btn onClick={()=>{if(nm.date&&nm.topic){const updated=[...meetings,{...nm,id:Date.now()}];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:""});setShowAdd(false);}}} >Save</Btn><Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn></div>
+          <div style={{marginBottom:"0.625rem"}}>
+            <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Attach minutes / notes document (optional)</label>
+            {nm.attachment
+              ?<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:C.grayXL,borderRadius:6,marginBottom:4}}>
+                <span style={{fontSize:12,flex:1}}>📎 {nm.attachment.fileName}</span>
+                <BSm onClick={()=>setNm({...nm,attachment:null})} color={C.red}>✕</BSm>
+              </div>
+              :<BSm onClick={()=>meetRef.current.click()} color={C.gray}>📎 Attach document or photo</BSm>
+            }
+            <input ref={meetRef} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;if(f.size>10*1024*1024){alert("File over 10MB.");return;}const r=new FileReader();r.onload=async ev=>{const att={id:Date.now(),fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};setNm(n=>({...n,attachment:att}));const bf=await _uploadToBlob("mtgatt_"+att.id,f.name,f.type,ev.target.result);if(bf)setNm(n=>({...n,attachment:{...n.attachment,blobUrl:bf.blobUrl}}));};r.readAsDataURL(f);e.target.value="";}}/>
+          </div>
+          <div style={{display:"flex",gap:8}}><Btn onClick={()=>{if(nm.date&&nm.topic){const updated=[...meetings,{...nm,id:Date.now()}];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});setShowAdd(false);}}} >Save</Btn><Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn></div>
         </Card>}
         {visibleMeetings.length===0&&<Alert type="blue" title="No meetings found">Log a meeting above or adjust the search.</Alert>}
         {visibleMeetings.map(m=>(
@@ -2157,7 +2240,8 @@ export default function App(){
               </div>
             </div>
             {m.attendees&&<div style={{fontSize:12,color:C.muted,marginBottom:4}}><strong style={{color:C.text}}>Attendees:</strong> {m.attendees}</div>}
-            {m.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"7px 10px",borderRadius:6,lineHeight:1.6}}>{m.notes}</div>}
+            {m.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"7px 10px",borderRadius:6,lineHeight:1.6,marginBottom:m.attachment?6:0}}>{m.notes}</div>}
+            {m.attachment&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}><span style={{fontSize:11,color:C.muted}}>📎</span><BSm onClick={()=>setEavf(m.attachment)} color={C.teal}>View minutes</BSm><span style={{fontSize:11,color:C.muted}}>{m.attachment.fileName}</span></div>}
           </Card>
         ))}
       </div>;
@@ -2168,95 +2252,29 @@ export default function App(){
       <Btn outline onClick={()=>setActiveAudit("equipment")}>Run equipment audit →</Btn>
       {mvf&&<FileViewer file={mvf} onClose={()=>setMvf(null)}/>}
     </div>}
-    {mgmtTab==="external"&&(()=>{
-      const extRef=useRef();
-      async function analyseAudit(ea){
-        setAnalysing(ea.id);
-        try{
-          const resp=await fetch(PORTAL_API+"/analyse-doc",{method:"POST",headers:_apiHeaders,body:JSON.stringify({fileData:ea.dataUrl,fileType:ea.fileType||"application/pdf",label:ea.label})});
-          if(!resp.ok){const t=await resp.text();throw new Error("Proxy error "+resp.status+": "+t);}
-          const data=await resp.json();
-          if(!data.ok)throw new Error(data.error||"Analysis failed");
-          const updated=extAudits.map(x=>x.id===ea.id?{...x,analysis:data.analysis,analysedDate:new Date().toLocaleDateString("en-NZ")}:x);
-          setExtAudits(updated);saveGen("extAudits",updated);
-        }catch(e){alert("Analysis failed: "+e.message);}
-        setAnalysing(null);
-      }
-      function uploadExt(e){
-        const f=e.target.files[0];if(!f||!extLabel)return;
-        if(f.size>10*1024*1024){alert("File over 10MB.");return;}
-        const r=new FileReader();
-        r.onload=async ev=>{
-          const id=Date.now();
-          const rec={id,label:extLabel,fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
-          const updated=[...extAudits,rec];setExtAudits(updated);
-          setExtLabel("");setShowExtForm(false);
-          const blobFile=await _uploadToBlob("extaudit_"+id,f.name,f.type,ev.target.result);
-          if(blobFile){
-            const withBlob=updated.map(d=>d.id===id?{...d,blobUrl:blobFile.blobUrl,dataUrl:undefined}:d);
-            setExtAudits(withBlob);saveGen("extAudits",withBlob);
-          } else {
-            saveGen("extAudits",updated);
-          }
-        };
-        r.readAsDataURL(f);e.target.value="";
-      }
-      return <div>
-        <Alert type="green" title="External audit documents — AI-powered analysis">Upload DAA Group reports, ACC compliance reviews, or any external audit. AI identifies key findings, gaps, and gives you a concrete action plan. Also use this for your P&P document — upload and get AI rewrite suggestions.</Alert>
-        <div style={{marginBottom:"1rem"}}>
-          {!showExtForm
-            ?<Btn onClick={()=>setShowExtForm(true)}>+ Upload document</Btn>
-            :<Card style={{borderColor:C.teal}}>
-              <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Name this document</div>
-              <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem"}}>e.g. "DAA Group Audit 2024", "P&P Manual 2025", "ACC review 2025"</div>
-              <input value={extLabel} onChange={e=>setExtLabel(e.target.value)} onKeyDown={ev=>ev.key==="Enter"&&extLabel.trim()&&setTimeout(()=>extRef.current.click(),50)} placeholder="Document name…" autoFocus style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box",marginBottom:"0.625rem"}}/>
-              <div style={{display:"flex",gap:8}}>
-                <Btn onClick={()=>{if(extLabel.trim())setTimeout(()=>extRef.current.click(),50);}}>Choose file →</Btn>
-                <Btn outline onClick={()=>{setShowExtForm(false);setExtLabel("");}}>Cancel</Btn>
-              </div>
-            </Card>
-          }
-          <input ref={extRef} type="file" accept="application/pdf,.doc,.docx,image/*" style={{display:"none"}} onChange={uploadExt}/>
-        </div>
-        {extAudits.length===0&&<Alert type="blue" title="No documents yet">Upload DAA audit reports, ACC compliance reviews, or your P&P document to get AI-powered analysis.</Alert>}
-        {[...extAudits].reverse().map(ea=>(
-          <Card key={ea.id} style={{marginBottom:"0.875rem"}}>
-            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"0.75rem",gap:8}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:14,fontWeight:600}}>{ea.label}</div>
-                <div style={{fontSize:12,color:C.muted,marginTop:2}}>📄 {ea.fileName} · Uploaded {ea.uploadedDate}</div>
-                {ea.analysedDate&&<div style={{fontSize:11,color:C.teal,marginTop:2}}>✓ AI analysed {ea.analysedDate}</div>}
-              </div>
-              <div style={{display:"flex",gap:5,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
-                <BSm onClick={()=>setEavf(ea)} color={C.teal}>👁 View file</BSm>
-                {!ea.analysis
-                  ?<BSm onClick={()=>analyseAudit(ea)} color={C.blue} bg={analysing===ea.id?"#ddd":null}>{analysing===ea.id?"🔍 Analysing…":"🤖 AI Analysis"}</BSm>
-                  :<BSm onClick={()=>analyseAudit(ea)} color={C.gray}>{analysing===ea.id?"🔍 Re-analysing…":"↻ Re-analyse"}</BSm>
-                }
-                <BSm onClick={()=>{if(window.confirm("Remove?")){const u=extAudits.filter(x=>x.id!==ea.id);setExtAudits(u);saveGen("extAudits",u);}}} color={C.red}>✕</BSm>
-              </div>
-            </div>
-            {analysing===ea.id&&<div style={{background:C.blueL,borderRadius:6,padding:"0.875rem",fontSize:13,color:C.blue,textAlign:"center"}}>🔍 Reading document and generating analysis… (10–30 seconds for large documents)</div>}
-            {ea.analysis&&analysing!==ea.id&&(
-              <div style={{background:C.grayXL,borderRadius:8,padding:"1rem",borderLeft:`3px solid ${C.teal}`}}>
-                <div style={{fontSize:12,fontWeight:600,color:C.teal,marginBottom:"0.5rem"}}>🤖 AI Analysis</div>
-                <div style={{whiteSpace:"pre-wrap",lineHeight:1.75,color:C.text,fontSize:12}}>{ea.analysis}</div>
-              </div>
-            )}
-          </Card>
-        ))}
-        {eavf&&<FileViewer file={eavf} onClose={()=>setEavf(null)}/>}
-      </div>;
-    })()}
-        {mgmtTab==="accreditation"&&<div>
+    {mgmtTab==="accreditation"&&<div>
       <Alert type="green" title="DAA Group — ACC Allied Health Standards">All sections of this portal support your DAA audit readiness. P&P manual underpins all requirements below.</Alert>
-      {[["Staff credentials — APC, First Aid, Cultural",Object.entries(STAFF).every(([id])=>["apc","firstaid","cultural"].every(k=>loadFile(id,k)))?"ok":"pending","All staff hold current APC, First Aid and Cultural Competency — P&P §7"],["Police vetting — all staff",Object.entries(STAFF).every(([id])=>loadFile(id,"policevetting"))?"ok":"pending","Every 3 years — NZ Police email confirmation — P&P §4.2"],["16th-visit clinical reviews","pending","Document case reviews in meeting notes — P&P §1.2"],["Orientation — all staff","pending","Complete digital checklist for each staff member — P&P §7.1"],["P&P annual review","pending","Due April — P&P §1.1"],["In-service training","pending","At least one per clinic per year — P&P §7.7.3"],["H&S audits — quarterly","ok","Records in audit history — P&P §1.5.2"],["Fire drills — annual","pending","Run from Clinics page — P&P §3.1.2"],["Staff meetings — quarterly","ok","Minutes logged above — P&P §7.6"],["Equipment servicing — annual","ok","Records above — P&P §3.1.15"],["Clinical notes audit — 6-monthly","pending","10 records per physio (5 current + 5 past) — P&P §1.5.1"],["Client satisfaction survey","pending","Via website or forms — P&P §1.5.3"]].map(([t,s,d])=>(
-        <Card key={t} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-            <div><div style={{fontSize:13,fontWeight:600}}>{t}</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>{d}</div></div>
-            <Pill s={s} label={s==="ok"?"Compliant ✓":"Action needed"}/>
+      {[
+        {t:"Staff credentials — APC, First Aid, Cultural",s:Object.entries(STAFF).every(([id])=>["apc","firstaid","cultural"].every(k=>loadFile(id,k)))?"ok":"pending",d:"All staff hold current APC, First Aid and Cultural Competency — P&P §7",action:()=>{setPage("compliance");setCompTab("overview");}},
+        {t:"Police vetting — all staff",s:Object.entries(STAFF).every(([id])=>loadFile(id,"policevetting"))?"ok":"pending",d:"Every 3 years — NZ Police email confirmation — P&P §4.2",action:()=>{setPage("compliance");setCompTab("vetting");}},
+        {t:"Clinical notes audits — 6-monthly",s:[...audits].filter(a=>a.type==="clinical_notes").length>0?"ok":"pending",d:"10 records per physio (5 current + 5 past) — P&P §1.5.1",action:()=>{setMgmtTab("audits");setActiveAudit("clinical_notes");}},
+        {t:"Orientation — all staff",s:Object.keys(STAFF).every(id=>loadFile(id,"orientation"))?"ok":"pending",d:"Complete digital checklist for each staff member — P&P §7.1",action:()=>setPage("staff")},
+        {t:"P&P annual review",s:Object.keys(ppReviews||{}).length>=(PP_SECTIONS?.length||8)?"ok":"pending",d:"Due April — P&P §1.1",action:()=>{setPage("pp");}},
+        {t:"In-service training",s:inservices.some(i=>String(i.year||i.date?.slice(0,4)||"")===String(new Date().getFullYear()))?"ok":"pending",d:"At least one per clinic per year — P&P §7.7.3",action:()=>setPage("inservice")},
+        {t:"H&S audits — quarterly",s:[...audits].filter(a=>a.type==="hs_audit").length>0?"ok":"pending",d:"Records in audit history — P&P §1.5.2",action:()=>{setMgmtTab("audits");}},
+        {t:"Fire drills — annual",s:[...audits].filter(a=>a.type==="fire_drill").length>0?"ok":"pending",d:"Annual requirement — P&P §3.1.2",action:()=>{setMgmtTab("audits");}},
+        {t:"Staff meetings — quarterly",s:meetings.length>0?"ok":"pending",d:"Minutes logged in Staff Meetings tab — P&P §7.6",action:()=>setMgmtTab("meetings")},
+        {t:"Equipment servicing — annual",s:[...audits].filter(a=>a.type==="equipment").length>0?"ok":"pending",d:"Annual service and test/tag — P&P §3.1.15",action:()=>setMgmtTab("equipment")},
+        {t:"Hygiene audits — quarterly",s:[...audits].filter(a=>a.type==="hygiene").length>0?"ok":"pending",d:"Quarterly per clinic — P&P §1.5.2",action:()=>{setMgmtTab("audits");}},
+        {t:"Client satisfaction survey",s:"pending",d:"Via website or forms — P&P §1.5.3",action:null},
+      ].map(({t,s,d,action})=>(
+        <div key={t} onClick={action||undefined} style={{background:C.card,border:`1px solid ${s==="ok"?C.teal:C.border}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"0.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:action?"pointer":"default"}} onMouseEnter={e=>{if(action)e.currentTarget.style.boxShadow="0 2px 12px rgba(15,110,86,0.08)";}} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>{t}{action&&<span style={{fontSize:10,color:C.teal}}>→</span>}</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>{d}</div>
           </div>
-        </Card>
+          <Pill s={s} label={s==="ok"?"Compliant ✓":"Action needed"}/>
+        </div>
       ))}
     </div>}
     </div>
