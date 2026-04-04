@@ -394,6 +394,13 @@ function staffComp(id) {
   return { done, total: req.length, pct: Math.round((done / req.length) * 100) };
 }
 
+function certStatus(id, key) {
+  const f = loadFile(id, key);
+  if (!f) return "pending";
+  if (f.expiry && getExpiryStatus(f.expiry).status === "expired") return "expired";
+  return "ok";
+}
+
 function getReminders() {
   const today = new Date(); const items = [];
   REMINDER_SCHEDULE.forEach(r => {
@@ -1082,11 +1089,7 @@ const INIT_MEETINGS=[
   {id:1,date:"2025-11-15",clinic:"All clinics",topic:"Q4 staff meeting — H&S review, CPD updates",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"Discussed APC renewal cycle, updated first aid booking process."},
   {id:2,date:"2025-08-10",clinic:"Titirangi",topic:"In-service — shoulder rehab protocols",attendees:"Hans, Alistair",notes:"Hans led session. Reviewed UniSportsOrtho shoulder stabilisation phases."},
 ];
-const INIT_AUDITS=[
-  {id:1,date:"2025-12-01",type:"hs_audit",icon:"⚠️",title:"H&S Workplace Audit",clinic:"Pakuranga",auditor:"Alistair Burgess",passed:22,failed:1,na:0,total:23,outcome:"1 issue found",notes:"First aid kit expiry dates needed updating. Actioned same day."},
-  {id:2,date:"2025-12-03",type:"hs_audit",icon:"⚠️",title:"H&S Workplace Audit",clinic:"Titirangi",auditor:"Alistair Burgess",passed:23,failed:0,na:0,total:23,outcome:"Passed",notes:""},
-  {id:3,date:"2025-09-15",type:"equipment",icon:"⚡",title:"Equipment & Electrical Check",clinic:"Pakuranga",auditor:"Jade Warren",passed:15,failed:0,na:2,total:17,outcome:"Passed",notes:"2 N/A. All test tags current."},
-];
+const INIT_AUDITS=[];
 
 export default function App(){
   const[page,setPage]=useState("dashboard");const[profile,setProfile]=useState(null);const[role,setRole]=useState("owner");
@@ -1094,7 +1097,11 @@ export default function App(){
   const[portalConnected,setPortalConnected]=useState(false);
   const[,forceRender]=useState(0);
   const[compTab,setCompTab]=useState("overview");const[mgmtTab,setMgmtTab]=useState("audits");const[docsTab,setDocsTab]=useState("contracts");const[isrvTab,setIsrvTab]=useState("log");
-  const[meetings,setMeetings]=useState(INIT_MEETINGS);const[audits,setAudits]=useState(INIT_AUDITS);const[activeAudit,setActiveAudit]=useState(null);
+  const[meetings,setMeetings]=useState(()=>loadGen("meetings")||INIT_MEETINGS);
+  const[audits,setAudits]=useState(()=>loadGen("audits")||INIT_AUDITS);
+  const[inservices,setInservices]=useState(()=>loadGen("inservices")||[{id:1,date:"2025-08-10",clinic:"Titirangi",topic:"Shoulder rehab protocols",presenter:"Hans Vermeulen",attendees:"Hans, Alistair",notes:"Reviewed UniSportsOrtho shoulder stabilisation phases.",year:2025}]);
+  const[activeAudit,setActiveAudit]=useState(null);
+  const[urgentOpen,setUrgentOpen]=useState(true);
   const[showAdd,setShowAdd]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
   const[nm,setNm]=useState({date:"",clinic:"All clinics",topic:"",attendees:"",notes:""});
   const roleNames={owner:"Jade Warren",alistair:"Alistair Burgess",hans:"Hans Vermeulen",staff:"Staff member"};
@@ -1133,20 +1140,30 @@ export default function App(){
             const found=[];
             CORE_CERTS.filter(c=>c.required).forEach(cert=>{
               const f=loadFile(id,cert.key);
-              if(!f){found.push({name:s.name,issue:cert.label+" — missing",level:"missing"});}
-              else if(f.expiry&&getExpiryStatus(f.expiry).status==="expired"){found.push({name:s.name,issue:cert.label+" — expired "+new Date(f.expiry).toLocaleDateString("en-NZ"),level:"expired"});}
+              if(!f){found.push({name:s.name,id,issue:cert.label+" — missing",level:"missing"});}
+              else if(f.expiry&&getExpiryStatus(f.expiry).status==="expired"){found.push({name:s.name,id,issue:cert.label+" — expired "+new Date(f.expiry).toLocaleDateString("en-NZ"),level:"expired"});}
             });
             return found;
           });
           if(!issues.length)return <Alert type="green" title="✅ All certifications current">No expired or missing required documents.</Alert>;
-          const grouped={};issues.forEach(i=>{if(!grouped[i.name])grouped[i.name]=[];grouped[i.name].push(i.issue);});
+          const grouped={};issues.forEach(i=>{if(!grouped[i.name])grouped[i.name]={id:i.id,items:[]};grouped[i.name].items.push(i.issue);});
+          const count=Object.keys(grouped).length;
           return(
-            <div style={{background:"#FCEBEB",borderLeft:`3px solid ${C.red}`,borderRadius:6,padding:"0.875rem 1rem",marginBottom:"0.875rem"}}>
-              <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",color:C.red}}>🔴 Urgent — {Object.keys(grouped).length} staff member{Object.keys(grouped).length!==1?"s":""} need action</div>
-              {Object.entries(grouped).map(([name,items])=>(
-                <div key={name} style={{marginBottom:3,fontSize:12}}><span style={{fontWeight:600,color:C.text}}>{name}</span><span style={{color:C.muted}}> — {items.join(" · ")}</span></div>
-              ))}
-              <div style={{fontSize:11,color:C.muted,marginTop:"0.5rem"}}>Tap any staff member to upload. Required for ACC compliance.</div>
+            <div style={{background:"#FCEBEB",borderLeft:`3px solid ${C.red}`,borderRadius:6,marginBottom:"0.875rem",overflow:"hidden"}}>
+              <div onClick={()=>setUrgentOpen(o=>!o)} style={{padding:"0.875rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+                <div style={{fontSize:13,fontWeight:600,color:C.red}}>🔴 Urgent — {count} staff member{count!==1?"s":""} need action</div>
+                <span style={{fontSize:18,color:C.red,transform:urgentOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.2s",display:"inline-block"}}>›</span>
+              </div>
+              {urgentOpen&&<div style={{padding:"0 1rem 0.875rem"}}>
+                {Object.entries(grouped).map(([name,{id,items}])=>(
+                  <div key={name} onClick={()=>setProfile(id)} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:6,padding:"6px 8px",borderRadius:6,cursor:"pointer",background:"rgba(226,75,74,0.06)"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(226,75,74,0.12)"} onMouseLeave={e=>e.currentTarget.style.background="rgba(226,75,74,0.06)"}>
+                    <div style={{width:28,height:28,borderRadius:"50%",background:STAFF[id]?.color||C.red,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"white",flexShrink:0}}>{STAFF[id]?.ini}</div>
+                    <div><div style={{fontSize:12,fontWeight:600,color:C.text}}>{name}</div><div style={{fontSize:11,color:C.muted,marginTop:1}}>{items.join(" · ")}</div></div>
+                    <span style={{marginLeft:"auto",fontSize:11,color:C.red,fontWeight:500,flexShrink:0}}>Upload →</span>
+                  </div>
+                ))}
+                <div style={{fontSize:11,color:C.muted,marginTop:"0.25rem"}}>Tap a staff member to open their profile and upload. Required for ACC compliance.</div>
+              </div>}
             </div>
           );
         })()}
@@ -1168,7 +1185,7 @@ export default function App(){
             <thead><TH headers={["Staff","Type","Clinics","APC","First Aid","Cultural","Police Vetting","Orientation","Progress"]}/></thead>
             <tbody>
               {Object.entries(STAFF).map(([id,s])=>{
-                const fs=k=>loadFile(id,k)?"ok":"pending";const comp=staffComp(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[s.type]||"gray";
+                const fs=k=>certStatus(id,k);const comp=staffComp(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[s.type]||"gray";
                 return(
                   <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
                     <TD><strong>{s.name}</strong></TD><TD><Chip color={tc}>{s.type}</Chip></TD>
@@ -1260,8 +1277,8 @@ export default function App(){
       <Alert type="blue" title="📌 Universal requirements — everyone">APC · First Aid / CPR · Cultural Competency · Contract · Job Description · Orientation. Peer review & appraisal for staff 12+ months.</Alert>
       <TabBar items={[["overview","Overview"],["apc","APC"],["firstaid","First Aid"],["cultural","Cultural"],["vetting","🚔 Police Vetting"],["reviews","Reviews"]]} current={compTab} setter={setCompTab}/>
       {compTab==="vetting"&&<><Alert type="blue" title="Police Vetting — §4.2 P&P Manual">Required for all staff working with vulnerable clients (children, older adults, people with disabilities). Renewed every 3 years. Evidence is the email from NZ Police showing a clear result. Upload the email or PDF confirmation to each staff member's profile.</Alert><Tbl headers={["Staff","Vetting on file","File","Notes"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"policevetting");const note={gwenne:"Vetting completed — clear ✓",ibrahim:"Vetting completed — clear ✓"}[id]||"Upload email confirmation";return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={f?"ok":"pending"} label={f?`Uploaded ${f.uploadedDate}`:"Not uploaded"}/></TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD><TD style={{fontSize:11,color:C.muted}}>{note}</TD></tr>;})}</Tbl><div style={{fontSize:12,color:C.muted,marginTop:"0.75rem",lineHeight:1.6,padding:"0.75rem 1rem",background:C.grayXL,borderRadius:8}}>📌 Per §4.2 P&P Manual: police vetting and risk assessment must be completed every 3 years. The NZ Police vetting email or PDF showing "no information to release" is sufficient evidence. Tap any staff member to upload their certificate.</div></>}
-      {compTab==="overview"&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><TH headers={["Staff","APC","First Aid","Cultural","Contract","JD","Orientation","Peer Review","Appraisal"]}/></thead><tbody>{Object.entries(STAFF).map(([id,s])=><tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD>{CORE_CERTS.map(c=><TD key={c.key}>{c.ownerOnly&&role!=="owner"&&role!==id?<span style={{fontSize:11,color:C.hint}}>🔒</span>:<Pill s={loadFile(id,c.key)?"ok":"pending"}/>}</TD>)}</tr>)}</tbody></table></div>}
-      {compTab==="apc"&&<><Alert type="amber" title="Annual Practising Certificate">Issued by PBNZ. Renews 1 April. Must be sighted and copy on file for all staff.</Alert><Tbl headers={["Staff","APC on file","File"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"apc");return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}}><TD><strong>{s.name}</strong></TD><TD><Pill s={f?"ok":"pending"} label={f?`Uploaded ${f.uploadedDate}`:"Not uploaded"}/></TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD></tr>;})}</Tbl></>}
+      {compTab==="overview"&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><TH headers={["Staff","APC","First Aid","Cultural","Contract","JD","Orientation","Peer Review","Appraisal"]}/></thead><tbody>{Object.entries(STAFF).map(([id,s])=><tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD>{CORE_CERTS.map(c=><TD key={c.key}>{c.ownerOnly&&role!=="owner"&&role!==id?<span style={{fontSize:11,color:C.hint}}>🔒</span>:<Pill s={certStatus(id,c.key)}/>}</TD>)}</tr>)}</tbody></table></div>}
+      {compTab==="apc"&&<><Alert type="amber" title="Annual Practising Certificate">Issued by PBNZ. Renews 1 April. Must be sighted and copy on file for all staff.</Alert><Tbl headers={["Staff","Status","Expiry","File"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"apc");const st=certStatus(id,"apc");const exp=f?.expiry?getExpiryStatus(f.expiry):null;return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={st} label={st==="expired"?"Expired ⚠":st==="ok"?`On file ✓`:"Not uploaded"}/></TD><TD style={{fontSize:12,color:exp?exp.color:C.hint}}>{exp?exp.label:"—"}</TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD></tr>;})}</Tbl></>}
       {compTab==="firstaid"&&<Alert type="amber" title="First Aid / CPR — all staff required">Valid 2 years. Alistair's cert expired 10 Aug 2024. Upload via each staff profile.</Alert>}
       {compTab==="cultural"&&<Alert type="amber" title="Cultural Competency — all staff required">Valid 1 year. Alistair's Mauriora cert expired Sept 2024. Re-enrol at <a href="https://mauriora.co.nz" target="_blank" rel="noreferrer" style={{color:C.blue}}>mauriora.co.nz</a>.</Alert>}
       {compTab==="reviews"&&<Tbl headers={["Staff","Peer Review","Appraisal","Notes"]}>{Object.entries(STAFF).map(([id,s])=>{const pr=loadFile(id,"peerreview");const ap=loadFile(id,"appraisal");const n={alistair:"Clinical Director",hans:"On file",dylan:"New Dec 2025",ibrahim:"New grad",komal:"Contractor",gwenne:"First cycle"}[id]||"Annual cycle";return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}}><TD><strong>{s.name}</strong></TD><TD><Pill s={pr?"ok":"pending"}/></TD><TD><Pill s={ap?"ok":"pending"}/></TD><TD style={{fontSize:12,color:C.muted}}>{n}</TD></tr>;})}</Tbl>}
@@ -1293,13 +1310,98 @@ export default function App(){
     </div></div>
   );
 
-  const InservicePage=()=>{const[ivf,setIvf]=useState(null);return(
-    <div><PH title="In-service training log" sub="Annual requirement — at least one per clinic group per year"/>
-    <Alert type="amber" title="P&P requirement">Section 7.7.3: Regular in-service education done at TBP. Topics suggested by staff, physios or selected by presenter. No client-identifying details in case studies.</Alert>
-    <TabBar items={[["log","2026 Log"],["resources","Resources & files"]]} current={isrvTab} setter={setIsrvTab}/>
-    {isrvTab==="log"&&<Card><Tbl headers={["Clinic","Topic","Date","Attendees","Status"]}>{[["Pakuranga","Not yet scheduled","—","Alistair, Timothy, Dylan, Ibrahim, Komal","pending"],["Flat Bush","Not yet scheduled","—","Ibrahim, Isabella","pending"],["Titirangi","Shoulder rehab protocols","10 Aug 2025","Hans, Alistair","ok"],["Panmure","Not yet scheduled","—","Gwenne, Timothy, Komal","pending"]].map(([c,t,d,a,s])=><tr key={c}><TD>{c}</TD><TD style={{fontStyle:s==="pending"?"italic":"normal",color:s==="pending"?C.hint:C.text}}>{t}</TD><TD>{d}</TD><TD style={{fontSize:12}}>{a}</TD><TD><Pill s={s} label={s==="ok"?"Completed ✓":"Needed"}/></TD></tr>)}</Tbl><div style={{marginTop:"1rem"}}><Btn outline onClick={()=>{setPage("management");setMgmtTab("meetings");}}>+ Log in Management →</Btn></div></Card>}
-    {isrvTab==="resources"&&<Card><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>In-service resources</div><div style={{fontSize:12,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Upload handouts, slides or reading materials. All staff can view. Creates an audit record of what was covered.</div>{CLINICS.filter(c=>c.id!=="schools").map(cl=><FileRow key={cl.id} label={`${cl.icon} ${cl.short} — in-service resource`} gkey={`isrv_${cl.id}`} onView={f=>setIvf(f)}/>)}<div style={{marginTop:"0.75rem",fontSize:11,color:C.muted}}>Accepted: PDF, Word, image. Max 3MB.</div></Card>}
-    {ivf&&<FileViewer file={ivf} onClose={()=>setIvf(null)}/>}
+  const InservicePage=()=>{
+    const[ivf,setIvf]=useState(null);
+    const[showForm,setShowForm]=useState(false);
+    const[filterClinic,setFilterClinic]=useState("all");
+    const[filterYear,setFilterYear]=useState(String(new Date().getFullYear()));
+    const[ni,setNi]=useState({date:"",clinic:"All clinics",topic:"",presenter:"",attendees:"",notes:""});
+    const years=[...new Set(inservices.map(i=>String(i.year||i.date?.slice(0,4)||"2025")))].sort((a,b)=>b-a);
+    if(!years.includes(filterYear))years.unshift(filterYear);
+    const clinicOptions=["all",...CLINICS.filter(c=>c.id!=="schools").map(c=>c.short)];
+    const visible=inservices.filter(i=>{
+      const yr=String(i.year||i.date?.slice(0,4)||"");
+      const cl=i.clinic||"";
+      return(filterYear==="all"||yr===filterYear)&&(filterClinic==="all"||cl===filterClinic||cl.includes(filterClinic));
+    }).sort((a,b)=>b.date.localeCompare(a.date));
+    function addInservice(){
+      if(!ni.date||!ni.topic){alert("Date and topic required.");return;}
+      const rec={...ni,id:Date.now(),year:parseInt(ni.date.slice(0,4))};
+      const updated=[...inservices,rec];
+      setInservices(updated);saveGen("inservices",updated);
+      setNi({date:"",clinic:"All clinics",topic:"",presenter:"",attendees:"",notes:""});
+      setShowForm(false);
+    }
+    // Per-clinic status for current year
+    const thisYear=String(new Date().getFullYear());
+    const clinicStatus=CLINICS.filter(c=>c.id!=="schools").map(cl=>{
+      const done=inservices.filter(i=>String(i.year||i.date?.slice(0,4)||"")===thisYear&&(i.clinic===cl.short||i.clinic===cl.name||(i.clinic||"").includes(cl.short)));
+      return{...cl,count:done.length,done:done.length>0};
+    });
+    return(
+    <div>
+      <PH title="In-service training log" sub="Annual requirement — at least one per clinic per year · P&P §7.7.3"/>
+      <Alert type="amber" title="P&P requirement">Section 7.7.3: Regular in-service education done at TBP. Topics suggested by staff, physios or selected by presenter. No client-identifying details in case studies.</Alert>
+      <TabBar items={[["log","Session log"],["status",thisYear+" Status"],["resources","Resources & files"]]} current={isrvTab} setter={setIsrvTab}/>
+      {isrvTab==="status"&&(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:"0.75rem",marginBottom:"1rem"}}>
+            {clinicStatus.map(cl=>(
+              <Card key={cl.id} style={{padding:"1rem",borderColor:cl.done?C.teal:C.amber}}>
+                <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>{cl.icon} {cl.short}</div>
+                <div style={{fontSize:12,color:C.muted,marginBottom:8}}>{cl.note}</div>
+                <Pill s={cl.done?"ok":"pending"} label={cl.done?`${cl.count} session${cl.count!==1?"s":""} done ✓`:"Required — none yet"}/>
+              </Card>
+            ))}
+          </div>
+          <Btn onClick={()=>setShowForm(true)}>+ Log in-service session</Btn>
+        </div>
+      )}
+      {isrvTab==="log"&&(
+        <div>
+          <div style={{display:"flex",gap:8,marginBottom:"1rem",alignItems:"center",flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:4}}>
+              {["all",...years.slice(0,4)].filter((v,i,a)=>a.indexOf(v)===i).map(y=><button key={y} onClick={()=>setFilterYear(y)} style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:filterYear===y?C.teal:"white",color:filterYear===y?"white":C.muted,border:`1px solid ${filterYear===y?C.teal:C.border}`,cursor:"pointer"}}>{y==="all"?"All years":y}</button>)}
+            </div>
+            <select value={filterClinic} onChange={e=>setFilterClinic(e.target.value)} style={{fontSize:12,padding:"4px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL}}>
+              {clinicOptions.map(c=><option key={c} value={c}>{c==="all"?"All clinics":c}</option>)}
+            </select>
+            <Btn onClick={()=>setShowForm(true)} style={{marginLeft:"auto"}}>+ Log session</Btn>
+          </div>
+          {showForm&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
+            <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Log in-service session</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
+              <Input label="Date" value={ni.date} onChange={e=>setNi({...ni,date:e.target.value})} type="date"/>
+              <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Clinic</label>
+                <select value={ni.clinic} onChange={e=>setNi({...ni,clinic:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
+                  <option>All clinics</option>{CLINICS.filter(c=>c.id!=="schools").map(c=><option key={c.id}>{c.short}</option>)}
+                </select>
+              </div>
+            </div>
+            <Input label="Topic" value={ni.topic} onChange={e=>setNi({...ni,topic:e.target.value})} placeholder="e.g. Shoulder rehab protocols"/>
+            <Input label="Presenter" value={ni.presenter} onChange={e=>setNi({...ni,presenter:e.target.value})} placeholder="e.g. Hans Vermeulen"/>
+            <Input label="Attendees" value={ni.attendees} onChange={e=>setNi({...ni,attendees:e.target.value})} placeholder="e.g. Hans, Alistair, Timothy"/>
+            <Textarea label="Notes / topics covered" value={ni.notes} onChange={e=>setNi({...ni,notes:e.target.value})} rows={2}/>
+            <div style={{display:"flex",gap:8}}><Btn onClick={addInservice}>Save session</Btn><Btn outline onClick={()=>setShowForm(false)}>Cancel</Btn></div>
+          </Card>}
+          {visible.length===0&&<Alert type="blue" title="No sessions found">No in-service sessions match this filter. Log a new session above.</Alert>}
+          {visible.map(s=>(
+            <Card key={s.id} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}>
+              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600}}>{s.topic}</div>
+                  <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.date} · {s.clinic}{s.presenter?` · Presenter: ${s.presenter}`:""}</div>
+                  {s.attendees&&<div style={{fontSize:12,color:C.muted,marginTop:1}}>Attendees: {s.attendees}</div>}
+                  {s.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"5px 8px",borderRadius:5,marginTop:6,lineHeight:1.5}}>{s.notes}</div>}
+                </div>
+                <Pill s="ok" label="Completed ✓"/>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+      {isrvTab==="resources"&&<Card><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>In-service resources</div><div style={{fontSize:12,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Upload handouts, slides or reading materials. All staff can view.</div>{CLINICS.filter(c=>c.id!=="schools").map(cl=><FileRow key={cl.id} label={`${cl.icon} ${cl.short} — in-service resource`} gkey={`isrv_${cl.id}`} onView={f=>setIvf(f)}/>)}<div style={{marginTop:"0.75rem",fontSize:11,color:C.muted}}>Accepted: PDF, Word, image. Max 3MB.</div></Card>}
+      {ivf&&<FileViewer file={ivf} onClose={()=>setIvf(null)}/>}
     </div>
   );};
 
@@ -1362,17 +1464,34 @@ export default function App(){
         ))}
       </div></div>
       <Divider/>
-      <div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>Audit history ({audits.length})</div>
-      {[...audits].reverse().map(a=>(
-        <Card key={a.id}>
-          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:6}}>
-            <div><div style={{fontSize:14,fontWeight:600}}>{a.icon} {a.title}</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>{a.date} · {a.clinic} · Auditor: {a.auditor}{a.physioAudited?` · Physio: ${a.physioAudited}`:""}</div></div>
-            <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
+      <div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>Audit history — {audits.length} record{audits.length!==1?"s":""}</div>
+      {audits.length===0&&<Alert type="blue" title="No audit records yet">Complete an audit above to create your first record. All completed audits are stored here for DAA / ACC review.</Alert>}
+      {Object.entries(AUDIT_FORMS).map(([key,form])=>{
+        const typeAudits=[...audits].filter(a=>a.type===key).sort((a,b)=>b.date.localeCompare(a.date));
+        if(!typeAudits.length)return null;
+        return(
+          <div key={key} style={{marginBottom:"1.25rem"}}>
+            <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",display:"flex",alignItems:"center",gap:8}}>
+              {form.icon} {form.title} <Chip color="gray">{typeAudits.length} record{typeAudits.length!==1?"s":""}</Chip>
+            </div>
+            {typeAudits.map(a=>(
+              <Card key={a.id} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}>
+                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:6}}>
+                  <div><div style={{fontSize:13,fontWeight:600}}>{a.date} · {a.clinic}</div><div style={{fontSize:12,color:C.muted,marginTop:1}}>Auditor: {a.auditor}{a.physioAudited?` · Physio: ${a.physioAudited}`:""}</div></div>
+                  <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
+                </div>
+                {a.passed!==undefined&&<div style={{display:"flex",gap:14,fontSize:12,marginBottom:a.notes?6:0}}>
+                  <span style={{color:C.green,fontWeight:500}}>✓ {a.passed} passed</span>
+                  {a.failed>0&&<span style={{color:C.red,fontWeight:500}}>✗ {a.failed} failed</span>}
+                  {a.na>0&&<span style={{color:C.muted}}>{a.na} N/A</span>}
+                  <span style={{color:C.muted}}>{a.total} total</span>
+                </div>}
+                {a.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"7px 10px",borderRadius:6,lineHeight:1.6,whiteSpace:"pre-line"}}>{a.notes}</div>}
+              </Card>
+            ))}
           </div>
-          <div style={{display:"flex",gap:16,fontSize:12,marginBottom:a.notes?6:0}}><span style={{color:"#3B6D11",fontWeight:500}}>{a.passed} passed</span><span style={{color:C.red,fontWeight:500}}>{a.failed} failed</span><span style={{color:C.gray}}>{a.na} N/A</span><span style={{color:C.muted}}>{a.total} total</span></div>
-          {a.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"7px 10px",borderRadius:6,lineHeight:1.6,whiteSpace:"pre-line"}}>{a.notes}</div>}
-        </Card>
-      ))}
+        );
+      })}
     </div>}
     {mgmtTab==="meetings"&&<div>
       <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly. Annual meeting covers P&P updates, business plan, H&S and privacy. Attendance compulsory. Minutes taken by admin manager and stored on shared drive.</Alert>
@@ -1384,7 +1503,7 @@ export default function App(){
         <Input label="Topic / agenda" value={nm.topic} onChange={e=>setNm({...nm,topic:e.target.value})}/>
         <Input label="Attendees" value={nm.attendees} onChange={e=>setNm({...nm,attendees:e.target.value})}/>
         <Textarea label="Notes / minutes" value={nm.notes} onChange={e=>setNm({...nm,notes:e.target.value})}/>
-        <div style={{display:"flex",gap:8}}><Btn onClick={()=>{if(nm.date&&nm.topic){setMeetings([...meetings,{...nm,id:Date.now()}]);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:""});setShowAdd(false);}}} >Save</Btn><Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn></div>
+        <div style={{display:"flex",gap:8}}><Btn onClick={()=>{if(nm.date&&nm.topic){const updated=[...meetings,{...nm,id:Date.now()}];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:""});setShowAdd(false);}}} >Save</Btn><Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn></div>
       </Card>}
       {[...meetings].reverse().map(m=>(
         <Card key={m.id}>
@@ -1465,7 +1584,7 @@ export default function App(){
         {page==="management"&&<ManagementPage/>}
       </div>
       <ProfileModal id={profile} onClose={()=>{setProfile(null);fu(n=>n+1);}} role={role}/>
-      {activeAudit&&<AuditModal type={activeAudit} onClose={()=>setActiveAudit(null)} onComplete={r=>{setAudits(p=>[...p,r]);setActiveAudit(null);setPage("management");setMgmtTab("audits");}}/>}
+      {activeAudit&&<AuditModal type={activeAudit} onClose={()=>setActiveAudit(null)} onComplete={r=>{setAudits(p=>{const updated=[...p,r];saveGen("audits",updated);return updated;});setActiveAudit(null);setPage("management");setMgmtTab("audits");}}/>}
       {vf&&<FileViewer file={vf} onClose={()=>setVf(null)}/>}
     </div>
   );
