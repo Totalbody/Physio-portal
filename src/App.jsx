@@ -199,8 +199,10 @@ const PAST_STAFF = ["Alice","Aoife","Vishwali","Jean Hong","Alonzo","Sasha McBai
 // (type + clinics can change without redeploying)
 function getEffectiveStaff(id) {
   const base = STAFF[id] || {};
-  if (!_portalReady) return base;
-  const ei = _portalStore.data[`empinfo_${id}`] || null;
+  // Try store data first, then localStorage fallback
+  const ei = (_portalReady ? _portalStore.data[`empinfo_${id}`] : null)
+    || (()=>{ try{ const d=localStorage.getItem(`empinfo_${id}`); return d?JSON.parse(d):null; } catch{ return null; } })()
+    || null;
   if (!ei) return base;
   const typeMap = { "Employed":"Employee", "Sub Contractor":"Contractor", "Owner":"Owner" };
   const type = typeMap[ei.employmentType] || base.type;
@@ -1329,6 +1331,9 @@ export default function App(){
   const[inservices,setInservices]=useState(()=>loadGen("inservices")||[{id:1,date:"2025-08-10",clinic:"Titirangi",topic:"Shoulder rehab protocols",presenter:"Hans Vermeulen",attendees:"Hans, Alistair",notes:"Reviewed UniSportsOrtho shoulder stabilisation phases.",year:2025}]);
   const[activeAudit,setActiveAudit]=useState(null);
   const[urgentOpen,setUrgentOpen]=useState(true);
+  const[auditTypeFilter,setAuditTypeFilter]=useState("all");
+  const[auditYearFilter,setAuditYearFilter]=useState("all");
+  const[collapsedYears,setCollapsedYears]=useState({});
   const[showAdd,setShowAdd]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
   const[nm,setNm]=useState({date:"",clinic:"All clinics",topic:"",attendees:"",notes:""});
   const roleNames={owner:"Jade Warren",alistair:"Alistair Burgess",hans:"Hans Vermeulen",staff:"Staff member"};
@@ -1691,34 +1696,84 @@ export default function App(){
         ))}
       </div></div>
       <Divider/>
-      <div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>Audit history — {audits.length} record{audits.length!==1?"s":""}</div>
-      {audits.length===0&&<Alert type="blue" title="No audit records yet">Complete an audit above to create your first record. All completed audits are stored here for DAA / ACC review.</Alert>}
-      {Object.entries(AUDIT_FORMS).map(([key,form])=>{
-        const typeAudits=[...audits].filter(a=>a.type===key).sort((a,b)=>b.date.localeCompare(a.date));
-        if(!typeAudits.length)return null;
+      {/* Audit history — filtered, grouped by year then type */}
+      {(()=>{
+        // Build year list from audit data
+        const allYears=[...new Set(audits.map(a=>a.date?.slice(0,4)).filter(Boolean))].sort((a,b)=>b-a);
+        const filtered=audits.filter(a=>(auditTypeFilter==="all"||a.type===auditTypeFilter)&&(auditYearFilter==="all"||a.date?.startsWith(auditYearFilter)));
+        const byYear={};filtered.forEach(a=>{const y=a.date?.slice(0,4)||"Unknown";if(!byYear[y])byYear[y]=[];byYear[y].push(a);});
+        const sortedYears=Object.keys(byYear).sort((a,b)=>b-a);
         return(
-          <div key={key} style={{marginBottom:"1.25rem"}}>
-            <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",display:"flex",alignItems:"center",gap:8}}>
-              {form.icon} {form.title} <Chip color="gray">{typeAudits.length} record{typeAudits.length!==1?"s":""}</Chip>
+          <div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem",flexWrap:"wrap",gap:8}}>
+              <div style={{fontSize:14,fontWeight:600}}>Audit history — {audits.length} record{audits.length!==1?"s":""}</div>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {/* Year filter */}
+                {["all",...allYears].map(y=><button key={y} onClick={()=>setAuditYearFilter(y)} style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:auditYearFilter===y?C.teal:"white",color:auditYearFilter===y?"white":C.muted,border:`1px solid ${auditYearFilter===y?C.teal:C.border}`,cursor:"pointer"}}>{y==="all"?"All years":y}</button>)}
+                {/* Type filter */}
+                <select value={auditTypeFilter} onChange={e=>setAuditTypeFilter(e.target.value)} style={{fontSize:11,padding:"3px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL,color:C.text}}>
+                  <option value="all">All types</option>
+                  {Object.entries(AUDIT_FORMS).map(([k,f])=><option key={k} value={k}>{f.icon} {f.title}</option>)}
+                </select>
+              </div>
             </div>
-            {typeAudits.map(a=>(
-              <Card key={a.id} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}>
-                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:6}}>
-                  <div><div style={{fontSize:13,fontWeight:600}}>{a.date} · {a.clinic}</div><div style={{fontSize:12,color:C.muted,marginTop:1}}>Auditor: {a.auditor}{a.physioAudited?` · Physio: ${a.physioAudited}`:""}</div></div>
-                  <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
+            {audits.length===0&&<Alert type="blue" title="No audit records yet">Complete an audit above to create your first record.</Alert>}
+            {filtered.length===0&&audits.length>0&&<Alert type="blue" title="No records match">Try changing the year or type filter.</Alert>}
+            {sortedYears.map(year=>{
+              const yearAudits=byYear[year].sort((a,b)=>b.date.localeCompare(a.date));
+              const isCollapsed=!!collapsedYears[year];
+              const passed=yearAudits.filter(a=>a.outcome==="Passed").length;
+              const failed=yearAudits.length-passed;
+              return(
+                <div key={year} style={{marginBottom:"1rem"}}>
+                  {/* Year header — collapsible */}
+                  <div onClick={()=>setCollapsedYears(p=>({...p,[year]:!p[year]}))} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:C.grayXL,borderRadius:collapsedYears[year]?8:"8px 8px 0 0",border:`1px solid ${C.border}`,cursor:"pointer",userSelect:"none"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <span style={{fontSize:14,fontWeight:700,color:C.teal}}>{year}</span>
+                      <Chip color="gray">{yearAudits.length} audit{yearAudits.length!==1?"s":""}</Chip>
+                      <span style={{fontSize:12,color:C.green,fontWeight:500}}>✓ {passed} passed</span>
+                      {failed>0&&<span style={{fontSize:12,color:C.red,fontWeight:500}}>✗ {failed} issues</span>}
+                    </div>
+                    <span style={{color:C.muted,fontSize:16,transform:isCollapsed?"rotate(0)":"rotate(90deg)",transition:"transform 0.2s",display:"inline-block"}}>›</span>
+                  </div>
+                  {!isCollapsed&&(
+                    <div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",padding:"0.75rem",background:C.card}}>
+                      {/* Group by type within year */}
+                      {Object.entries(AUDIT_FORMS).map(([key,form])=>{
+                        const ta=yearAudits.filter(a=>a.type===key);
+                        if(!ta.length)return null;
+                        return(
+                          <div key={key} style={{marginBottom:"0.875rem"}}>
+                            <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:"0.375rem",display:"flex",alignItems:"center",gap:6}}>
+                              {form.icon} {form.title} <Chip color="gray">{ta.length}</Chip>
+                            </div>
+                            {ta.map(a=>(
+                              <div key={a.id} style={{background:C.grayXL,borderRadius:6,padding:"8px 10px",marginBottom:4,display:"flex",alignItems:"flex-start",gap:10}}>
+                                <div style={{flex:1}}>
+                                  <div style={{fontSize:12,fontWeight:600}}>{a.date} · {a.clinic}</div>
+                                  <div style={{fontSize:11,color:C.muted}}>Auditor: {a.auditor}{a.physioAudited?` · Physio: ${a.physioAudited}`:""}</div>
+                                  {a.passed!==undefined&&<div style={{fontSize:11,marginTop:2,display:"flex",gap:10}}>
+                                    <span style={{color:C.green}}>✓ {a.passed}</span>
+                                    {a.failed>0&&<span style={{color:C.red}}>✗ {a.failed}</span>}
+                                    {a.na>0&&<span style={{color:C.muted}}>{a.na} N/A</span>}
+                                    <span style={{color:C.muted}}>{a.total} total</span>
+                                  </div>}
+                                  {a.notes&&<div style={{fontSize:11,color:C.muted,marginTop:3,fontStyle:"italic"}}>{a.notes}</div>}
+                                </div>
+                                <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                {a.passed!==undefined&&<div style={{display:"flex",gap:14,fontSize:12,marginBottom:a.notes?6:0}}>
-                  <span style={{color:C.green,fontWeight:500}}>✓ {a.passed} passed</span>
-                  {a.failed>0&&<span style={{color:C.red,fontWeight:500}}>✗ {a.failed} failed</span>}
-                  {a.na>0&&<span style={{color:C.muted}}>{a.na} N/A</span>}
-                  <span style={{color:C.muted}}>{a.total} total</span>
-                </div>}
-                {a.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"7px 10px",borderRadius:6,lineHeight:1.6,whiteSpace:"pre-line"}}>{a.notes}</div>}
-              </Card>
-            ))}
+              );
+            })}
           </div>
         );
-      })}
+      })()}
     </div>}
     {mgmtTab==="meetings"&&<div>
       <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly. Annual meeting covers P&P updates, business plan, H&S and privacy. Attendance compulsory. Minutes taken by admin manager and stored on shared drive.</Alert>
