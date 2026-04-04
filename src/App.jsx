@@ -385,7 +385,12 @@ function removeGen(k) {
 
 function staffComp(id) {
   const req = CORE_CERTS.filter(c => c.required);
-  const done = req.filter(c => !!loadFile(id, c.key)).length;
+  const done = req.filter(c => {
+    const f = loadFile(id, c.key);
+    if (!f) return false;
+    if (f.expiry) return getExpiryStatus(f.expiry).status !== "expired";
+    return true;
+  }).length;
   return { done, total: req.length, pct: Math.round((done / req.length) * 100) };
 }
 
@@ -1123,7 +1128,28 @@ export default function App(){
             </div>
           ))}
         </div>
-        <Alert type="red" title="🔴 Urgent — Alistair Burgess">APC expired 31 March 2025 · First Aid expired Aug 2024 · Cultural Competency expired Sept 2024. Upload immediately for ACC compliance.</Alert>
+        {(()=>{
+          const issues=Object.entries(STAFF).flatMap(([id,s])=>{
+            const found=[];
+            CORE_CERTS.filter(c=>c.required).forEach(cert=>{
+              const f=loadFile(id,cert.key);
+              if(!f){found.push({name:s.name,issue:cert.label+" — missing",level:"missing"});}
+              else if(f.expiry&&getExpiryStatus(f.expiry).status==="expired"){found.push({name:s.name,issue:cert.label+" — expired "+new Date(f.expiry).toLocaleDateString("en-NZ"),level:"expired"});}
+            });
+            return found;
+          });
+          if(!issues.length)return <Alert type="green" title="✅ All certifications current">No expired or missing required documents.</Alert>;
+          const grouped={};issues.forEach(i=>{if(!grouped[i.name])grouped[i.name]=[];grouped[i.name].push(i.issue);});
+          return(
+            <div style={{background:"#FCEBEB",borderLeft:`3px solid ${C.red}`,borderRadius:6,padding:"0.875rem 1rem",marginBottom:"0.875rem"}}>
+              <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",color:C.red}}>🔴 Urgent — {Object.keys(grouped).length} staff member{Object.keys(grouped).length!==1?"s":""} need action</div>
+              {Object.entries(grouped).map(([name,items])=>(
+                <div key={name} style={{marginBottom:3,fontSize:12}}><span style={{fontWeight:600,color:C.text}}>{name}</span><span style={{color:C.muted}}> — {items.join(" · ")}</span></div>
+              ))}
+              <div style={{fontSize:11,color:C.muted,marginTop:"0.5rem"}}>Tap any staff member to upload. Required for ACC compliance.</div>
+            </div>
+          );
+        })()}
         {urgentCount>0&&<Alert type="amber" title={`🔔 ${urgentCount} items due or overdue`}><span onClick={()=>setPage("reminders")} style={{color:C.blue,cursor:"pointer",fontWeight:500,textDecoration:"underline"}}>View reminders →</span></Alert>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"1.25rem"}}>
           <div onClick={()=>setPage("pp")} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",cursor:"pointer",display:"flex",alignItems:"center",gap:12}} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 12px rgba(15,110,86,0.1)"} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
@@ -1277,10 +1303,44 @@ export default function App(){
     </div>
   );};
 
+  function ContractRow({staffId,s,canSee,onView}){
+    const ref=useRef();
+    const[file,setFile]=useState(()=>loadFile(staffId,"contract"));
+    function handle(e){
+      const f=e.target.files[0];if(!f)return;
+      if(f.size>3*1024*1024){alert("File over 3MB.");return;}
+      const r=new FileReader();
+      r.onload=ev=>{
+        const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:"contract"};
+        if(saveFile(staffId,"contract",d))setFile(d);
+      };
+      r.readAsDataURL(f);e.target.value="";
+    }
+    return(
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+        <div style={{width:34,height:34,borderRadius:"50%",background:s.color+"25",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:s.color,flexShrink:0}}>{s.ini}</div>
+        <div style={{flex:1}}>
+          <strong style={{fontSize:13}}>{s.name}</strong>
+          <div style={{fontSize:12,color:C.muted}}>{s.type} · {s.clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</div>
+          {file&&<div style={{fontSize:11,color:C.muted,marginTop:1}}>{file.fileName} · {file.uploadedDate}</div>}
+        </div>
+        {canSee
+          ?<div style={{display:"flex",gap:5,alignItems:"center",flexShrink:0}}>
+            {file&&<BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>}
+            <BSm onClick={()=>ref.current.click()} color={file?C.gray:C.teal}>{file?"Replace":"📄 Upload"}</BSm>
+            {file&&<BSm onClick={()=>{if(window.confirm("Remove contract?")){ removeFile(staffId,"contract");setFile(null);}}} color={C.red}>✕</BSm>}
+          </div>
+          :<span style={{fontSize:12,color:C.hint,flexShrink:0}}>🔒 Restricted</span>
+        }
+        <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
+      </div>
+    );
+  }
+
   const DocumentsPage=()=>{const[dvf,setDvf]=useState(null);return(
     <div><PH title="Documents" sub="Contracts, job descriptions & legislation"/>
     <TabBar items={[["contracts","Contracts"],["jd","Job descriptions"],["leg","Legislation"]]} current={docsTab} setter={setDocsTab}/>
-    {docsTab==="contracts"&&<div><Alert type="blue" title="🔒 Contract privacy — P&P Section 7.2">Contracts visible to Jade (owner) and the individual staff member only. Others see a locked indicator. Two signed copies: one for employee, one in personnel file.</Alert><Card>{Object.entries(STAFF).map(([id,s])=>{const canSee=role==="owner"||role===id;const f=canSee?loadFile(id,"contract"):null;return(<div key={id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}><div style={{width:34,height:34,borderRadius:"50%",background:s.color+"25",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:s.color,flexShrink:0}}>{s.ini}</div><div style={{flex:1}}><strong style={{fontSize:13}}>{s.name}</strong><div style={{fontSize:12,color:C.muted}}>{s.type} · {s.clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</div></div>{canSee?<div style={{display:"flex",gap:5,alignItems:"center"}}>{f&&<BSm onClick={()=>setDvf(f)} color={C.teal}>👁 View</BSm>}<Pill s={f?"ok":"pending"} label={f?"On file ✓":"Upload needed"}/></div>:<span style={{fontSize:12,color:C.hint}}>🔒 Restricted</span>}</div>);})}</Card></div>}
+    {docsTab==="contracts"&&<div><Alert type="blue" title="🔒 Contract privacy — P&P Section 7.2">Contracts visible to Jade (owner) and the individual staff member only. Others see a locked indicator. Two signed copies: one for employee, one in personnel file.</Alert><Card>{Object.entries(STAFF).map(([id,s])=>{const canSee=role==="owner"||role===id;return <ContractRow key={id} staffId={id} s={s} canSee={canSee} onView={f=>setDvf(f)}/>;})}</Card></div>}
     {docsTab==="jd"&&<Card><div style={{fontSize:13,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Each staff member uploads their own signed JD. JD is attached to contract of employment and both parties sign — P&P Section 7.3.</div>{Object.entries(STAFF).map(([id,s])=><FileRow key={id} label={`${s.name} — Job Description`} gkey={`jd_${id}`} onView={f=>setDvf(f)} accent={s.color}/>)}</Card>}
     {docsTab==="leg"&&<div><Alert type="blue" title="Key legislation — all staff read during orientation">Click any link to open the source document.</Alert>{LEGISLATION.map(leg=><Card key={leg.name} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}><div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}><div><a href={leg.url} target="_blank" rel="noreferrer" style={{fontSize:13,fontWeight:600,color:C.blue,textDecoration:"none"}}>{leg.name} ↗</a><div style={{fontSize:12,color:C.muted,marginTop:3,lineHeight:1.5}}>{leg.desc}</div></div><a href={leg.url} target="_blank" rel="noreferrer" style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:C.blueL,color:C.blue,textDecoration:"none",fontWeight:500,whiteSpace:"nowrap",flexShrink:0}}>Open ↗</a></div></Card>)}</div>}
     {dvf&&<FileViewer file={dvf} onClose={()=>setDvf(null)}/>}
