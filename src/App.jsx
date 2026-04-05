@@ -152,9 +152,22 @@ const PP_SECTIONS = [
     policies:[
       {title:"Staff wages",key:"wages",body:"Paid fortnightly by automatic payment. Xero calculates PAYE, KiwiSaver and student loan deductions automatically. Director reviews and approves payroll each fortnight. TBP prepares invoices for contracted staff based on hours worked, cross-checked against KPI dashboard statistics."},
       {title:"Client invoicing",key:"invoicing",body:"Accounts paid at end of each treatment where possible. Monthly report of outstanding accounts — invoiced by email. Schedule: initial invoice (payment ASAP) → 30 days ('A Friendly Reminder') → 60 days ('Reminder, Payment Overdue' — phone call) → 90 days ('Final Notice, within 7 days'). Unpaid accounts referred to Director to pursue or write off."},
-      {title:"Preferred suppliers",key:"suppliers",body:"Clinical consumables: Medline NZ (gloves, disposables, wound care). Dry needling: Acumedic NZ — single-use sterile only. Sharps disposal: Chemist Warehouse — dispose at 3/4 full. Laundry: hot wash 60°C min, Director arranges. Stationery: Warehouse Stationery. Software: Cliniko · Xero · Submit Kit. ACC provider line: 0800 222 070. WorkSafe: 0800 030 040. Contact Director to update supplier details."},
+      {title:"Preferred suppliers & contacts",key:"suppliers",body:"Contact Director to update supplier details.",sections:[
+        {heading:"Clinical consumables & equipment",items:["Medline NZ — gloves, disposables, wound care","Whiteley All Care: 09 029 2747 — clinical cleaning","DJO Store: 0800 60 60 40 — braces & orthoses","USL Sport Healthcare: 0800 658 814 — sports medicine supplies"]},
+        {heading:"Dry needling & sharps",items:["Acumedic NZ — single-use sterile needles only","Sharps disposal: Chemist Warehouse — dispose at ¾ full"]},
+        {heading:"Software & digital",items:["Cliniko: info@cliniko.com","Submit Kit: support@submitkit.zendesk.com (Richard)","Finger Ink: support@finger-ink.com","Digital Island: 0800 999 010","Xero — payroll & accounts"]},
+        {heading:"Stationery & office",items:["Warehouse Stationery","OfficeMax: 0800 426 473"]},
+        {heading:"Laundry",items:["Hot wash 60°C minimum — Director arranges"]},
+        {heading:"Key contacts",items:["ACC provider line: 0800 222 070","WorkSafe: 0800 030 040","Southern Cross: 0800 700 053"]},
+        {heading:"Radiology & imaging",items:["Auckland Radiology (Ti Rakau): 09 529 4850","Advanced Ultrasound (Botany Junction): 09 277 4495","Horizon Radiology (Mt Wellington): 09 746 853","Mercy Radiology: 0800 497 297"]},
+        {heading:"Medical centres & GPs",items:["Axis Sports Medicine: referrals@axissportsmedicine.co.nz","East Care Urgent Medical Centre: 09 277 1516","Doctors Ti Rakau: 09 273 8980","Pakuranga Medical: 09 950 7251","Crawford Medical: 09 538 0083","Highland Park Medical Centre: 09 535 8095","Marina Medical Centre: 09 534 5314"]},
+        {heading:"Professional bodies",items:["Physiotherapy New Zealand: 04 801 6500","Physiotherapy Board of New Zealand: 04 417 2610"]},
+        {heading:"Orthopaedic surgeons",items:["Craig Ball (shoulder, elbow): 09 520 9631","Adam Dalgleish (shoulder, knee): 09 523 7053","Michael Barnes (spine): 09 520 0208","John Ferguson (spine): 09 520 9681","Alistair Hadlow (hip, knee, spine): 09 522 2922","Arnold Bok (neurosurgeon, spinal): 09 520 9672","Michael Hanlon (knee): 09 307 5283","Clayton Brown (shoulder, elbow, hand): 09 307 4282","Wolfgang Heiss-Dunlop (hand): 09 523 7050","Kevin Karpik (hip, knee, shoulder): 09 523 7050","Mark Clatworthy (knee): 09 520 9632","Brendon Coleman (shoulder, knee): 09 523 7050","Simon Mills (hip, knee, ankle): 09 522 3793","Hamish Crawford (hip and knee): 09 520 9633","Janus Schaukel (hip, knee): 09 523 2760","Matthew Tomlinson (ankle, foot): 09 639 0214"]},
+        {heading:"MSK / sports physicians",items:["Axis: 09 521 9811","Gary Collinson: 09 627 1024","Lucy May Holtzhausen: 09 524 6249","Charles Ng: 09 523 4681","Paul Quinn: 09 520 4760","Ben Speedy: 09 267 3335"]},
+        {heading:"Cultural advisors — Iwi tangata whenua",items:["Ngārimu Blair (Chief executive Ngāti Whātua): ngarimu@ngarimublair.co.nz","George Ngātai QSM JP (Whanau ōra Community Clinic): george@toa.org.nz"]},
+      ]},
     ],
-    links:[{label:"Xero login",url:"https://login.xero.com"},{label:"IRD tax tables",url:"https://ird.govt.nz"}]
+    links:[{label:"Xero login",url:"https://login.xero.com"},{label:"eCALD Māori Cultural Competency",url:"https://ecald.com"}]
   },
 ];
 
@@ -1406,8 +1419,16 @@ function PPPage({setPage,setActiveAudit,ppDocs,setPpDocs,ppReviews,setPpReviews}
   const[ppViewFile,setPpViewFile]=useState(null);
 
   function markReviewed(sectionId){
-    const updated={...ppReviews,[sectionId]:{date:new Date().toLocaleDateString("en-NZ"),reviewer:"Jade Warren"}};
+    const updated={...ppReviews,[sectionId]:{date:new Date().toLocaleDateString("en-NZ"),reviewer:"Jade Warren",reviewedAt:new Date().toISOString()}};
     setPpReviews(updated);saveGen("ppReviews",updated);
+  }
+  function nextReviewDue(rev){
+    try{
+      const d=rev.reviewedAt?new Date(rev.reviewedAt):null;
+      if(!d||isNaN(d))return null;
+      d.setFullYear(d.getFullYear()+1);
+      return d.toLocaleDateString("en-NZ");
+    }catch{return null;}
   }
   function uploadPpDoc(e){
     const f=e.target.files[0];if(!f||!ppLabel)return;
@@ -1470,7 +1491,26 @@ function PPPage({setPage,setActiveAudit,ppDocs,setPpDocs,ppReviews,setPpReviews}
                   <div style={{fontSize:13,fontWeight:600}}>{pol.title}</div>
                   <span style={{fontSize:16,color:C.muted,flexShrink:0,transform:isOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.2s"}}>›</span>
                 </div>
-                {isOpen&&<div style={{padding:"0 1rem 1rem",fontSize:13,color:C.muted,lineHeight:1.8,borderTop:`1px solid ${sec.color+"20"}`}}><div style={{marginTop:"0.875rem",whiteSpace:"pre-wrap"}}>{pol.body}</div></div>}
+                {isOpen&&<div style={{padding:"0 1rem 1rem",fontSize:13,color:C.muted,lineHeight:1.8,borderTop:`1px solid ${sec.color+"20"}`}}>
+                  {pol.sections?(
+                    <div style={{marginTop:"0.875rem"}}>
+                      {pol.sections.map((ps,pi)=>(
+                        <div key={pi} style={{marginBottom:"0.875rem"}}>
+                          <div style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",color:sec.color,marginBottom:"0.375rem"}}>{ps.heading}</div>
+                          <ul style={{margin:0,paddingLeft:"1.1rem"}}>
+                            {ps.items.map((item,ii)=><li key={ii} style={{fontSize:12,color:C.text,marginBottom:3,lineHeight:1.6}}>{item}</li>)}
+                          </ul>
+                        </div>
+                      ))}
+                      {pol.links&&pol.links.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:"0.75rem",paddingTop:"0.75rem",borderTop:`1px solid ${C.border}`}}>
+                        {pol.links.map((l,li)=><a key={li} href={l.url} target="_blank" rel="noreferrer" style={{fontSize:11,padding:"4px 12px",borderRadius:20,background:C.blueL,color:C.blue,textDecoration:"none",fontWeight:500}}>↗ {l.label}</a>)}
+                      </div>}
+                      {pol.body&&<div style={{marginTop:"0.625rem",fontSize:12,color:C.muted,fontStyle:"italic"}}>{pol.body}</div>}
+                    </div>
+                  ):(
+                    <div style={{marginTop:"0.875rem",whiteSpace:"pre-wrap"}}>{pol.body}</div>
+                  )}
+                </div>}
               </div>
             );
           })}
@@ -1528,10 +1568,12 @@ function PPPage({setPage,setActiveAudit,ppDocs,setPpDocs,ppReviews,setPpReviews}
                 <div style={{width:36,height:36,borderRadius:8,background:sec.color+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{sec.icon}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:600}}>§{sec.num} {sec.title}</div>
-                  {rev?<div style={{fontSize:11,color:C.green,marginTop:2}}>✓ Reviewed {rev.date} · {rev.reviewer}</div>:<div style={{fontSize:11,color:C.muted,marginTop:2}}>Not yet reviewed this year</div>}
-                  <div style={{marginTop:6}}>
-                    {rev?<BSm onClick={()=>{if(window.confirm("Clear review status for this section?")){const u={...ppReviews};delete u[sec.id];setPpReviews(u);saveGen("ppReviews",u);}}} color={C.muted}>Clear ✕</BSm>:<BSm onClick={()=>markReviewed(sec.id)} color={C.teal}>✓ Mark reviewed</BSm>}
-                  </div>
+                  {rev
+                    ?<><div style={{fontSize:11,color:C.green,marginTop:2}}>✓ Reviewed {rev.date} · {rev.reviewer}</div>
+                      {nextReviewDue(rev)&&<div style={{fontSize:11,color:C.muted,marginTop:1}}>📅 Next review due: {nextReviewDue(rev)}</div>}</>
+                    :<><div style={{fontSize:11,color:C.muted,marginTop:2}}>Not yet reviewed this year</div>
+                      <div style={{marginTop:6}}><BSm onClick={()=>markReviewed(sec.id)} color={C.teal}>✓ Mark reviewed</BSm></div></>
+                  }
                 </div>
               </div>
             );
