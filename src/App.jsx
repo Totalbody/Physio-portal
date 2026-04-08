@@ -1651,12 +1651,15 @@ export default function App(){
   const[showExtForm,setShowExtForm]=useState(false);
   const[extLabel,setExtLabel]=useState("");
   const[mFilter,setMFilter]=useState("");
+  const[mYearFilter,setMYearFilter]=useState("all");
+  const[mClinicFilter,setMClinicFilter]=useState("all");
   const[ppDocs,setPpDocs]=useState(()=>loadGen("ppDocs")||[]);
   const[ppReviews,setPpReviews]=useState(()=>loadGen("ppReviews")||{});
   const[ppAiAnalysis,setPpAiAnalysis]=useState({});
   const[urgentOpen,setUrgentOpen]=useState(true);
   const[auditTypeFilter,setAuditTypeFilter]=useState("all");
   const[auditYearFilter,setAuditYearFilter]=useState("all");
+  const[auditClinicFilter,setAuditClinicFilter]=useState("all");
   const[collapsedYears,setCollapsedYears]=useState({});
   const[showAdd,setShowAdd]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
   const[nm,setNm]=useState({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});
@@ -2157,7 +2160,7 @@ export default function App(){
       {(()=>{
         // Build year list from audit data
         const allYears=[...new Set(audits.map(a=>a.date?.slice(0,4)).filter(Boolean))].sort((a,b)=>b-a);
-        const filtered=audits.filter(a=>(auditTypeFilter==="all"||a.type===auditTypeFilter)&&(auditYearFilter==="all"||a.date?.startsWith(auditYearFilter)));
+        const filtered=audits.filter(a=>(auditTypeFilter==="all"||a.type===auditTypeFilter)&&(auditYearFilter==="all"||a.date?.startsWith(auditYearFilter))&&(auditClinicFilter==="all"||a.clinic===auditClinicFilter));
         const byYear={};filtered.forEach(a=>{const y=a.date?.slice(0,4)||"Unknown";if(!byYear[y])byYear[y]=[];byYear[y].push(a);});
         const sortedYears=Object.keys(byYear).sort((a,b)=>b-a);
         return(
@@ -2171,6 +2174,11 @@ export default function App(){
                 <select value={auditTypeFilter} onChange={e=>setAuditTypeFilter(e.target.value)} style={{fontSize:11,padding:"3px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL,color:C.text}}>
                   <option value="all">All types</option>
                   {Object.entries(AUDIT_FORMS).map(([k,f])=><option key={k} value={k}>{f.icon} {f.title}</option>)}
+                </select>
+                {/* Clinic filter */}
+                <select value={auditClinicFilter||"all"} onChange={e=>setAuditClinicFilter(e.target.value)} style={{fontSize:11,padding:"3px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL,color:C.text}}>
+                  <option value="all">All clinics</option>
+                  {CLINICS.map(c=><option key={c.id} value={c.short}>{c.short}</option>)}
                 </select>
               </div>
             </div>
@@ -2238,13 +2246,91 @@ export default function App(){
       })()}
     </div>}
     {mgmtTab==="meetings"&&(()=>{
-      const visibleMeetings=[...meetings].filter(m=>!mFilter||(m.topic+m.clinic+(m.attendees||"")+(m.notes||"")).toLowerCase().includes(mFilter.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date));
+      // ── derive years and apply filters ──────────────────────────
+      const allMeetingYears=[...new Set(meetings.map(m=>m.date.slice(0,4)))].sort((a,b)=>b-a);
+      const thisYear=String(new Date().getFullYear());
+      if(!allMeetingYears.includes(thisYear))allMeetingYears.unshift(thisYear);
+      const clinicOptions=["all",...CLINICS.map(c=>c.short),"All clinics"];
+      const uniqueClinicOptions=["all",...[...new Set(meetings.map(m=>m.clinic))].sort()];
+
+      const filtered=[...meetings].filter(m=>{
+        const textMatch=!mFilter||(m.topic+m.clinic+(m.attendees||"")+(m.notes||"")).toLowerCase().includes(mFilter.toLowerCase());
+        const yearMatch=mYearFilter==="all"||m.date.slice(0,4)===mYearFilter;
+        const clinicMatch=mClinicFilter==="all"||m.clinic===mClinicFilter||(mClinicFilter==="All clinics"&&m.clinic==="All clinics");
+        return textMatch&&yearMatch&&clinicMatch;
+      }).sort((a,b)=>b.date.localeCompare(a.date));
+
+      // Group filtered meetings by year
+      const byYear={};
+      filtered.forEach(m=>{const y=m.date.slice(0,4);if(!byYear[y])byYear[y]=[];byYear[y].push(m);});
+      const sortedYears=Object.keys(byYear).sort((a,b)=>b-a);
+
+      // ── quarterly compliance grid for current year ───────────────
+      const quarters=["Q1 Jan–Mar","Q2 Apr–Jun","Q3 Jul–Sep","Q4 Oct–Dec"];
+      const qMonth=[0,3,6,9]; // start months
+      const mainClinics=CLINICS.filter(c=>c.id!=="schools");
+      function meetingInQClinic(q,clinicShort){
+        return meetings.some(m=>{
+          const d=new Date(m.date);
+          const yr=d.getFullYear();const mo=d.getMonth();
+          const inQ=mo>=qMonth[q]&&mo<qMonth[q]+3;
+          const inYr=yr===parseInt(thisYear);
+          const clinicMatch=m.clinic===clinicShort||m.clinic==="All clinics";
+          return inQ&&inYr&&clinicMatch;
+        });
+      }
+
       return <div>
         <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly. Minutes stored here. Enter historical meetings by setting any past date. {meetings.length} meeting{meetings.length!==1?"s":""} logged.</Alert>
-        <div style={{display:"flex",gap:8,marginBottom:"1rem",alignItems:"center"}}>
-          <input value={mFilter} onChange={e=>setMFilter(e.target.value)} placeholder="Search meetings…" style={{flex:1,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL}}/>
+
+        {/* ── quarterly compliance grid ── */}
+        <div style={{marginBottom:"1rem"}}>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",color:C.text}}>{thisYear} — Quarterly coverage</div>
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,overflow:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead>
+                <tr style={{background:C.grayXL}}>
+                  <th style={{padding:"8px 12px",textAlign:"left",fontWeight:600,color:C.muted,borderBottom:`1px solid ${C.border}`,fontSize:11}}>Clinic</th>
+                  {quarters.map(q=><th key={q} style={{padding:"8px 10px",textAlign:"center",fontWeight:600,color:C.muted,borderBottom:`1px solid ${C.border}`,fontSize:11,whiteSpace:"nowrap"}}>{q}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {mainClinics.map(cl=>{
+                  const cells=quarters.map((_,qi)=>meetingInQClinic(qi,cl.short));
+                  const allDone=cells.every(Boolean);
+                  return(
+                    <tr key={cl.id} style={{borderBottom:`1px solid ${C.border}`}}>
+                      <td style={{padding:"7px 12px",fontWeight:500,fontSize:12}}>{cl.icon} {cl.short}</td>
+                      {cells.map((done,qi)=>(
+                        <td key={qi} style={{padding:"7px 10px",textAlign:"center"}}>
+                          {done
+                            ?<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",background:C.greenL,color:C.green,fontSize:13,fontWeight:700}}>✓</span>
+                            :<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",background:C.grayL,color:C.hint,fontSize:11}}>–</span>
+                          }
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ── filters + log meeting button ── */}
+        <div style={{display:"flex",gap:8,marginBottom:"1rem",alignItems:"center",flexWrap:"wrap"}}>
+          <input value={mFilter} onChange={e=>setMFilter(e.target.value)} placeholder="Search meetings…" style={{flex:1,minWidth:160,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL}}/>
+          <select value={mClinicFilter} onChange={e=>setMClinicFilter(e.target.value)} style={{padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,background:C.grayXL,color:C.text}}>
+            <option value="all">All clinics</option>
+            {[...new Set(meetings.map(m=>m.clinic))].sort().map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+            {["all",...allMeetingYears].map(y=><button key={y} onClick={()=>setMYearFilter(y)} style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:mYearFilter===y?C.teal:"white",color:mYearFilter===y?"white":C.muted,border:`1px solid ${mYearFilter===y?C.teal:C.border}`,cursor:"pointer",fontWeight:mYearFilter===y?500:400}}>{y==="all"?"All years":y}</button>)}
+          </div>
           <Btn onClick={()=>setShowAdd(true)}>+ Log meeting</Btn>
         </div>
+
+        {/* ── log meeting form ── */}
         {showAdd&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
           <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Log meeting <span style={{fontSize:12,color:C.muted,fontWeight:400}}>(set any past date for historical records)</span></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
@@ -2271,21 +2357,53 @@ export default function App(){
           </div>
           <div style={{display:"flex",gap:8}}><Btn onClick={()=>{if(nm.date&&nm.topic){const updated=[...meetings,{...nm,id:Date.now()}];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});setShowAdd(false);}}} >Save</Btn><Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn></div>
         </Card>}
-        {visibleMeetings.length===0&&<Alert type="blue" title="No meetings found">Log a meeting above or adjust the search.</Alert>}
-        {visibleMeetings.map(m=>(
-          <Card key={m.id} style={{marginBottom:"0.5rem"}}>
-            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:m.attendees||m.notes?6:0}}>
-              <div><strong style={{fontSize:14}}>{m.topic}</strong><div style={{fontSize:12,color:C.muted,marginTop:2}}>{m.date} · {m.clinic}</div></div>
-              <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-                <Pill s="ok" label="Completed ✓"/>
-                <BSm onClick={()=>{if(window.confirm("Delete this meeting record?")){const u=meetings.filter(x=>x.id!==m.id);setMeetings(u);saveGen("meetings",u);}}} color={C.red}>✕</BSm>
+
+        {/* ── meeting list grouped by year ── */}
+        {filtered.length===0&&<Alert type="blue" title="No meetings found">Log a meeting above or adjust the filters.</Alert>}
+        {sortedYears.map(year=>{
+          const yMeetings=byYear[year];
+          const isCollapsed=!!collapsedYears["mtg_"+year];
+          return(
+            <div key={year} style={{marginBottom:"1rem"}}>
+              <div onClick={()=>setCollapsedYears(p=>({...p,["mtg_"+year]:!p["mtg_"+year]}))} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:C.grayXL,borderRadius:isCollapsed?8:"8px 8px 0 0",border:`1px solid ${C.border}`,cursor:"pointer",userSelect:"none"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:14,fontWeight:700,color:C.teal}}>{year}</span>
+                  <span style={{fontSize:12,color:C.muted,background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1px 8px"}}>{yMeetings.length} meeting{yMeetings.length!==1?"s":""}</span>
+                </div>
+                <span style={{color:C.muted,fontSize:16,transform:isCollapsed?"rotate(0)":"rotate(90deg)",transition:"transform 0.2s",display:"inline-block"}}>›</span>
               </div>
+              {!isCollapsed&&(
+                <div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",background:C.card,padding:"0.75rem"}}>
+                  {/* Group by clinic within year */}
+                  {[...new Set(yMeetings.map(m=>m.clinic))].sort().map(clinic=>{
+                    const cMeetings=yMeetings.filter(m=>m.clinic===clinic);
+                    return(
+                      <div key={clinic} style={{marginBottom:"0.75rem"}}>
+                        <div style={{fontSize:11,fontWeight:600,color:C.muted,marginBottom:"0.375rem",padding:"2px 0",display:"flex",alignItems:"center",gap:6,textTransform:"uppercase",letterSpacing:"0.04em"}}>
+                          📍 {clinic} <span style={{background:C.grayL,borderRadius:8,padding:"0px 6px",textTransform:"none",letterSpacing:0,fontWeight:400}}>{cMeetings.length}</span>
+                        </div>
+                        {cMeetings.map(m=>(
+                          <div key={m.id} style={{background:C.grayXL,borderRadius:6,padding:"8px 10px",marginBottom:4,display:"flex",alignItems:"flex-start",gap:10}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontSize:12,fontWeight:600,color:C.text}}>{m.date} <span style={{color:C.muted,fontWeight:400}}>· {m.topic||"Staff meeting"}</span></div>
+                              {m.attendees&&<div style={{fontSize:11,color:C.muted,marginTop:2}}>👥 {m.attendees}</div>}
+                              {m.notes&&<div style={{fontSize:11,color:C.muted,marginTop:3,background:"white",padding:"4px 8px",borderRadius:4,lineHeight:1.5}}>{m.notes.slice(0,100)}{m.notes.length>100?"…":""}</div>}
+                              {m.attachment&&<div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}><BSm onClick={()=>setEavf(m.attachment)} color={C.teal}>📎 View minutes</BSm></div>}
+                            </div>
+                            <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end",flexShrink:0}}>
+                              <Pill s="ok" label="Completed ✓"/>
+                              <BSm onClick={()=>{if(window.confirm("Delete this meeting record?")){const u=meetings.filter(x=>x.id!==m.id);setMeetings(u);saveGen("meetings",u);}}} color={C.red}>✕</BSm>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            {m.attendees&&<div style={{fontSize:12,color:C.muted,marginBottom:4}}><strong style={{color:C.text}}>Attendees:</strong> {m.attendees}</div>}
-            {m.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"7px 10px",borderRadius:6,lineHeight:1.6,marginBottom:m.attachment?6:0}}>{m.notes}</div>}
-            {m.attachment&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}><span style={{fontSize:11,color:C.muted}}>📎</span><BSm onClick={()=>setEavf(m.attachment)} color={C.teal}>View minutes</BSm><span style={{fontSize:11,color:C.muted}}>{m.attachment.fileName}</span></div>}
-          </Card>
-        ))}
+          );
+        })}
       </div>;
     })()}}
     {mgmtTab==="equipment"&&<div>
