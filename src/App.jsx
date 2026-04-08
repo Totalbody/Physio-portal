@@ -934,11 +934,31 @@ function AuditEvidenceBtn({audit,audits,setAudits,onView}){
   );
 }
 
+// Finds a viewable file from a meeting regardless of which portal saved it
+// KPI portal may store URL directly on meeting; PhysioPortal uses meeting.attachment
+function getMeetingFile(m){
+  // PhysioPortal nested attachment object
+  if(m.attachment&&typeof m.attachment==="object"&&(m.attachment.blobUrl||m.attachment.dataUrl)){
+    return m.attachment;
+  }
+  // KPI portal may store as a direct URL field on the meeting
+  const url=m.blobUrl||m.pdfUrl||m.fileUrl||m.minutesUrl||m.minutesBlobUrl||m.pdf||
+    (typeof m.attachment==="string"?m.attachment:null);
+  if(url){
+    const name=m.fileName||m.minutesFileName||(m.topic?m.topic.replace(/[^a-z0-9]/gi,"_")+".pdf":"minutes.pdf");
+    const type=name.match(/\.(jpg|jpeg|png)$/i)?"image/jpeg":"application/pdf";
+    return{blobUrl:url,fileName:name,fileType:type};
+  }
+  return null;
+}
+
 // Per-meeting attach/view button — supports upload OR paste existing blob URL
 function MeetingAttachBtn({meeting,meetings,setMeetings,onView}){
   const ref=useRef();
   const[showPaste,setShowPaste]=useState(false);
   const[pasteUrl,setPasteUrl]=useState("");
+
+  const existingFile=getMeetingFile(meeting);
 
   function handleUpload(e){
     const f=e.target.files[0];if(!f)return;
@@ -956,7 +976,7 @@ function MeetingAttachBtn({meeting,meetings,setMeetings,onView}){
     const url=pasteUrl.trim();
     if(!url){alert("Please paste a URL.");return;}
     const fileName=url.split("/").pop().split("?")[0]||"meeting-minutes.pdf";
-    const fileType=fileName.endsWith(".pdf")?"application/pdf":fileName.match(/\.(jpg|jpeg|png)$/i)?"image/jpeg":"application/octet-stream";
+    const fileType=fileName.match(/\.(jpg|jpeg|png)$/i)?"image/jpeg":"application/pdf";
     const att={id:Date.now(),fileName,fileType,uploadedDate:new Date().toLocaleDateString("en-NZ"),blobUrl:url};
     save(att);setShowPaste(false);setPasteUrl("");
   }
@@ -967,10 +987,10 @@ function MeetingAttachBtn({meeting,meetings,setMeetings,onView}){
     setMeetings(newMeetings);saveGen("meetings",newMeetings);
   }
 
-  if(meeting.attachment){
+  if(existingFile){
     return(
       <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-        <Btn onClick={()=>onView(meeting.attachment)} style={{fontSize:12,padding:"5px 14px",background:C.tealL,color:C.teal,border:`1px solid ${C.teal}55`}}>📄 View minutes</Btn>
+        <Btn onClick={()=>onView(existingFile)} style={{fontSize:12,padding:"5px 14px",background:C.tealL,color:C.teal,border:`1px solid ${C.teal}55`}}>📄 View minutes</Btn>
         <BSm onClick={()=>{if(window.confirm("Remove attached file?")){save(null);}}} color={C.red}>✕ Remove</BSm>
       </div>
     );
@@ -980,16 +1000,11 @@ function MeetingAttachBtn({meeting,meetings,setMeetings,onView}){
     <div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
         <BSm onClick={()=>ref.current.click()} color={C.gray}>📎 Upload file</BSm>
-        <BSm onClick={()=>setShowPaste(p=>!p)} color={C.blue}>🔗 Paste URL from KPI portal</BSm>
+        <BSm onClick={()=>setShowPaste(p=>!p)} color={C.blue}>🔗 Paste URL</BSm>
       </div>
       {showPaste&&(
         <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center"}}>
-          <input
-            value={pasteUrl}
-            onChange={e=>setPasteUrl(e.target.value)}
-            placeholder="Paste Vercel Blob URL here…"
-            style={{flex:1,padding:"6px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,background:"white"}}
-          />
+          <input value={pasteUrl} onChange={e=>setPasteUrl(e.target.value)} placeholder="Paste Vercel Blob URL…" style={{flex:1,padding:"6px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,background:"white"}}/>
           <BSm onClick={handlePasteUrl} color={C.teal}>Link →</BSm>
           <BSm onClick={()=>{setShowPaste(false);setPasteUrl("");}} color={C.gray}>Cancel</BSm>
         </div>
