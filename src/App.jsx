@@ -2268,16 +2268,16 @@ export default function App(){
       const allMeetingYears=[...new Set([thisYear,...meetings.map(m=>m.date.slice(0,4))])].sort((a,b)=>b-a);
       const mainClinics=CLINICS.filter(c=>c.id!=="schools");
 
+      // Year open by default for all years (collapse only on explicit click)
+      function isYrOpen(yr){const k="myr_"+yr;return k in collapsedYears?collapsedYears[k]:true;}
+      function toggleYr(yr){setCollapsedYears(p=>({...p,["myr_"+yr]:!isYrOpen(yr)}));}
+
       function qMeetings(year,qi){
         return meetings.filter(m=>{
           if(m.date.slice(0,4)!==year)return false;
           return qDefs[qi].months.includes(new Date(m.date).getMonth());
         }).sort((a,b)=>a.date.localeCompare(b.date));
       }
-      function isYrOpen(yr){const k="myr_"+yr;return k in collapsedYears?collapsedYears[k]:yr===thisYear;}
-      function isQOpen(yr,qi){const k="mq_"+yr+"_"+qi;return k in collapsedYears?collapsedYears[k]:yr===thisYear&&qi===currentQ;}
-      function toggleYr(yr){setCollapsedYears(p=>({...p,["myr_"+yr]:!isYrOpen(yr)}));}
-      function toggleQ(yr,qi){setCollapsedYears(p=>({...p,["mq_"+yr+"_"+qi]:!isQOpen(yr,qi)}));}
 
       return <div>
         <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly per clinic. {meetings.length} meeting{meetings.length!==1?"s":""} logged.</Alert>
@@ -2285,6 +2285,7 @@ export default function App(){
           <Btn onClick={()=>setShowAdd(true)}>+ Log meeting</Btn>
         </div>
 
+        {/* ── Log form ── */}
         {showAdd&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
           <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Log meeting <span style={{fontSize:12,color:C.muted,fontWeight:400}}>(set any past date for historical records)</span></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
@@ -2309,78 +2310,76 @@ export default function App(){
             }
             <input ref={meetRef} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;if(f.size>10*1024*1024){alert("File over 10MB.");return;}const r=new FileReader();r.onload=async ev=>{const att={id:Date.now(),fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};setNm(n=>({...n,attachment:att}));const bf=await _uploadToBlob("mtgatt_"+att.id,f.name,f.type,ev.target.result);if(bf)setNm(n=>({...n,attachment:{...n.attachment,blobUrl:bf.blobUrl}}));};r.readAsDataURL(f);e.target.value="";}}/>
           </div>
-          <div style={{display:"flex",gap:8}}><Btn onClick={()=>{if(nm.date&&nm.topic){const updated=[...meetings,{...nm,id:Date.now()}];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});setShowAdd(false);}}} >Save</Btn><Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn></div>
+          <div style={{display:"flex",gap:8}}>
+            <Btn onClick={()=>{if(nm.date&&nm.topic){const updated=[...meetings,{...nm,id:Date.now()}];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});setShowAdd(false);}}}>Save</Btn>
+            <Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn>
+          </div>
         </Card>}
 
+        {/* ── Year → Quarter label → Meeting cards ── */}
         {allMeetingYears.map(year=>{
-          const totalForYear=meetings.filter(m=>m.date.slice(0,4)===year).length;
+          const yearMeetings=meetings.filter(m=>m.date.slice(0,4)===year);
           const yrOpen=isYrOpen(year);
           return(
-            <div key={year} style={{marginBottom:"0.625rem"}}>
-              {/* Year header */}
+            <div key={year} style={{marginBottom:"0.75rem"}}>
+              {/* Year header — tap to collapse/expand */}
               <div onClick={()=>toggleYr(year)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:year===thisYear?C.tealL:C.grayXL,border:`1px solid ${year===thisYear?C.teal:C.border}`,borderRadius:yrOpen?"8px 8px 0 0":8,cursor:"pointer",userSelect:"none"}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:15,fontWeight:700,color:year===thisYear?C.teal:C.text}}>{year}</span>
                   {year===thisYear&&<span style={{fontSize:10,background:C.teal,color:"white",borderRadius:8,padding:"1px 7px",fontWeight:600}}>CURRENT</span>}
-                  <span style={{fontSize:12,color:C.muted}}>{totalForYear} meeting{totalForYear!==1?"s":""}</span>
+                  <span style={{fontSize:12,color:C.muted}}>{yearMeetings.length} meeting{yearMeetings.length!==1?"s":""}</span>
                 </div>
                 <span style={{color:C.muted,fontSize:18,transform:yrOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.18s",display:"inline-block"}}>›</span>
               </div>
 
-              {yrOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",background:C.card,padding:"0.5rem"}}>
+              {yrOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",background:C.card,padding:"0.75rem"}}>
+                {/* Q1–Q4 as static labels — no extra tap needed */}
                 {qDefs.map((q,qi)=>{
                   const qms=qMeetings(year,qi);
-                  const qOpen=isQOpen(year,qi);
                   const isCurrent=year===thisYear&&qi===currentQ;
                   const isPast=(parseInt(year)<parseInt(thisYear))||(year===thisYear&&qi<currentQ);
-                  const clinicsDone=[...new Set(qms.flatMap(m=>m.clinic==="All clinics"?mainClinics.map(c=>c.short):[m.clinic]))];
-                  const statusCol=qms.length>0?C.green:isPast?C.red:C.muted;
+                  if(qms.length===0&&!isPast&&!isCurrent)return null; // hide future quarters with nothing
                   return(
-                    <div key={qi} style={{marginBottom:3}}>
-                      {/* Quarter row — tap to show/hide meetings */}
-                      <div onClick={()=>toggleQ(year,qi)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:qOpen?"6px 6px 0 0":6,background:isCurrent?"#F0FAF6":C.grayXL,border:`1px solid ${isCurrent?C.teal+"55":C.border}`,cursor:"pointer",userSelect:"none"}}>
-                        <span style={{fontSize:12,fontWeight:700,color:statusCol,minWidth:24}}>{q.n}</span>
-                        <span style={{fontSize:11,color:C.muted,flexShrink:0}}>{q.label}</span>
-                        <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:3}}>
-                          {clinicsDone.map(c=><span key={c} style={{fontSize:10,background:C.greenL,color:C.green,borderRadius:8,padding:"1px 6px",fontWeight:500}}>✓ {c}</span>)}
-                          {qms.length===0&&isPast&&<span style={{fontSize:10,background:C.redL,color:C.red,borderRadius:8,padding:"1px 6px"}}>No meeting logged</span>}
-                          {qms.length===0&&!isPast&&<span style={{fontSize:10,color:C.hint}}>Upcoming</span>}
-                        </div>
-                        <span style={{fontSize:11,color:statusCol,fontWeight:500,flexShrink:0}}>{qms.length>0?`${qms.length} logged`:isPast?"Missing":"—"}</span>
-                        <span style={{color:C.muted,fontSize:14,transform:qOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.15s",display:"inline-block"}}>›</span>
+                    <div key={qi} style={{marginBottom:"0.875rem"}}>
+                      {/* Quarter label — static, not a button */}
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:"0.5rem"}}>
+                        <span style={{fontSize:12,fontWeight:700,color:qms.length>0?C.teal:isPast?C.red:C.muted}}>{q.n}</span>
+                        <span style={{fontSize:11,color:C.muted}}>{q.label}</span>
+                        {isCurrent&&<span style={{fontSize:10,background:C.teal+"22",color:C.teal,borderRadius:6,padding:"1px 6px",fontWeight:500}}>current</span>}
+                        {qms.length===0&&isPast&&<span style={{fontSize:11,color:C.red}}>— no meeting logged</span>}
+                        {qms.length===0&&isCurrent&&<span style={{fontSize:11,color:C.muted}}>— not yet logged</span>}
                       </div>
-
-                      {/* Quarter expanded — full meeting cards, no extra tap needed */}
-                      {qOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 6px 6px",background:"white",padding:"0.5rem"}}>
-                        {qms.length===0
-                          ?<div style={{padding:"10px 8px",display:"flex",alignItems:"center",gap:10}}>
-                              <span style={{fontSize:12,color:C.muted}}>No meeting logged for this quarter.</span>
-                              <BSm onClick={()=>setShowAdd(true)} color={C.teal}>+ Log one →</BSm>
+                      {/* Meeting cards — always fully expanded */}
+                      {qms.map(m=>(
+                        <div key={m.id} style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8,padding:"12px 14px",marginBottom:"0.5rem"}}>
+                          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:3}}>{m.topic||"Staff meeting"}</div>
+                              <div style={{fontSize:11,color:C.muted}}>📅 {m.date} &nbsp;·&nbsp; 📍 {m.clinic}</div>
                             </div>
-                          :qms.map(m=>(
-                            <div key={m.id} style={{background:C.grayXL,borderRadius:8,padding:"10px 12px",marginBottom:"0.375rem",border:`1px solid ${C.border}`}}>
-                              {/* Meeting header */}
-                              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:m.attendees||m.notes||m.attachment?8:0}}>
-                                <div>
-                                  <div style={{fontSize:13,fontWeight:600,color:C.text}}>{m.topic||"Staff meeting"}</div>
-                                  <div style={{fontSize:11,color:C.muted,marginTop:2}}>📅 {m.date} &nbsp;·&nbsp; 📍 {m.clinic}</div>
-                                </div>
-                                <div style={{display:"flex",gap:5,alignItems:"center",flexShrink:0}}>
-                                  <Pill s="ok" label="Done ✓"/>
-                                  <BSm onClick={()=>{if(window.confirm("Delete this meeting?")){const u=meetings.filter(x=>x.id!==m.id);setMeetings(u);saveGen("meetings",u);}}} color={C.red}>✕</BSm>
-                                </div>
+                            <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
+                              <Pill s="ok" label="Done ✓"/>
+                              <BSm onClick={()=>{if(window.confirm("Delete this meeting?")){const u=meetings.filter(x=>x.id!==m.id);setMeetings(u);saveGen("meetings",u);}}} color={C.red}>✕</BSm>
+                            </div>
+                          </div>
+                          {m.attendees&&<div style={{fontSize:12,color:C.muted,marginTop:6}}>👥 {m.attendees}</div>}
+                          {m.notes&&<div style={{fontSize:12,color:C.text,background:"white",padding:"8px 10px",borderRadius:6,border:`1px solid ${C.border}`,lineHeight:1.6,marginTop:6}}>{m.notes}</div>}
+                          {m.attachment&&(
+                            <div style={{marginTop:8,padding:"8px 10px",background:"white",borderRadius:6,border:`1px solid ${C.teal}44`,display:"flex",alignItems:"center",gap:10}}>
+                              <span style={{fontSize:20}}>📄</span>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:12,fontWeight:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.attachment.fileName}</div>
+                                <div style={{fontSize:11,color:C.muted}}>Uploaded {m.attachment.uploadedDate||""}</div>
                               </div>
-                              {/* Meeting details — always visible */}
-                              {m.attendees&&<div style={{fontSize:12,color:C.muted,marginBottom:5}}>👥 {m.attendees}</div>}
-                              {m.notes&&<div style={{fontSize:12,color:C.text,background:"white",padding:"7px 10px",borderRadius:6,lineHeight:1.6,border:`1px solid ${C.border}`,marginBottom:m.attachment?6:0}}>{m.notes}</div>}
-                              {m.attachment&&<div style={{marginTop:4}}><BSm onClick={()=>setEavf(m.attachment)} color={C.teal}>📎 View minutes — {m.attachment.fileName}</BSm></div>}
+                              <Btn onClick={()=>setEavf(m.attachment)} style={{fontSize:12,padding:"5px 12px"}}>View 👁</Btn>
                             </div>
-                          ))
-                        }
-                      </div>}
+                          )}
+                        </div>
+                      ))}
                     </div>
                   );
                 })}
+                {yearMeetings.length===0&&<div style={{padding:"10px 4px",fontSize:12,color:C.muted,display:"flex",alignItems:"center",gap:10}}>No meetings logged for {year}. <BSm onClick={()=>setShowAdd(true)} color={C.teal}>+ Log one →</BSm></div>}
               </div>}
             </div>
           );
