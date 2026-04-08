@@ -934,7 +934,33 @@ function AuditEvidenceBtn({audit,audits,setAudits,onView}){
   );
 }
 
-// audit view modal — shows a completed audit in full
+// Per-meeting attach/view button — works on existing meetings with no attachment
+function MeetingAttachBtn({meeting,meetings,setMeetings,onView}){
+  const ref=useRef();
+  function handle(e){
+    const f=e.target.files[0];if(!f)return;
+    if(f.size>10*1024*1024){alert("File over 10MB.");return;}
+    const r=new FileReader();
+    r.onload=async ev=>{
+      const att={id:Date.now(),fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+      const blobFile=await _uploadToBlob("mtgatt_"+meeting.id,f.name,f.type,ev.target.result);
+      if(blobFile)att.blobUrl=blobFile.blobUrl;
+      const updated={...meeting,attachment:att};
+      const newMeetings=meetings.map(m=>m.id===meeting.id?updated:m);
+      setMeetings(newMeetings);saveGen("meetings",newMeetings);
+    };
+    r.readAsDataURL(f);e.target.value="";
+  }
+  return(
+    <>
+      {meeting.attachment
+        ?<Btn onClick={()=>onView(meeting.attachment)} style={{fontSize:12,padding:"5px 14px",background:C.tealL,color:C.teal,border:`1px solid ${C.teal}55`}}>📄 View minutes</Btn>
+        :<BSm onClick={()=>ref.current.click()} color={C.gray}>📎 Attach minutes</BSm>
+      }
+      <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
+    </>
+  );
+}
 function AuditViewModal({audit,onClose}){
   if(!audit)return null;
   const form=AUDIT_FORMS[audit.type]||{sections:[]};
@@ -2364,16 +2390,9 @@ export default function App(){
                           </div>
                           {m.attendees&&<div style={{fontSize:12,color:C.muted,marginTop:6}}>👥 {m.attendees}</div>}
                           {m.notes&&<div style={{fontSize:12,color:C.text,background:"white",padding:"8px 10px",borderRadius:6,border:`1px solid ${C.border}`,lineHeight:1.6,marginTop:6}}>{m.notes}</div>}
-                          {m.attachment&&(
-                            <div style={{marginTop:8,padding:"8px 10px",background:"white",borderRadius:6,border:`1px solid ${C.teal}44`,display:"flex",alignItems:"center",gap:10}}>
-                              <span style={{fontSize:20}}>📄</span>
-                              <div style={{flex:1,minWidth:0}}>
-                                <div style={{fontSize:12,fontWeight:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.attachment.fileName}</div>
-                                <div style={{fontSize:11,color:C.muted}}>Uploaded {m.attachment.uploadedDate||""}</div>
-                              </div>
-                              <Btn onClick={()=>setEavf(m.attachment)} style={{fontSize:12,padding:"5px 12px"}}>View 👁</Btn>
-                            </div>
-                          )}
+                          <div style={{marginTop:8}}>
+                            <MeetingAttachBtn meeting={m} meetings={meetings} setMeetings={setMeetings} onView={setEavf}/>
+                          </div>
                         </div>
                       ))}
                     </div>
