@@ -2159,135 +2159,100 @@ export default function App(){
         ))}
       </div></div>
       <Divider/>
-      {/* Audit history — Year → Quarter → records */}
+      {/* Audit history — Year → Type → expandable records */}
       {(()=>{
         const thisYearA=String(new Date().getFullYear());
-        const nowMonthA=new Date().getMonth();
-        const currentQA=nowMonthA<3?0:nowMonthA<6?1:nowMonthA<9?2:3;
-        const qDefsA=[{n:"Q1",label:"Jan – Mar",months:[0,1,2]},{n:"Q2",label:"Apr – Jun",months:[3,4,5]},{n:"Q3",label:"Jul – Sep",months:[6,7,8]},{n:"Q4",label:"Oct – Dec",months:[9,10,11]}];
         const allYears=[...new Set([thisYearA,...audits.map(a=>a.date?.slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
+        const filtered=audits.filter(a=>(auditTypeFilter==="all"||a.type===auditTypeFilter)&&(auditClinicFilter==="all"||a.clinic===auditClinicFilter));
 
-        function qAudits(year,qi){
-          return audits.filter(a=>{
-            if(!a.date)return false;
-            if((auditTypeFilter!=="all"&&a.type!==auditTypeFilter)||(auditClinicFilter!=="all"&&a.clinic!==auditClinicFilter))return false;
-            if(a.date.slice(0,4)!==year)return false;
-            const mo=new Date(a.date).getMonth();
-            return qDefsA[qi].months.includes(mo);
-          }).sort((a,b)=>a.date.localeCompare(b.date));
-        }
-        function isAyrOpen(yr){const k="ayr_"+yr;if(collapsedYears[k]!==undefined)return collapsedYears[k];return yr===thisYearA;}
-        function isAqOpen(yr,qi){const k="aq_"+yr+"_"+qi;if(collapsedYears[k]!==undefined)return collapsedYears[k];return yr===thisYearA&&qi===currentQA;}
-        function isAuditOpen(id){return!!collapsedYears["audit_"+id];}
+        function isAyrOpen(yr){const k="ayr_"+yr;return k in collapsedYears?collapsedYears[k]:yr===thisYearA;}
+        function isAOpen(id){return!!collapsedYears["ao_"+id];}
         function toggleAyr(yr){setCollapsedYears(p=>({...p,["ayr_"+yr]:!isAyrOpen(yr)}));}
-        function toggleAq(yr,qi){setCollapsedYears(p=>({...p,["aq_"+yr+"_"+qi]:!isAqOpen(yr,qi)}));}
-        function toggleAudit(id){setCollapsedYears(p=>({...p,["audit_"+id]:!isAuditOpen(id)}));}
-
-        const totalFiltered=audits.filter(a=>(auditTypeFilter==="all"||a.type===auditTypeFilter)&&(auditClinicFilter==="all"||a.clinic===auditClinicFilter)).length;
+        function toggleA(id){setCollapsedYears(p=>({...p,["ao_"+id]:!isAOpen(id)}));}
 
         return(
           <div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem",flexWrap:"wrap",gap:8}}>
               <div style={{fontSize:14,fontWeight:600}}>Audit history — {audits.length} record{audits.length!==1?"s":""}</div>
-              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                <select value={auditTypeFilter} onChange={e=>setAuditTypeFilter(e.target.value)} style={{fontSize:11,padding:"3px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL,color:C.text}}>
-                  <option value="all">All types</option>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <select value={auditTypeFilter} onChange={e=>setAuditTypeFilter(e.target.value)} style={{fontSize:12,padding:"5px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL,color:C.text}}>
+                  <option value="all">All audit types</option>
                   {Object.entries(AUDIT_FORMS).map(([k,f])=><option key={k} value={k}>{f.icon} {f.title}</option>)}
                 </select>
-                <select value={auditClinicFilter||"all"} onChange={e=>setAuditClinicFilter(e.target.value)} style={{fontSize:11,padding:"3px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL,color:C.text}}>
+                <select value={auditClinicFilter} onChange={e=>setAuditClinicFilter(e.target.value)} style={{fontSize:12,padding:"5px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL,color:C.text}}>
                   <option value="all">All clinics</option>
                   {CLINICS.map(c=><option key={c.id} value={c.short}>{c.short}</option>)}
                 </select>
               </div>
             </div>
             {audits.length===0&&<Alert type="blue" title="No audit records yet">Complete an audit above to create your first record.</Alert>}
+            {filtered.length===0&&audits.length>0&&<Alert type="blue" title="No records match">Try changing the filters.</Alert>}
             {allYears.map(year=>{
               const yrOpen=isAyrOpen(year);
-              const yearTotal=audits.filter(a=>a.date?.slice(0,4)===year).length;
-              const yearPassed=audits.filter(a=>a.date?.slice(0,4)===year&&a.outcome==="Passed").length;
+              const yearAudits=filtered.filter(a=>a.date?.slice(0,4)===year).sort((a,b)=>b.date.localeCompare(a.date));
+              const yearTotal=yearAudits.length;
+              const yearPassed=yearAudits.filter(a=>a.outcome==="Passed").length;
               const yearFailed=yearTotal-yearPassed;
               return(
-                <div key={year} style={{marginBottom:"0.75rem"}}>
+                <div key={year} style={{marginBottom:"0.625rem"}}>
                   {/* Year header */}
-                  <div onClick={()=>toggleAyr(year)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 14px",background:year===thisYearA?C.tealL:C.grayXL,border:`1px solid ${year===thisYearA?C.teal:C.border}`,borderRadius:yrOpen?8:"8px",cursor:"pointer",userSelect:"none"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <div onClick={()=>toggleAyr(year)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:year===thisYearA?C.tealL:C.grayXL,border:`1px solid ${year===thisYearA?C.teal:C.border}`,borderRadius:yrOpen?"8px 8px 0 0":8,cursor:"pointer",userSelect:"none"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       <span style={{fontSize:15,fontWeight:700,color:year===thisYearA?C.teal:C.text}}>{year}</span>
                       {year===thisYearA&&<span style={{fontSize:10,background:C.teal,color:"white",borderRadius:8,padding:"1px 7px",fontWeight:600}}>CURRENT</span>}
-                      {yearTotal>0&&<><span style={{fontSize:12,color:C.muted}}>{yearTotal} audit{yearTotal!==1?"s":""}</span><span style={{fontSize:12,color:C.green,fontWeight:500}}>✓ {yearPassed}</span>{yearFailed>0&&<span style={{fontSize:12,color:C.red,fontWeight:500}}>✗ {yearFailed}</span>}</>}
+                      {yearTotal>0&&<><span style={{fontSize:12,color:C.muted}}>{yearTotal} audit{yearTotal!==1?"s":""}</span><span style={{fontSize:12,color:C.green,fontWeight:500}}>✓ {yearPassed} passed</span>{yearFailed>0&&<span style={{fontSize:12,color:C.red,fontWeight:500}}>✗ {yearFailed} issues</span>}</>}
+                      {yearTotal===0&&<span style={{fontSize:12,color:C.muted}}>No records</span>}
                     </div>
-                    <span style={{color:C.muted,fontSize:16,transform:yrOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.2s",display:"inline-block"}}>›</span>
+                    <span style={{color:C.muted,fontSize:18,transform:yrOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.18s",display:"inline-block"}}>›</span>
                   </div>
-                  {yrOpen&&(
-                    <div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",background:C.card,padding:"0.5rem"}}>
-                      {qDefsA.map((q,qi)=>{
-                        const qas=qAudits(year,qi);
-                        const qOpen=isAqOpen(year,qi);
-                        const isCurrent=year===thisYearA&&qi===currentQA;
-                        const isPast=(parseInt(year)<parseInt(thisYearA))||(year===thisYearA&&qi<currentQA);
-                        const qPassed=qas.filter(a=>a.outcome==="Passed").length;
-                        const qFailed=qas.length-qPassed;
-                        // Types covered this quarter
-                        const typesCovered=[...new Set(qas.map(a=>a.type))];
-                        return(
-                          <div key={qi} style={{marginBottom:"0.375rem"}}>
-                            {/* Quarter row */}
-                            <div onClick={()=>toggleAq(year,qi)} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:qOpen?"6px 6px 0 0":6,background:isCurrent?"#F0FAF6":C.grayXL,border:`1px solid ${isCurrent?C.teal+"44":C.border}`,cursor:"pointer",userSelect:"none",flexWrap:"wrap"}}>
-                              <span style={{fontSize:12,fontWeight:700,color:qas.length>0?C.green:isPast?C.red:C.muted,width:22,flexShrink:0}}>{q.n}</span>
-                              <span style={{fontSize:11,color:C.muted,flexShrink:0}}>{q.label}</span>
-                              <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:4,minWidth:0}}>
-                                {typesCovered.map(type=>{const f=AUDIT_FORMS[type];return f?<span key={type} style={{fontSize:10,background:C.greenL,color:C.green,borderRadius:8,padding:"1px 6px",fontWeight:500}}>{f.icon} {f.title}</span>:null;})}
-                                {qas.length===0&&isPast&&<span style={{fontSize:10,background:C.redL,color:C.red,borderRadius:8,padding:"1px 6px"}}>No audits logged</span>}
-                                {qas.length===0&&!isPast&&<span style={{fontSize:10,color:C.hint}}>—</span>}
-                              </div>
-                              {qas.length>0&&<div style={{display:"flex",gap:6,flexShrink:0}}><span style={{fontSize:11,color:C.green,fontWeight:500}}>✓ {qPassed}</span>{qFailed>0&&<span style={{fontSize:11,color:C.red,fontWeight:500}}>✗ {qFailed}</span>}</div>}
-                              <span style={{color:C.muted,fontSize:13,transform:qOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.15s",display:"inline-block",flexShrink:0}}>›</span>
-                            </div>
-                            {/* Quarter expanded */}
-                            {qOpen&&(
-                              <div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 6px 6px",background:"white",padding:"0.375rem 0.5rem"}}>
-                                {qas.length===0
-                                  ?<div style={{padding:"8px",fontSize:12,color:C.muted,display:"flex",alignItems:"center",gap:8}}>No audits logged for this quarter.<BSm onClick={()=>setShowLogAudit(true)} color={C.teal}>+ Log one →</BSm></div>
-                                  :qas.map(a=>{
-                                    const aOpen=isAuditOpen(a.id);
-                                    return(
-                                      <div key={a.id} style={{marginBottom:"0.25rem"}}>
-                                        <div onClick={()=>toggleAudit(a.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",borderRadius:aOpen?"5px 5px 0 0":5,background:aOpen?C.grayXL:"white",border:`1px solid ${aOpen?C.border:"transparent"}`,cursor:"pointer",userSelect:"none",flexWrap:"wrap"}}>
-                                          <span style={{fontSize:18,flexShrink:0}}>{AUDIT_FORMS[a.type]?.icon||"📋"}</span>
-                                          <span style={{fontSize:11,fontWeight:600,color:C.text,flexShrink:0}}>{a.date}</span>
-                                          <span style={{fontSize:11,color:C.muted,flexShrink:0}}>· {a.clinic}</span>
-                                          <span style={{fontSize:11,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{AUDIT_FORMS[a.type]?.title||a.type}</span>
-                                          {a.evidence&&<span style={{fontSize:10,color:C.teal,flexShrink:0}}>📎</span>}
-                                          <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
-                                          <span style={{color:C.muted,fontSize:12,transform:aOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.12s",display:"inline-block",flexShrink:0}}>›</span>
-                                        </div>
-                                        {aOpen&&(
-                                          <div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 5px 5px",background:C.grayXL,padding:"8px 12px"}}>
-                                            <div style={{fontSize:12,marginBottom:4,color:C.muted}}>Auditor: <span style={{color:C.text}}>{a.auditor}</span>{a.physioAudited&&<span> · Physio: {a.physioAudited}</span>}</div>
-                                            {a.passed!==undefined&&<div style={{fontSize:12,display:"flex",gap:12,marginBottom:4}}>
-                                              <span style={{color:C.green}}>✓ {a.passed} passed</span>
-                                              {a.failed>0&&<span style={{color:C.red}}>✗ {a.failed} failed</span>}
-                                              {a.na>0&&<span style={{color:C.muted}}>{a.na} N/A</span>}
-                                              <span style={{color:C.muted}}>{a.total} total</span>
-                                            </div>}
-                                            {a.notes&&<div style={{fontSize:12,background:"white",padding:"6px 10px",borderRadius:5,border:`1px solid ${C.border}`,lineHeight:1.6,marginBottom:4}}>{a.notes}</div>}
-                                            {a.evidence&&<div style={{marginBottom:4}}><BSm onClick={()=>setEavf(a.evidence)} color={C.teal}>📎 View evidence — {a.evidence.fileName}</BSm></div>}
-                                            <div style={{display:"flex",gap:6,marginTop:6}}>
-                                              <BSm onClick={e=>{e.stopPropagation();setViewAudit(a);}} color={C.blue}>View full report →</BSm>
-                                              <AuditEvidenceBtn audit={a} audits={audits} setAudits={setAudits} onView={setEavf}/>
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })
-                                }
-                              </div>
-                            )}
+
+                  {yrOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",background:C.card,padding:"0.625rem"}}>
+                    {yearTotal===0&&<div style={{fontSize:12,color:C.muted,padding:"8px 4px"}}>No audits match the current filters for this year.</div>}
+                    {/* Group by audit type */}
+                    {Object.entries(AUDIT_FORMS).map(([key,form])=>{
+                      const ta=yearAudits.filter(a=>a.type===key);
+                      if(!ta.length)return null;
+                      return(
+                        <div key={key} style={{marginBottom:"0.75rem"}}>
+                          <div style={{fontSize:11,fontWeight:600,color:C.muted,marginBottom:"0.375rem",display:"flex",alignItems:"center",gap:6,textTransform:"uppercase",letterSpacing:"0.04em"}}>
+                            <span>{form.icon}</span> {form.title} <span style={{background:C.grayL,borderRadius:8,padding:"0 6px",fontSize:10,textTransform:"none",letterSpacing:0,fontWeight:500,color:C.muted}}>{ta.length}</span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                          {ta.map(a=>{
+                            const aOpen=isAOpen(a.id);
+                            return(
+                              <div key={a.id} style={{marginBottom:4}}>
+                                {/* Audit summary row — tap to expand */}
+                                <div onClick={()=>toggleA(a.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px",borderRadius:aOpen?"6px 6px 0 0":6,background:C.grayXL,border:`1px solid ${aOpen?C.border:C.border}`,cursor:"pointer",userSelect:"none"}}>
+                                  <div style={{flex:1,minWidth:0}}>
+                                    <div style={{fontSize:12,fontWeight:600,color:C.text}}>{a.date} <span style={{color:C.muted,fontWeight:400}}>· {a.clinic}</span></div>
+                                    <div style={{fontSize:11,color:C.muted,marginTop:1}}>Auditor: {a.auditor}{a.physioAudited?` · Physio: ${a.physioAudited}`:""}</div>
+                                  </div>
+                                  {a.evidence&&<span style={{fontSize:11,color:C.teal,flexShrink:0}}>📎</span>}
+                                  <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
+                                  <span style={{color:C.muted,fontSize:14,transform:aOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.13s",display:"inline-block",flexShrink:0}}>›</span>
+                                </div>
+                                {/* Expanded audit detail */}
+                                {aOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 6px 6px",background:"white",padding:"10px 12px"}}>
+                                  {a.passed!==undefined&&<div style={{display:"flex",gap:14,marginBottom:6,fontSize:12}}>
+                                    <span style={{color:C.green,fontWeight:500}}>✓ {a.passed} passed</span>
+                                    {a.failed>0&&<span style={{color:C.red,fontWeight:500}}>✗ {a.failed} failed</span>}
+                                    {a.na>0&&<span style={{color:C.muted}}>{a.na} N/A</span>}
+                                    <span style={{color:C.muted}}>{a.total} total items</span>
+                                  </div>}
+                                  {a.notes&&<div style={{fontSize:12,background:C.grayXL,padding:"7px 10px",borderRadius:5,lineHeight:1.6,marginBottom:6,border:`1px solid ${C.border}`}}>{a.notes}</div>}
+                                  {a.evidence&&<div style={{marginBottom:6}}><BSm onClick={()=>setEavf(a.evidence)} color={C.teal}>📎 View evidence — {a.evidence.fileName}</BSm></div>}
+                                  <div style={{display:"flex",gap:6}}>
+                                    <BSm onClick={e=>{e.stopPropagation();setViewAudit(a);}} color={C.blue}>View full report →</BSm>
+                                    <AuditEvidenceBtn audit={a} audits={audits} setAudits={setAudits} onView={setEavf}/>
+                                  </div>
+                                </div>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>}
                 </div>
               );
             })}
@@ -2297,45 +2262,29 @@ export default function App(){
     </div>}
     {mgmtTab==="meetings"&&(()=>{
       const thisYear=String(new Date().getFullYear());
-      const nowMonth=new Date().getMonth(); // 0-indexed
+      const nowMonth=new Date().getMonth();
       const currentQ=nowMonth<3?0:nowMonth<6?1:nowMonth<9?2:3;
       const qDefs=[{n:"Q1",label:"Jan – Mar",months:[0,1,2]},{n:"Q2",label:"Apr – Jun",months:[3,4,5]},{n:"Q3",label:"Jul – Sep",months:[6,7,8]},{n:"Q4",label:"Oct – Dec",months:[9,10,11]}];
-
-      // All years that have meetings, plus current year always shown
       const allMeetingYears=[...new Set([thisYear,...meetings.map(m=>m.date.slice(0,4))])].sort((a,b)=>b-a);
+      const mainClinics=CLINICS.filter(c=>c.id!=="schools");
 
-      // Get meetings for a given year+quarter
       function qMeetings(year,qi){
         return meetings.filter(m=>{
           if(m.date.slice(0,4)!==year)return false;
-          const mo=new Date(m.date).getMonth();
-          return qDefs[qi].months.includes(mo);
+          return qDefs[qi].months.includes(new Date(m.date).getMonth());
         }).sort((a,b)=>a.date.localeCompare(b.date));
       }
-
-      // Collapse keys: "yr_2025" for year, "q_2025_1" for quarter, "m_<id>" for individual meeting
-      function isYrOpen(yr){return collapsedYears["yr_"+yr]!==false&&(collapsedYears["yr_"+yr]===true||yr===thisYear);}
-      function isQOpen(yr,qi){
-        const key="q_"+yr+"_"+qi;
-        if(collapsedYears[key]!==undefined)return collapsedYears[key];
-        return yr===thisYear&&qi===currentQ; // default: current Q open
-      }
-      function isMOpen(id){return!!collapsedYears["m_"+id];}
-      function toggleYr(yr){setCollapsedYears(p=>({...p,["yr_"+yr]:!isYrOpen(yr)}));}
-      function toggleQ(yr,qi){setCollapsedYears(p=>({...p,["q_"+yr+"_"+qi]:!isQOpen(yr,qi)}));}
-      function toggleM(id){setCollapsedYears(p=>({...p,["m_"+id]:!isMOpen(id)}));}
-
-      const mainClinics=CLINICS.filter(c=>c.id!=="schools");
+      function isYrOpen(yr){const k="myr_"+yr;return k in collapsedYears?collapsedYears[k]:yr===thisYear;}
+      function isQOpen(yr,qi){const k="mq_"+yr+"_"+qi;return k in collapsedYears?collapsedYears[k]:yr===thisYear&&qi===currentQ;}
+      function toggleYr(yr){setCollapsedYears(p=>({...p,["myr_"+yr]:!isYrOpen(yr)}));}
+      function toggleQ(yr,qi){setCollapsedYears(p=>({...p,["mq_"+yr+"_"+qi]:!isQOpen(yr,qi)}));}
 
       return <div>
-        {/* ── header ── */}
-        <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly per clinic. {meetings.length} meeting{meetings.length!==1?"s":""} logged. Tap a quarter to expand, tap a meeting to view details.</Alert>
-        <div style={{display:"flex",gap:8,marginBottom:"1rem",alignItems:"center"}}>
-          <div style={{flex:1}}/>
+        <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly per clinic. {meetings.length} meeting{meetings.length!==1?"s":""} logged.</Alert>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"1rem"}}>
           <Btn onClick={()=>setShowAdd(true)}>+ Log meeting</Btn>
         </div>
 
-        {/* ── log meeting form ── */}
         {showAdd&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
           <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Log meeting <span style={{fontSize:12,color:C.muted,fontWeight:400}}>(set any past date for historical records)</span></div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
@@ -2363,91 +2312,76 @@ export default function App(){
           <div style={{display:"flex",gap:8}}><Btn onClick={()=>{if(nm.date&&nm.topic){const updated=[...meetings,{...nm,id:Date.now()}];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});setShowAdd(false);}}} >Save</Btn><Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn></div>
         </Card>}
 
-        {/* ── year → quarter → meeting hierarchy ── */}
         {allMeetingYears.map(year=>{
           const totalForYear=meetings.filter(m=>m.date.slice(0,4)===year).length;
           const yrOpen=isYrOpen(year);
           return(
-            <div key={year} style={{marginBottom:"0.75rem"}}>
+            <div key={year} style={{marginBottom:"0.625rem"}}>
               {/* Year header */}
-              <div onClick={()=>toggleYr(year)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 14px",background:year===thisYear?C.tealL:C.grayXL,border:`1px solid ${year===thisYear?C.teal:C.border}`,borderRadius:yrOpen?8:"8px",cursor:"pointer",userSelect:"none",transition:"border-radius 0.15s"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div onClick={()=>toggleYr(year)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:year===thisYear?C.tealL:C.grayXL,border:`1px solid ${year===thisYear?C.teal:C.border}`,borderRadius:yrOpen?"8px 8px 0 0":8,cursor:"pointer",userSelect:"none"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:15,fontWeight:700,color:year===thisYear?C.teal:C.text}}>{year}</span>
-                  {year===thisYear&&<span style={{fontSize:10,background:C.teal,color:"white",borderRadius:8,padding:"1px 7px",fontWeight:600,letterSpacing:"0.03em"}}>CURRENT</span>}
+                  {year===thisYear&&<span style={{fontSize:10,background:C.teal,color:"white",borderRadius:8,padding:"1px 7px",fontWeight:600}}>CURRENT</span>}
                   <span style={{fontSize:12,color:C.muted}}>{totalForYear} meeting{totalForYear!==1?"s":""}</span>
                 </div>
-                <span style={{color:C.muted,fontSize:16,transform:yrOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.2s",display:"inline-block"}}>›</span>
+                <span style={{color:C.muted,fontSize:18,transform:yrOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.18s",display:"inline-block"}}>›</span>
               </div>
 
-              {yrOpen&&(
-                <div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",background:C.card,padding:"0.5rem"}}>
-                  {qDefs.map((q,qi)=>{
-                    const qms=qMeetings(year,qi);
-                    const qOpen=isQOpen(year,qi);
-                    const isCurrent=year===thisYear&&qi===currentQ;
-                    const isPast=(parseInt(year)<parseInt(thisYear))||(year===thisYear&&qi<currentQ);
-                    const statusColor=qms.length>0?C.green:isPast?C.red:C.muted;
-                    const statusLabel=qms.length>0?`${qms.length} logged`:isPast?"Overdue":"Upcoming";
-                    // Clinics covered this quarter
-                    const clinicsCovered=[...new Set(qms.flatMap(m=>m.clinic==="All clinics"?mainClinics.map(c=>c.short):[m.clinic]))];
-                    return(
-                      <div key={qi} style={{marginBottom:"0.375rem"}}>
-                        {/* Quarter row */}
-                        <div onClick={()=>toggleQ(year,qi)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:qOpen?"6px 6px 0 0":6,background:isCurrent?"#F0FAF6":C.grayXL,border:`1px solid ${isCurrent?C.teal+"44":C.border}`,cursor:"pointer",userSelect:"none"}}>
-                          <span style={{fontSize:12,fontWeight:700,color:statusColor,width:22,flexShrink:0}}>{q.n}</span>
-                          <span style={{fontSize:11,color:C.muted,flexShrink:0}}>{q.label}</span>
-                          <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:4}}>
-                            {clinicsCovered.map(c=><span key={c} style={{fontSize:10,background:C.greenL,color:C.green,borderRadius:8,padding:"1px 6px",fontWeight:500}}>✓ {c}</span>)}
-                            {qms.length===0&&isPast&&<span style={{fontSize:10,background:C.redL,color:C.red,borderRadius:8,padding:"1px 6px"}}>No meeting logged</span>}
-                            {qms.length===0&&!isPast&&<span style={{fontSize:10,color:C.hint}}>—</span>}
-                          </div>
-                          <span style={{fontSize:11,color:statusColor,fontWeight:500,flexShrink:0}}>{statusLabel}</span>
-                          <span style={{color:C.muted,fontSize:13,transform:qOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.15s",display:"inline-block",flexShrink:0}}>›</span>
+              {yrOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",background:C.card,padding:"0.5rem"}}>
+                {qDefs.map((q,qi)=>{
+                  const qms=qMeetings(year,qi);
+                  const qOpen=isQOpen(year,qi);
+                  const isCurrent=year===thisYear&&qi===currentQ;
+                  const isPast=(parseInt(year)<parseInt(thisYear))||(year===thisYear&&qi<currentQ);
+                  const clinicsDone=[...new Set(qms.flatMap(m=>m.clinic==="All clinics"?mainClinics.map(c=>c.short):[m.clinic]))];
+                  const statusCol=qms.length>0?C.green:isPast?C.red:C.muted;
+                  return(
+                    <div key={qi} style={{marginBottom:3}}>
+                      {/* Quarter row — tap to show/hide meetings */}
+                      <div onClick={()=>toggleQ(year,qi)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:qOpen?"6px 6px 0 0":6,background:isCurrent?"#F0FAF6":C.grayXL,border:`1px solid ${isCurrent?C.teal+"55":C.border}`,cursor:"pointer",userSelect:"none"}}>
+                        <span style={{fontSize:12,fontWeight:700,color:statusCol,minWidth:24}}>{q.n}</span>
+                        <span style={{fontSize:11,color:C.muted,flexShrink:0}}>{q.label}</span>
+                        <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:3}}>
+                          {clinicsDone.map(c=><span key={c} style={{fontSize:10,background:C.greenL,color:C.green,borderRadius:8,padding:"1px 6px",fontWeight:500}}>✓ {c}</span>)}
+                          {qms.length===0&&isPast&&<span style={{fontSize:10,background:C.redL,color:C.red,borderRadius:8,padding:"1px 6px"}}>No meeting logged</span>}
+                          {qms.length===0&&!isPast&&<span style={{fontSize:10,color:C.hint}}>Upcoming</span>}
                         </div>
-
-                        {/* Quarter expanded — individual meetings */}
-                        {qOpen&&(
-                          <div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 6px 6px",background:"white",padding:"0.375rem 0.5rem"}}>
-                            {qms.length===0
-                              ?<div style={{padding:"8px 8px",fontSize:12,color:C.muted,display:"flex",alignItems:"center",gap:8}}>
-                                  <span>No meeting logged for this quarter.</span>
-                                  <BSm onClick={()=>setShowAdd(true)} color={C.teal}>+ Log one →</BSm>
-                                </div>
-                              :qms.map(m=>{
-                                const mOpen=isMOpen(m.id);
-                                return(
-                                  <div key={m.id} style={{marginBottom:"0.25rem"}}>
-                                    {/* Meeting summary row — tap to expand */}
-                                    <div onClick={()=>toggleM(m.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 8px",borderRadius:mOpen?"5px 5px 0 0":5,background:mOpen?C.grayXL:"white",border:`1px solid ${mOpen?C.border:"transparent"}`,cursor:"pointer",userSelect:"none"}}>
-                                      <span style={{fontSize:11,fontWeight:600,color:C.text,flexShrink:0}}>{m.date}</span>
-                                      <span style={{fontSize:11,color:C.muted,flexShrink:0}}>· {m.clinic}</span>
-                                      <span style={{fontSize:11,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.topic||"Staff meeting"}</span>
-                                      {m.attachment&&<span style={{fontSize:10,color:C.teal,flexShrink:0}}>📎</span>}
-                                      <Pill s="ok" label="Done ✓"/>
-                                      <span style={{color:C.muted,fontSize:12,transform:mOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.12s",display:"inline-block",flexShrink:0}}>›</span>
-                                    </div>
-                                    {/* Meeting detail */}
-                                    {mOpen&&(
-                                      <div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 5px 5px",background:C.grayXL,padding:"8px 12px"}}>
-                                        {m.attendees&&<div style={{fontSize:12,marginBottom:4}}><span style={{color:C.muted}}>👥 Attendees: </span>{m.attendees}</div>}
-                                        {m.notes&&<div style={{fontSize:12,color:C.text,background:"white",padding:"6px 10px",borderRadius:5,lineHeight:1.6,marginBottom:m.attachment?6:0,border:`1px solid ${C.border}`}}>{m.notes}</div>}
-                                        {m.attachment&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}><BSm onClick={()=>setEavf(m.attachment)} color={C.teal}>📎 View minutes — {m.attachment.fileName}</BSm></div>}
-                                        <div style={{marginTop:6,display:"flex",justifyContent:"flex-end"}}>
-                                          <BSm onClick={()=>{if(window.confirm("Delete this meeting record?")){const u=meetings.filter(x=>x.id!==m.id);setMeetings(u);saveGen("meetings",u);}}} color={C.red}>Delete ✕</BSm>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })
-                            }
-                          </div>
-                        )}
+                        <span style={{fontSize:11,color:statusCol,fontWeight:500,flexShrink:0}}>{qms.length>0?`${qms.length} logged`:isPast?"Missing":"—"}</span>
+                        <span style={{color:C.muted,fontSize:14,transform:qOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.15s",display:"inline-block"}}>›</span>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+
+                      {/* Quarter expanded — full meeting cards, no extra tap needed */}
+                      {qOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 6px 6px",background:"white",padding:"0.5rem"}}>
+                        {qms.length===0
+                          ?<div style={{padding:"10px 8px",display:"flex",alignItems:"center",gap:10}}>
+                              <span style={{fontSize:12,color:C.muted}}>No meeting logged for this quarter.</span>
+                              <BSm onClick={()=>setShowAdd(true)} color={C.teal}>+ Log one →</BSm>
+                            </div>
+                          :qms.map(m=>(
+                            <div key={m.id} style={{background:C.grayXL,borderRadius:8,padding:"10px 12px",marginBottom:"0.375rem",border:`1px solid ${C.border}`}}>
+                              {/* Meeting header */}
+                              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:m.attendees||m.notes||m.attachment?8:0}}>
+                                <div>
+                                  <div style={{fontSize:13,fontWeight:600,color:C.text}}>{m.topic||"Staff meeting"}</div>
+                                  <div style={{fontSize:11,color:C.muted,marginTop:2}}>📅 {m.date} &nbsp;·&nbsp; 📍 {m.clinic}</div>
+                                </div>
+                                <div style={{display:"flex",gap:5,alignItems:"center",flexShrink:0}}>
+                                  <Pill s="ok" label="Done ✓"/>
+                                  <BSm onClick={()=>{if(window.confirm("Delete this meeting?")){const u=meetings.filter(x=>x.id!==m.id);setMeetings(u);saveGen("meetings",u);}}} color={C.red}>✕</BSm>
+                                </div>
+                              </div>
+                              {/* Meeting details — always visible */}
+                              {m.attendees&&<div style={{fontSize:12,color:C.muted,marginBottom:5}}>👥 {m.attendees}</div>}
+                              {m.notes&&<div style={{fontSize:12,color:C.text,background:"white",padding:"7px 10px",borderRadius:6,lineHeight:1.6,border:`1px solid ${C.border}`,marginBottom:m.attachment?6:0}}>{m.notes}</div>}
+                              {m.attachment&&<div style={{marginTop:4}}><BSm onClick={()=>setEavf(m.attachment)} color={C.teal}>📎 View minutes — {m.attachment.fileName}</BSm></div>}
+                            </div>
+                          ))
+                        }
+                      </div>}
+                    </div>
+                  );
+                })}
+              </div>}
             </div>
           );
         })}
