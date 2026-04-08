@@ -942,9 +942,9 @@ function MeetingAttachBtn({meeting,meetings,setMeetings,onView}){
     if(f.size>10*1024*1024){alert("File over 10MB.");return;}
     const r=new FileReader();
     r.onload=async ev=>{
-      const att={id:Date.now(),fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
       const blobFile=await _uploadToBlob("mtgatt_"+meeting.id,f.name,f.type,ev.target.result);
-      if(blobFile)att.blobUrl=blobFile.blobUrl;
+      // Save only blobUrl + metadata — skip dataUrl to keep meetings payload small
+      const att={id:Date.now(),fileName:f.name,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),blobUrl:blobFile?.blobUrl||null,dataUrl:blobFile?undefined:ev.target.result};
       const updated={...meeting,attachment:att};
       const newMeetings=meetings.map(m=>m.id===meeting.id?updated:m);
       setMeetings(newMeetings);saveGen("meetings",newMeetings);
@@ -2334,10 +2334,14 @@ export default function App(){
               </div>
               :<BSm onClick={()=>meetRef.current.click()} color={C.gray}>📎 Attach document or photo</BSm>
             }
-            <input ref={meetRef} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;if(f.size>10*1024*1024){alert("File over 10MB.");return;}const r=new FileReader();r.onload=async ev=>{const att={id:Date.now(),fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};setNm(n=>({...n,attachment:att}));const bf=await _uploadToBlob("mtgatt_"+att.id,f.name,f.type,ev.target.result);if(bf)setNm(n=>({...n,attachment:{...n.attachment,blobUrl:bf.blobUrl}}));};r.readAsDataURL(f);e.target.value="";}}/>
+            <input ref={meetRef} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;if(f.size>10*1024*1024){alert("File over 10MB.");return;}const r=new FileReader();r.onload=async ev=>{const att={id:Date.now(),fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};setNm(n=>({...n,attachment:att}));const bf=await _uploadToBlob("mtgatt_"+att.id,f.name,f.type,ev.target.result);if(bf)setNm(n=>({...n,attachment:{...n.attachment,blobUrl:bf.blobUrl,dataUrl:undefined}}));};r.readAsDataURL(f);e.target.value="";}}/>
           </div>
           <div style={{display:"flex",gap:8}}>
-            <Btn onClick={()=>{if(nm.date&&nm.topic){const updated=[...meetings,{...nm,id:Date.now()}];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});setShowAdd(false);}}}>Save</Btn>
+            <Btn onClick={()=>{if(nm.date&&nm.topic){
+              // Strip heavy dataUrl from attachment before saving — blobUrl is enough for viewing
+              const att=nm.attachment?{...nm.attachment,dataUrl:undefined}:null;
+              const rec={...nm,id:Date.now(),attachment:att};
+              const updated=[...meetings,rec];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});setShowAdd(false);}}}>Save</Btn>
             <Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn>
           </div>
         </Card>}
