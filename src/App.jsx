@@ -934,31 +934,68 @@ function AuditEvidenceBtn({audit,audits,setAudits,onView}){
   );
 }
 
-// Per-meeting attach/view button — works on existing meetings with no attachment
+// Per-meeting attach/view button — supports upload OR paste existing blob URL
 function MeetingAttachBtn({meeting,meetings,setMeetings,onView}){
   const ref=useRef();
-  function handle(e){
+  const[showPaste,setShowPaste]=useState(false);
+  const[pasteUrl,setPasteUrl]=useState("");
+
+  function handleUpload(e){
     const f=e.target.files[0];if(!f)return;
     if(f.size>10*1024*1024){alert("File over 10MB.");return;}
     const r=new FileReader();
     r.onload=async ev=>{
       const blobFile=await _uploadToBlob("mtgatt_"+meeting.id,f.name,f.type,ev.target.result);
-      // Save only blobUrl + metadata — skip dataUrl to keep meetings payload small
       const att={id:Date.now(),fileName:f.name,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),blobUrl:blobFile?.blobUrl||null,dataUrl:blobFile?undefined:ev.target.result};
-      const updated={...meeting,attachment:att};
-      const newMeetings=meetings.map(m=>m.id===meeting.id?updated:m);
-      setMeetings(newMeetings);saveGen("meetings",newMeetings);
+      save(att);
     };
     r.readAsDataURL(f);e.target.value="";
   }
+
+  function handlePasteUrl(){
+    const url=pasteUrl.trim();
+    if(!url){alert("Please paste a URL.");return;}
+    const fileName=url.split("/").pop().split("?")[0]||"meeting-minutes.pdf";
+    const fileType=fileName.endsWith(".pdf")?"application/pdf":fileName.match(/\.(jpg|jpeg|png)$/i)?"image/jpeg":"application/octet-stream";
+    const att={id:Date.now(),fileName,fileType,uploadedDate:new Date().toLocaleDateString("en-NZ"),blobUrl:url};
+    save(att);setShowPaste(false);setPasteUrl("");
+  }
+
+  function save(att){
+    const updated={...meeting,attachment:att};
+    const newMeetings=meetings.map(m=>m.id===meeting.id?updated:m);
+    setMeetings(newMeetings);saveGen("meetings",newMeetings);
+  }
+
+  if(meeting.attachment){
+    return(
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        <Btn onClick={()=>onView(meeting.attachment)} style={{fontSize:12,padding:"5px 14px",background:C.tealL,color:C.teal,border:`1px solid ${C.teal}55`}}>📄 View minutes</Btn>
+        <BSm onClick={()=>{if(window.confirm("Remove attached file?")){save(null);}}} color={C.red}>✕ Remove</BSm>
+      </div>
+    );
+  }
+
   return(
-    <>
-      {meeting.attachment
-        ?<Btn onClick={()=>onView(meeting.attachment)} style={{fontSize:12,padding:"5px 14px",background:C.tealL,color:C.teal,border:`1px solid ${C.teal}55`}}>📄 View minutes</Btn>
-        :<BSm onClick={()=>ref.current.click()} color={C.gray}>📎 Attach minutes</BSm>
-      }
-      <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
-    </>
+    <div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        <BSm onClick={()=>ref.current.click()} color={C.gray}>📎 Upload file</BSm>
+        <BSm onClick={()=>setShowPaste(p=>!p)} color={C.blue}>🔗 Paste URL from KPI portal</BSm>
+      </div>
+      {showPaste&&(
+        <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center"}}>
+          <input
+            value={pasteUrl}
+            onChange={e=>setPasteUrl(e.target.value)}
+            placeholder="Paste Vercel Blob URL here…"
+            style={{flex:1,padding:"6px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,background:"white"}}
+          />
+          <BSm onClick={handlePasteUrl} color={C.teal}>Link →</BSm>
+          <BSm onClick={()=>{setShowPaste(false);setPasteUrl("");}} color={C.gray}>Cancel</BSm>
+        </div>
+      )}
+      <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handleUpload}/>
+    </div>
   );
 }
 function AuditViewModal({audit,onClose}){
