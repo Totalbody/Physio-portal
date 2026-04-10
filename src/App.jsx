@@ -1,7 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 
 const PORTAL_API = "https://tbp-cliniko-proxy-j6f9.vercel.app/api/portal";
-const PORTAL_SECRET = "tbp-portal-2026";
+const PORTAL_SECRET = "LSLYXuABMuqYUAJ7BeF4oHhnKh0xvBlogog99ipQ";
+const _isDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const _log  = (...a) => { if (_isDev) console.log(...a); };
+const _warn = (...a) => { if (_isDev) console.warn(...a); };
+const _err  = (...a) => { if (_isDev) console.error(...a); };
 const _apiHeaders = { "Content-Type": "application/json", "X-Portal-Secret": PORTAL_SECRET };
 
 // ── AI EXPIRY DATE DETECTION ─────────────────────────────
@@ -13,14 +17,14 @@ async function detectExpiryDate(dataUrl, certLabel) {
       body: JSON.stringify({ fileData: dataUrl, certLabel: certLabel })
     });
     if (!resp.ok) {
-      console.error("[Expiry] API error " + resp.status);
+      _err("[Expiry] API error " + resp.status);
       return { expiry: null };
     }
     const parsed = await resp.json();
-    console.log("[Expiry] AI detected:", parsed);
+    _log("[Expiry] AI detected:", parsed);
     return parsed;
   } catch (e) {
-    console.error("[Expiry] Failed:", e.message);
+    _err("[Expiry] Failed:", e.message);
     return { expiry: null };
   }
 }
@@ -291,7 +295,7 @@ let _portalForceUpdate = null;
 
 async function _loadStore() {
   try {
-    const resp = await fetch(PORTAL_API + "/store?secret=" + encodeURIComponent(PORTAL_SECRET), {
+    const resp = await fetch(PORTAL_API + "/store", {
       headers: { "X-Portal-Secret": PORTAL_SECRET },
     });
     if (!resp.ok) throw new Error("API " + resp.status);
@@ -306,10 +310,10 @@ async function _loadStore() {
     }
     _portalStore = { files, data: state.data || {} };
     _portalReady = true;
-    console.log("[Portal] Loaded:", Object.keys(_portalStore.files).length, "files,", Object.keys(_portalStore.data).length, "data keys");
+    _log("[Portal] Loaded:", Object.keys(_portalStore.files).length, "files,", Object.keys(_portalStore.data).length, "data keys");
     return true;
   } catch (e) {
-    console.warn("[Portal] API unavailable, using localStorage:", e.message);
+    _warn("[Portal] API unavailable, using localStorage:", e.message);
     _portalReady = false;
     return false;
   }
@@ -342,10 +346,10 @@ function saveFile(id, k, d) {
         fetch(PORTAL_API + "/store", {
           method: "POST", headers: _apiHeaders,
           body: JSON.stringify({ key, value: result.file, store: "files" }),
-        }).catch(e => console.error("[Portal] Sync error:", e));
+        }).catch(e => _err("[Portal] Sync error:", e));
         if (_portalForceUpdate) _portalForceUpdate(n => n + 1);
       }
-    }).catch(e => console.error("[Upload] Failed:", e.message));
+    }).catch(e => _err("[Upload] Failed:", e.message));
     return true;
   }
   try { localStorage.setItem(key, JSON.stringify(d)); return true; } catch { return false; }
@@ -367,9 +371,9 @@ function removeFile(id, k) {
   const key = sKey(id, k);
   if (_portalReady) {
     delete _portalStore.files[key];
-    fetch(PORTAL_API + "/upload?fileKey=" + encodeURIComponent(key) + "&secret=" + encodeURIComponent(PORTAL_SECRET), {
+    fetch(PORTAL_API + "/upload?fileKey=" + encodeURIComponent(key), {
       method: "DELETE", headers: { "X-Portal-Secret": PORTAL_SECRET },
-    }).catch(e => console.error("[Portal] Delete error:", e));
+    }).catch(e => _err("[Portal] Delete error:", e));
     return;
   }
   try { localStorage.removeItem(key); } catch {}
@@ -384,13 +388,13 @@ function saveGen(k, d) {
         body: JSON.stringify({ fileKey: k, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl }),
       }).then(r => r.json()).then(result => {
         if (result.ok && result.file) { _portalStore.files[k] = result.file; if (_portalForceUpdate) _portalForceUpdate(n => n + 1); }
-      }).catch(e => console.error("[Portal] Upload error:", e));
+      }).catch(e => _err("[Portal] Upload error:", e));
     } else {
       _portalStore.data[k] = d;
       fetch(PORTAL_API + "/store", {
         method: "POST", headers: _apiHeaders,
         body: JSON.stringify({ key: k, value: d }),
-      }).catch(e => console.error("[Portal] Save error:", e));
+      }).catch(e => _err("[Portal] Save error:", e));
     }
     return true;
   }
@@ -406,9 +410,9 @@ function removeGen(k) {
   if (_portalReady) {
     delete _portalStore.files[k];
     delete _portalStore.data[k];
-    fetch(PORTAL_API + "/upload?fileKey=" + encodeURIComponent(k) + "&secret=" + encodeURIComponent(PORTAL_SECRET), {
+    fetch(PORTAL_API + "/upload?fileKey=" + encodeURIComponent(k), {
       method: "DELETE", headers: { "X-Portal-Secret": PORTAL_SECRET },
-    }).catch(e => console.error("[Portal] Delete error:", e));
+    }).catch(e => _err("[Portal] Delete error:", e));
     return;
   }
   try { localStorage.removeItem(k); } catch {}
@@ -489,7 +493,7 @@ async function _uploadToBlob(fileKey, fileName, fileType, dataUrl) {
     });
     const result = await resp.json();
     if (result.ok && result.file) return result.file;
-  } catch(e) { console.error("[Blob upload]", e.message); }
+  } catch(e) { _err("[Blob upload]", e.message); }
   return null;
 }
 
@@ -605,7 +609,7 @@ function CertCard({staffId,cert,role,onView}){
       // Clear old expiry immediately so stale data doesn't linger
       if(_portalReady){
         delete _portalStore.data["expiry_"+key];
-        fetch(PORTAL_API+"/store?key="+encodeURIComponent("expiry_"+key)+"&secret="+encodeURIComponent(PORTAL_SECRET),{method:"DELETE",headers:{"X-Portal-Secret":PORTAL_SECRET}}).catch(()=>{});
+        fetch(PORTAL_API+"/store?key="+encodeURIComponent("expiry_"+key)+,{method:"DELETE",headers:{"X-Portal-Secret":PORTAL_SECRET}}).catch(()=>{});
       }
       const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:cert.key,expiry:null,issued:null};
       if(saveFile(staffId,cert.key,d)){
@@ -660,7 +664,7 @@ function CertCard({staffId,cert,role,onView}){
         <BSm onClick={()=>ref.current.click()} color={cert.required?C.teal:C.gray}>📷 {file?"Upload new":"Upload"}</BSm>
         {file&&isExpired&&<BSm onClick={()=>{
           const key=sKey(staffId,cert.key);
-          if(_portalReady){delete _portalStore.data["expiry_"+key];fetch(PORTAL_API+"/store?key="+encodeURIComponent("expiry_"+key)+"&secret="+encodeURIComponent(PORTAL_SECRET),{method:"DELETE",headers:{"X-Portal-Secret":PORTAL_SECRET}}).catch(()=>{});}
+          if(_portalReady){delete _portalStore.data["expiry_"+key];fetch(PORTAL_API+"/store?key="+encodeURIComponent("expiry_"+key)+,{method:"DELETE",headers:{"X-Portal-Secret":PORTAL_SECRET}}).catch(()=>{});}
           if(_portalStore.files[key]){_portalStore.files[key].expiry=null;_portalStore.files[key].issued=null;}
           setFile(f=>({...f,expiry:null,issued:null}));
           if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
