@@ -292,6 +292,11 @@ const AUDIT_FORMS = {
 let _portalStore = { files: {}, data: {} };
 let _portalReady = false;
 let _portalForceUpdate = null;
+let _fuTimer = null;
+function _scheduleForceUpdate() {
+  clearTimeout(_fuTimer);
+  _fuTimer = setTimeout(() => { if (_portalForceUpdate) _portalForceUpdate(n => n + 1); }, 400);
+}
 
 async function _loadStore() {
   try {
@@ -347,7 +352,7 @@ function saveFile(id, k, d) {
           method: "POST", headers: _apiHeaders,
           body: JSON.stringify({ key, value: result.file, store: "files" }),
         }).catch(e => _err("[Portal] Sync error:", e));
-        if (_portalForceUpdate) _portalForceUpdate(n => n + 1);
+        _scheduleForceUpdate();
       }
     }).catch(e => _err("[Upload] Failed:", e.message));
     return true;
@@ -387,7 +392,15 @@ function saveGen(k, d) {
         method: "POST", headers: _apiHeaders,
         body: JSON.stringify({ fileKey: k, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl }),
       }).then(r => r.json()).then(result => {
-        if (result.ok && result.file) { _portalStore.files[k] = result.file; if (_portalForceUpdate) _portalForceUpdate(n => n + 1); }
+        if (result.ok && result.file) {
+          _portalStore.files[k] = result.file;
+          _portalStore.data[k] = result.file;
+          fetch(PORTAL_API + "/store", {
+            method: "POST", headers: _apiHeaders,
+            body: JSON.stringify({ key: k, value: result.file }),
+          }).catch(()=>{});
+          _scheduleForceUpdate();
+        }
       }).catch(e => _err("[Portal] Upload error:", e));
     } else {
       _portalStore.data[k] = d;
@@ -614,7 +627,7 @@ function CertCard({staffId,cert,role,onView}){
       const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:cert.key,expiry:null,issued:null};
       if(saveFile(staffId,cert.key,d)){
         setFile(d);
-        if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
+        _scheduleForceUpdate();
         setScanning(true);
         detectExpiryDate(ev.target.result,cert.label).then(result=>{
           const expiry=result.expiry||null;const issued=result.issued||null;
@@ -626,7 +639,7 @@ function CertCard({staffId,cert,role,onView}){
               _portalStore.data["expiry_"+key]={expiry,issued};
               fetch(PORTAL_API+"/store",{method:"POST",headers:_apiHeaders,body:JSON.stringify({key:"expiry_"+key,value:{expiry,issued}})}).catch(()=>{});
             }
-            if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
+            _scheduleForceUpdate();
           }
           setScanning(false);
         }).catch(()=>setScanning(false));
@@ -667,7 +680,7 @@ function CertCard({staffId,cert,role,onView}){
           if(_portalReady){delete _portalStore.data["expiry_"+key];fetch(PORTAL_API+"/store?key="+encodeURIComponent("expiry_"+key),{method:"DELETE",headers:{"X-Portal-Secret":PORTAL_SECRET}}).catch(()=>{});}
           if(_portalStore.files[key]){_portalStore.files[key].expiry=null;_portalStore.files[key].issued=null;}
           setFile(f=>({...f,expiry:null,issued:null}));
-          if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
+          _scheduleForceUpdate();
         }} color={C.amber}>Clear expiry</BSm>}
         {file&&<BSm onClick={()=>{if(window.confirm("Remove?")){removeFile(staffId,cert.key);setFile(null);}}} color={C.red}>Remove</BSm>}
         {file&&<BSm onClick={()=>setShowHist(h=>!h)} color={C.gray}>{showHist?"Hide history":"History"+(loadFileHistory(staffId,cert.key).length>0?` (${loadFileHistory(staffId,cert.key).length})`:"")}</BSm>}
@@ -1746,7 +1759,12 @@ export default function App(){
   const[showAdd,setShowAdd]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
   const[navOpen,setNavOpen]=useState(false);
   const[isMobile,setIsMobile]=useState(()=>window.innerWidth<768);
-  useEffect(()=>{const h=()=>setIsMobile(window.innerWidth<768);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);},[]);
+  useEffect(()=>{
+    let rTimer=null;
+    const h=()=>{clearTimeout(rTimer);rTimer=setTimeout(()=>{const m=window.innerWidth<768;setIsMobile(prev=>prev===m?prev:m);},150);};
+    window.addEventListener("resize",h);
+    return()=>{window.removeEventListener("resize",h);clearTimeout(rTimer);};
+  },[]);
   const[nm,setNm]=useState({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});
   const meetRef=useRef();
   const[staffOverrides,setStaffOverrides]=useState({});
