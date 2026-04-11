@@ -1,8 +1,4 @@
-import React,{ useState, useRef, useEffect, useContext } from "react";
-
-const AppCtx = React.createContext({});
-
-
+import { useState, useRef, useEffect } from "react";
 
 const PORTAL_API = "https://tbp-cliniko-proxy-j6f9.vercel.app/api/portal";
 const PORTAL_SECRET = "LSLYXuABMuqYUAJ7BeF4oHhnKh0xvBlogog99ipQ";
@@ -296,11 +292,6 @@ const AUDIT_FORMS = {
 let _portalStore = { files: {}, data: {} };
 let _portalReady = false;
 let _portalForceUpdate = null;
-let _fuTimer = null;
-function _scheduleForceUpdate() {
-  clearTimeout(_fuTimer);
-  _fuTimer = setTimeout(() => { if (_portalForceUpdate) _portalForceUpdate(n => n + 1); }, 400);
-}
 
 async function _loadStore() {
   try {
@@ -356,7 +347,7 @@ function saveFile(id, k, d) {
           method: "POST", headers: _apiHeaders,
           body: JSON.stringify({ key, value: result.file, store: "files" }),
         }).catch(e => _err("[Portal] Sync error:", e));
-        _scheduleForceUpdate();
+        if (_portalForceUpdate) _portalForceUpdate(n => n + 1);
       }
     }).catch(e => _err("[Upload] Failed:", e.message));
     return true;
@@ -388,23 +379,6 @@ function removeFile(id, k) {
   try { localStorage.removeItem(key); } catch {}
 }
 
-let _saveStatus = null; // {set, clear} — injected by App
-function _showSave(ok) {
-  if (_saveStatus) _saveStatus(ok ? "saved" : "error");
-}
-async function _saveToState(k, val, retries=2) {
-  for (let i=0; i<=retries; i++) {
-    try {
-      const r = await fetch(PORTAL_API + "/store", {
-        method: "POST", headers: _apiHeaders,
-        body: JSON.stringify({ key: k, value: val }),
-      });
-      if (r.ok) { _portalStore.data[k] = val; return true; }
-    } catch {}
-    if (i < retries) await new Promise(res=>setTimeout(res, 600*(i+1)));
-  }
-  return false;
-}
 function saveGen(k, d) {
   if (_portalReady) {
     if (d && d.dataUrl) {
@@ -412,29 +386,15 @@ function saveGen(k, d) {
       fetch(PORTAL_API + "/upload", {
         method: "POST", headers: _apiHeaders,
         body: JSON.stringify({ fileKey: k, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl }),
-      }).then(r => r.json()).then(async result => {
-        // Handle various field name formats upload.js might return
-        const fileRec = result.file || (result.blobUrl ? result : null);
-        const blobUrl = fileRec?.blobUrl || fileRec?.url || result.url || null;
-        if (blobUrl) {
-          const saved = { fileName: d.fileName, fileType: d.fileType, uploadedDate: d.uploadedDate, blobUrl };
-          _portalStore.files[k] = saved;
-          const ok = await _saveToState(k, saved);
-          _showSave(ok);
-          _scheduleForceUpdate();
-        } else {
-          _warn("[Portal] Upload response missing blobUrl:", result);
-          // Still try to save what we have
-          await _saveToState(k, { fileName: d.fileName, fileType: d.fileType, uploadedDate: d.uploadedDate });
-          _showSave(false);
-        }
-      }).catch(async e => {
-        _err("[Portal] Upload error:", e.message);
-        _showSave(false);
-      });
+      }).then(r => r.json()).then(result => {
+        if (result.ok && result.file) { _portalStore.files[k] = result.file; if (_portalForceUpdate) _portalForceUpdate(n => n + 1); }
+      }).catch(e => _err("[Portal] Upload error:", e));
     } else {
-      const ok = _saveToState(k, d);
-      ok.then(v => _showSave(v));
+      _portalStore.data[k] = d;
+      fetch(PORTAL_API + "/store", {
+        method: "POST", headers: _apiHeaders,
+        body: JSON.stringify({ key: k, value: d }),
+      }).catch(e => _err("[Portal] Save error:", e));
     }
     return true;
   }
@@ -654,7 +614,7 @@ function CertCard({staffId,cert,role,onView}){
       const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:cert.key,expiry:null,issued:null};
       if(saveFile(staffId,cert.key,d)){
         setFile(d);
-        _scheduleForceUpdate();
+        if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
         setScanning(true);
         detectExpiryDate(ev.target.result,cert.label).then(result=>{
           const expiry=result.expiry||null;const issued=result.issued||null;
@@ -666,7 +626,7 @@ function CertCard({staffId,cert,role,onView}){
               _portalStore.data["expiry_"+key]={expiry,issued};
               fetch(PORTAL_API+"/store",{method:"POST",headers:_apiHeaders,body:JSON.stringify({key:"expiry_"+key,value:{expiry,issued}})}).catch(()=>{});
             }
-            _scheduleForceUpdate();
+            if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
           }
           setScanning(false);
         }).catch(()=>setScanning(false));
@@ -707,7 +667,7 @@ function CertCard({staffId,cert,role,onView}){
           if(_portalReady){delete _portalStore.data["expiry_"+key];fetch(PORTAL_API+"/store?key="+encodeURIComponent("expiry_"+key),{method:"DELETE",headers:{"X-Portal-Secret":PORTAL_SECRET}}).catch(()=>{});}
           if(_portalStore.files[key]){_portalStore.files[key].expiry=null;_portalStore.files[key].issued=null;}
           setFile(f=>({...f,expiry:null,issued:null}));
-          _scheduleForceUpdate();
+          if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
         }} color={C.amber}>Clear expiry</BSm>}
         {file&&<BSm onClick={()=>{if(window.confirm("Remove?")){removeFile(staffId,cert.key);setFile(null);}}} color={C.red}>Remove</BSm>}
         {file&&<BSm onClick={()=>setShowHist(h=>!h)} color={C.gray}>{showHist?"Hide history":"History"+(loadFileHistory(staffId,cert.key).length>0?` (${loadFileHistory(staffId,cert.key).length})`:"")}</BSm>}
@@ -1749,277 +1709,9 @@ function PPPage({setPage,setActiveAudit,ppDocs,setPpDocs,ppReviews,setPpReviews}
   );
 }
 
-const INIT_MEETINGS=[
-  {id:1,date:"2025-11-15",clinic:"All clinics",topic:"Q4 staff meeting — H&S review, CPD updates",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"Discussed APC renewal cycle, updated first aid booking process."},
-];
-const INIT_AUDITS=[];
 
-
-function Dashboard(p){
-  const cx=React.useContext(AppCtx);
-  const {meetings,audits,role,setProfile,setPage,portalConnected,staffOverrides,urgentCount}=cx;
-  const sa=Object.entries(STAFF);const tr=sa.reduce((acc,[id])=>acc+staffComp(id).total,0);const td=sa.reduce((a,[id])=>a+staffComp(id).done,0);const pct=tr>0?Math.round((td/tr)*100):0;
-  return(
-    <div>
-      <PH title="Good morning, Jade 👋" sub={"Total Body Physio — Compliance & HR Portal · April 2026" + (portalConnected ? " · ☁️ Cloud connected" : " · ⚠️ Local storage only")}/>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.75rem",marginBottom:"1rem"}}>
-        {[[String(Object.keys(STAFF).length),"Staff",C.teal],[`${pct}%`,"Compliance",pct>=80?C.teal:pct>50?C.amber:C.red],[String(urgentCount),"Due/overdue",urgentCount>0?C.red:C.teal],[String(audits.length),"Audit records",C.blue]].map(([n,l,c])=>(
-          <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",textAlign:"center"}}>
-            <div style={{fontSize:26,fontWeight:700,color:c}}>{n}</div><div style={{fontSize:11,color:C.muted,marginTop:3}}>{l}</div>
-          </div>
-        ))}
-      </div>
-      {(()=>{
-        const issues=Object.entries(STAFF).flatMap(([id,s])=>{
-          const found=[];
-          const isOwner=STAFF[id]?.type==="Owner";
-          CORE_CERTS.filter(c=>c.required&&!(c.notForOwner&&isOwner)).forEach(cert=>{
-            const f=loadFile(id,cert.key);
-            if(!f){found.push({name:s.name,id,issue:cert.label+" — missing",level:"missing"});}
-            else if(f.expiry&&getExpiryStatus(f.expiry).status==="expired"){found.push({name:s.name,id,issue:cert.label+" — expired "+new Date(f.expiry).toLocaleDateString("en-NZ"),level:"expired"});}
-          });
-          return found;
-        });
-        if(!issues.length)return <Alert type="green" title="✅ All certifications current">No expired or missing required documents.</Alert>;
-        const grouped={};issues.forEach(i=>{if(!grouped[i.name])grouped[i.name]={id:i.id,items:[]};grouped[i.name].items.push(i.issue);});
-        const count=Object.keys(grouped).length;
-        return(
-          <div style={{background:"#FCEBEB",borderLeft:`3px solid ${C.red}`,borderRadius:6,marginBottom:"0.875rem",overflow:"hidden"}}>
-            <div onClick={()=>setUrgentOpen(o=>!o)} style={{padding:"0.875rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
-              <div style={{fontSize:13,fontWeight:600,color:C.red}}>🔴 Urgent — {count} staff member{count!==1?"s":""} need action</div>
-              <span style={{fontSize:18,color:C.red,transform:urgentOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.2s",display:"inline-block"}}>›</span>
-            </div>
-            {urgentOpen&&<div style={{padding:"0 1rem 0.875rem"}}>
-              {Object.entries(grouped).map(([name,{id,items}])=>(
-                <div key={name} onClick={()=>setProfile(id)} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:6,padding:"6px 8px",borderRadius:6,cursor:"pointer",background:"rgba(226,75,74,0.06)"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(226,75,74,0.12)"} onMouseLeave={e=>e.currentTarget.style.background="rgba(226,75,74,0.06)"}>
-                  <div style={{width:28,height:28,borderRadius:"50%",background:STAFF[id]?.color||C.red,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"white",flexShrink:0}}>{STAFF[id]?.ini}</div>
-                  <div><div style={{fontSize:12,fontWeight:600,color:C.text}}>{name}</div><div style={{fontSize:11,color:C.muted,marginTop:1}}>{items.join(" · ")}</div></div>
-                  <span style={{marginLeft:"auto",fontSize:11,color:C.red,fontWeight:500,flexShrink:0}}>Upload →</span>
-                </div>
-              ))}
-              <div style={{fontSize:11,color:C.muted,marginTop:"0.25rem"}}>Tap a staff member to open their profile and upload. Required for ACC compliance.</div>
-            </div>}
-          </div>
-        );
-      })()}
-      {urgentCount>0&&<Alert type="amber" title={`🔔 ${urgentCount} items due or overdue`}><span onClick={()=>setPage("reminders")} style={{color:C.blue,cursor:"pointer",fontWeight:500,textDecoration:"underline"}}>View reminders →</span></Alert>}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"1.25rem"}}>
-        <div onClick={()=>setPage("pp")} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",cursor:"pointer",display:"flex",alignItems:"center",gap:12}} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 12px rgba(15,110,86,0.1)"} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-          <span style={{fontSize:28}}>📖</span><div><div style={{fontSize:13,fontWeight:600}}>Policies & Procedures</div><div style={{fontSize:11,color:C.muted}}>8 sections · All staff · Annual review April</div></div>
-        </div>
-        <div onClick={()=>setPage("reminders")} style={{background:C.card,border:`1px solid ${urgentCount>0?C.red:C.border}`,borderRadius:10,padding:"1rem",cursor:"pointer",display:"flex",alignItems:"center",gap:12}} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.06)"} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-          <span style={{fontSize:28}}>🔔</span><div><div style={{fontSize:13,fontWeight:600}}>Reminders</div><div style={{fontSize:11,color:urgentCount>0?C.red:C.muted}}>{urgentCount>0?`${urgentCount} items need attention`:"All up to date"}</div></div>
-        </div>
-      </div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"0 0 0.875rem"}}>
-        <div style={{fontSize:14,fontWeight:600}}>Staff compliance — tap row to view &amp; upload</div>
-        <Btn onClick={()=>setPage("staff")}>View all →</Btn>
-      </div>
-      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-          <thead><TH headers={["Staff","Type","Clinics","APC","First Aid","Cultural","Contract","JD","Vetting","Orientation","Notes Audit","Progress"]}/></thead>
-          <tbody>
-            {Object.entries(STAFF).map(([id,s])=>{
-              const fs=k=>certStatus(id,k);const comp=staffComp(id);const esData=es(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[esData.type]||"gray";
-              return(
-                <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
-                  <TD><strong>{s.name}</strong></TD><TD><Chip color={tc}>{esData.type}</Chip></TD>
-                  <TD style={{fontSize:11,color:C.muted}}>{esData.clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</TD>
-                  <TD><Pill s={fs("apc")}/></TD><TD><Pill s={fs("firstaid")}/></TD><TD><Pill s={fs("cultural")}/></TD><TD>{CORE_CERTS.find(c=>c.key==="contract")?.notForOwner&&esData.type==="Owner"?<span style={{fontSize:11,color:C.hint}}>N/A</span>:<Pill s={fs("contract")}/>}</TD><TD><Pill s={fs("jd")}/></TD><TD><Pill s={fs("policevetting")}/></TD><TD><Pill s={fs("orientation")}/></TD><TD><Pill s={(()=>{const a=[...(_portalStore.data["audits"]||[])].filter(x=>x.type==="clinical_notes"&&x.physioAudited===s.name);return a.length>0?"ok":"pending";})()}/></TD>
-                  <TD><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:52,height:5,background:C.grayL,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:comp.pct===100?C.teal:comp.pct>50?C.amber:C.red,width:`${comp.pct}%`}}/></div><span style={{fontSize:11,color:C.muted}}>{comp.done}/{comp.total}</span></div></TD>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
-
-function RemindersPage(p){
-  const over=reminders.filter(r=>r.status==="overdue");const due=reminders.filter(r=>r.status==="due");const coming=reminders.filter(r=>r.status==="ok"&&r.days<=90);
-  function RGroup({title,items,col}){if(!items.length)return null;return(
-    <div style={{marginBottom:"1.25rem"}}>
-      <div style={{fontSize:13,fontWeight:600,marginBottom:"0.75rem",color:col}}>{title} ({items.length})</div>
-      {items.map((r,i)=>(
-        <div key={i} style={{background:C.card,border:`1px solid ${r.status==="overdue"?"#f5c1c1":r.status==="due"?"#fac775":C.border}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"0.5rem",display:"flex",alignItems:"center",gap:12}}>
-          <span style={{fontSize:22,flexShrink:0}}>{r.icon}</span>
-          <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{r.label}</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>{r.target} · {r.freq} · Next: {r.nextDate}</div></div>
-          <div style={{textAlign:"right",flexShrink:0}}>
-            <Pill s={r.status==="overdue"?"overdue":r.status==="due"?"due":"ok"} label={r.days<=0?"Overdue":r.days===0?"Today":`${r.days}d`}/>
-            {r.auditKey&&<div style={{marginTop:4}}><BSm onClick={()=>setActiveAudit(r.auditKey)} color={C.teal}>Start audit →</BSm></div>}
-          </div>
-        </div>
-      ))}
-    </div>
-  );}
-  return(
-    <div>
-      <PH title="🔔 Reminders" sub="Upcoming compliance tasks, audits, renewals and drills"/>
-      {over.length===0&&due.length===0&&<Alert type="green" title="All up to date">No overdue or imminent reminders.</Alert>}
-      <RGroup title="Overdue — action required" items={over} col={C.red}/>
-      <RGroup title="Due in next 30 days" items={due} col={C.amber}/>
-      <RGroup title="Coming up — next 90 days" items={coming} col={C.muted}/>
-      <Divider/>
-      <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Full compliance schedule</div>
-      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-          <thead><TH headers={["Item","Frequency","Applies to","Typical month","Action"]}/></thead>
-          <tbody>
-            {REMINDER_SCHEDULE.map(r=>(
-              <tr key={r.key+r.freq}>
-                <TD><span style={{fontSize:14,marginRight:6}}>{r.icon}</span><strong>{r.label}</strong></TD>
-                <TD>{r.freq}</TD><TD style={{fontSize:12,color:C.muted}}>{r.applies}</TD>
-                <TD style={{fontSize:12}}>{new Date(2026,r.month-1,1).toLocaleString("en-NZ",{month:"long"})}</TD>
-                <TD>{r.auditKey?<BSm onClick={()=>setActiveAudit(r.auditKey)} color={C.teal}>Start →</BSm>:<BSm onClick={()=>setPage(r.applies==="Management"?"pp":"staff")} color={C.blue}>View →</BSm>}</TD>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
-
-function StaffPage(p){
-  const cx=React.useContext(AppCtx);
-  const {role,setProfile,staffOverrides}=cx;
-  return(
-  <div>
-    <PH title="All Staff" sub="Tap any card to view compliance, upload certs or complete orientation"/>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(265px,1fr))",gap:"0.875rem"}}>
-      {Object.entries(STAFF).map(([id,s])=>{
-        const comp=staffComp(id);const bc=comp.pct===100?C.teal:comp.pct>50?C.amber:C.red;const esData=es(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[esData.type]||"gray";
-        return(
-          <div key={id} onClick={()=>setProfile(id)} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 16px rgba(15,110,86,0.12)"} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-            <div style={{padding:"1rem 1rem 0.75rem",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${C.border}`}}>
-              <div style={{width:46,height:46,borderRadius:"50%",background:s.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"white",flexShrink:0}}>{s.ini}</div>
-              <div><div style={{fontSize:14,fontWeight:600}}>{s.name}</div><div style={{fontSize:11,marginTop:2}}><Chip color={tc}>{esData.type}</Chip></div></div>
-            </div>
-            <div style={{padding:"0.75rem 1rem"}}>
-              <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>{esData.clinics.slice(0,3).map(c=><Chip key={c} color="blue">{CLINICS.find(cl=>cl.id===c)?.short}</Chip>)}</div>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}><div style={{flex:1,height:6,background:C.grayL,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",borderRadius:3,background:bc,width:`${comp.pct}%`}}/></div><span style={{fontSize:11,color:bc,fontWeight:500,whiteSpace:"nowrap"}}>{comp.done}/{comp.total}</span></div>
-              <div style={{fontSize:11,color:C.muted}}>{comp.pct===100?"All required docs on file ✓":comp.pct===0?"No documents yet":`${comp.total-comp.done} required doc${comp.total-comp.done>1?"s":""} missing`}</div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  </div>
-);
-
-function CompliancePage(p){
-  const cx=React.useContext(AppCtx);
-  const {role,setProfile}=cx;
-  const[compTab,setCompTab]=useState("overview");
-  return(
-  <div>
-    <PH title="Compliance tracker" sub="All staff — employees and contractors — must hold all required certifications."/>
-    <Alert type="blue" title="📌 Universal requirements — everyone">APC · First Aid / CPR · Cultural Competency · Contract · Job Description · Orientation. Peer review & appraisal for staff 12+ months.</Alert>
-    <TabBar items={[["overview","Overview"],["apc","APC"],["firstaid","First Aid"],["cultural","Cultural"],["vetting","🚔 Police Vetting"],["reviews","Reviews & Audits"],["clinicaudit","Clinic Audits"]]} current={compTab} setter={setCompTab}/>
-    {compTab==="vetting"&&<><Alert type="blue" title="Police Vetting — §4.2 P&P Manual">Required for all staff working with vulnerable clients (children, older adults, people with disabilities). Renewed every 3 years. Evidence is the email from NZ Police showing a clear result. Upload the email or PDF confirmation to each staff member's profile.</Alert><Tbl headers={["Staff","Vetting on file","File","Notes"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"policevetting");const note={gwenne:"Vetting completed — clear ✓",ibrahim:"Vetting completed — clear ✓"}[id]||"Upload email confirmation";return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={f?"ok":"pending"} label={f?`Uploaded ${f.uploadedDate}`:"Not uploaded"}/></TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD><TD style={{fontSize:11,color:C.muted}}>{note}</TD></tr>;})}</Tbl><div style={{fontSize:12,color:C.muted,marginTop:"0.75rem",lineHeight:1.6,padding:"0.75rem 1rem",background:C.grayXL,borderRadius:8}}>📌 Per §4.2 P&P Manual: police vetting and risk assessment must be completed every 3 years. The NZ Police vetting email or PDF showing "no information to release" is sufficient evidence. Tap any staff member to upload their certificate.</div></>}
-    {compTab==="overview"&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><TH headers={["Staff","APC","First Aid","Cultural","Contract","JD","Orientation","Police Vetting","Peer Review","Appraisal","Notes Audit"]}/></thead><tbody>{Object.entries(STAFF).map(([id,s])=><tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD>{CORE_CERTS.map(c=><TD key={c.key}>{c.ownerOnly&&role!=="owner"&&role!==id?<span style={{fontSize:11,color:C.hint}}>🔒</span>:<Pill s={certStatus(id,c.key)}/>}</TD>)}</tr>)}</tbody></table></div>}
-    {compTab==="apc"&&<><Alert type="amber" title="Annual Practising Certificate">Issued by PBNZ. Renews 1 April. Must be sighted and copy on file for all staff.</Alert><Tbl headers={["Staff","Status","Expiry","File"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"apc");const st=certStatus(id,"apc");const exp=f?.expiry?getExpiryStatus(f.expiry):null;return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={st} label={st==="expired"?"Expired ⚠":st==="ok"?`On file ✓`:"Not uploaded"}/></TD><TD style={{fontSize:12,color:exp?exp.color:C.hint}}>{exp?exp.label:"—"}</TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD></tr>;})}</Tbl></>}
-    {compTab==="firstaid"&&<><Alert type="amber" title="First Aid / CPR — all staff required">Valid 2 years. Renewed every 2 years. All staff must hold current cert.</Alert><Tbl headers={["Staff","Status","Expiry","File"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"firstaid");const st=certStatus(id,"firstaid");const exp=f?.expiry?getExpiryStatus(f.expiry):null;return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={st} label={st==="expired"?"Expired ⚠":st==="ok"?"On file ✓":"Not uploaded"}/></TD><TD style={{fontSize:12,color:exp?exp.color:C.hint}}>{exp?exp.label:"—"}</TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD></tr>;})}</Tbl></>}
-    {compTab==="cultural"&&<><Alert type="amber" title="Cultural Competency (Māori) — all staff required">Annual renewal required. Complete Mauriora course at <a href="https://mauriora.co.nz" target="_blank" rel="noreferrer" style={{color:C.blue}}>mauriora.co.nz</a>. Upload certificate to each staff profile.</Alert><Tbl headers={["Staff","Status","Expiry","File"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"cultural");const st=certStatus(id,"cultural");const exp=f?.expiry?getExpiryStatus(f.expiry):null;return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={st} label={st==="expired"?"Expired ⚠":st==="ok"?"On file ✓":"Not uploaded"}/></TD><TD style={{fontSize:12,color:exp?exp.color:C.hint}}>{exp?exp.label:"—"}</TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD></tr>;})}</Tbl></>}
-    {compTab==="reviews"&&<div>
-      <Alert type="blue" title="P&P §7 — Annual reviews & clinical notes audits">Peer review and performance appraisal annually for all staff. Clinical notes audit every 6 months (5 current + 5 past records per physio).</Alert>
-      <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",marginTop:"0.75rem"}}>Peer Reviews & Appraisals</div>
-      <Tbl headers={["Staff","Peer Review","Expiry","Appraisal","Expiry","Notes"]}>{Object.entries(STAFF).map(([id,s])=>{
-        const pr=loadFile(id,"peerreview");const ap=loadFile(id,"appraisal");
-        const prExp=pr?.expiry?getExpiryStatus(pr.expiry):null;const apExp=ap?.expiry?getExpiryStatus(ap.expiry):null;
-        const n={alistair:"Clinical Director",hans:"20+ years",dylan:"New Dec 2025",ibrahim:"New grad",komal:"Contractor",gwenne:"First cycle"}[id]||"Annual cycle";
-        return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
-          <TD><strong>{s.name}</strong></TD>
-          <TD><Pill s={pr?(prExp?.status==="expired"?"expired":"ok"):"pending"} label={pr?"On file ✓":"Needed"}/></TD>
-          <TD style={{fontSize:11,color:prExp?prExp.color:C.hint}}>{prExp?prExp.label:"—"}</TD>
-          <TD><Pill s={ap?(apExp?.status==="expired"?"expired":"ok"):"pending"} label={ap?"On file ✓":"Needed"}/></TD>
-          <TD style={{fontSize:11,color:apExp?apExp.color:C.hint}}>{apExp?apExp.label:"—"}</TD>
-          <TD style={{fontSize:11,color:C.muted}}>{n}</TD>
-        </tr>;})}
-      </Tbl>
-      <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",marginTop:"1.25rem"}}>Clinical Notes Audits <span style={{fontSize:11,color:C.muted,fontWeight:400}}>— P&P §1.5.1 · Every 6 months · 10 records per physio</span></div>
-      <Tbl headers={["Staff","Last audit","Outcome","Notes"]}>{Object.entries(STAFF).filter(([id,s])=>s.type!=="Owner"||id==="jade").map(([id,s])=>{
-        const a=[...audits].filter(x=>x.type==="clinical_notes"&&x.physioAudited===s.name).sort((a,b)=>b.date.localeCompare(a.date))[0]||null;
-        return <tr key={id} onClick={()=>{setPage("management");setMgmtTab("audits");}} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
-          <TD><strong>{s.name}</strong></TD>
-          <TD><Pill s={a?"ok":"pending"} label={a?a.date:"Not yet run"}/></TD>
-          <TD>{a?<Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>:<span style={{fontSize:11,color:C.hint}}>—</span>}</TD>
-          <TD style={{fontSize:11,color:C.muted}}>{a?.notes||"—"}</TD>
-        </tr>;})}
-      </Tbl>
-    </div>}      {compTab==="clinicaudit"&&<div>
-      <Alert type="amber" title="Clinic compliance audits">Log historical audits and upload evidence. Fire drills annual · H&S quarterly · Hygiene quarterly · Equipment annual. Run live audits from Management or Clinics page.</Alert>
-      <div style={{display:"flex",gap:8,marginBottom:"1rem",flexWrap:"wrap"}}>
-        <Btn onClick={()=>{setPage("management");setMgmtTab("audits");}}>Run new audit →</Btn>
-        <Btn outline onClick={()=>{setPage("clinics");}}>View by clinic →</Btn>
-      </div>
-      {Object.entries(AUDIT_FORMS).filter(([k])=>k!=="clinical_notes").map(([key,form])=>{
-        const typeAudits=[...audits].filter(a=>a.type===key).sort((a,b)=>b.date.localeCompare(a.date));
-        const lastDate=typeAudits[0]?.date||null;
-        const clinicsDone=[...new Set(typeAudits.map(a=>a.clinic))];
-        return(
-          <div key={key} style={{marginBottom:"1.25rem"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
-              <div style={{fontSize:13,fontWeight:600}}>{form.icon} {form.title} <span style={{fontSize:11,color:C.muted,fontWeight:400}}>· {form.freq}</span></div>
-              <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                {lastDate&&<span style={{fontSize:11,color:C.muted}}>Last: {lastDate}</span>}
-                <Pill s={typeAudits.length>0?"ok":"pending"} label={typeAudits.length>0?`${typeAudits.length} records`:"No records"}/>
-              </div>
-            </div>
-            {typeAudits.length>0&&<div style={{background:C.grayXL,borderRadius:8,padding:"0.75rem",fontSize:12}}>
-              {typeAudits.slice(0,3).map((a,i)=>(
-                <div key={a.id} style={{display:"flex",alignItems:"center",gap:10,padding:"4px 0",borderBottom:i<Math.min(typeAudits.length,3)-1?`1px solid ${C.border}`:""}}>
-                  <span style={{color:C.muted,minWidth:80}}>{a.date}</span>
-                  <span style={{flex:1,color:C.text}}>{a.clinic}</span>
-                  <span style={{color:C.muted}}>Auditor: {a.auditor}</span>
-                  <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
-                </div>
-              ))}
-              {typeAudits.length>3&&<div style={{fontSize:11,color:C.muted,marginTop:4,textAlign:"right"}}><span style={{cursor:"pointer",color:C.teal}} onClick={()=>{setPage("management");setMgmtTab("audits");}}>View all {typeAudits.length} records →</span></div>}
-            </div>}
-            {typeAudits.length===0&&<div style={{background:C.amberL,borderRadius:6,padding:"8px 12px",fontSize:12,color:C.amber}}>No records yet — complete an audit or add past records from Management → Audits.</div>}
-          </div>
-        );
-      })}
-    </div>}
-  </div>
-);
-
-function ArchivePage(p){
-  const cx=React.useContext(AppCtx);
-  return(
-  <div><PH title="Past employees" sub="Archived records — kept for DAA / ACC audit purposes"/>
-  <Card><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>Former staff — 7 records</div>{["Alice Keane","Aoife Hussey","Ishwari Pillay","Jennifer Hong","Maria Alonzo","Sasha McBain","Stephen Gray"].map(n=><div key={n} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}><div style={{width:32,height:32,borderRadius:"50%",background:C.grayL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:C.gray,flexShrink:0}}>{n.slice(0,2).toUpperCase()}</div><div><strong style={{fontSize:13}}>{n}</strong><div style={{fontSize:12,color:C.muted}}>Former physiotherapist · Records archived</div></div><span style={{marginLeft:"auto"}}><Chip color="gray">Archived</Chip></span></div>)}</Card></div>
-);
-
-function ClinicsPage(p){
-  const cx=React.useContext(AppCtx);
-  const {setVf}=cx;
-  return(
-  <div><PH title="Clinics" sub="Run audits directly from each clinic card"/>
-  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:"0.875rem"}}>
-    {CLINICS.map(cl=>{const cs=Object.entries(STAFF).filter(([id,s])=>es(id).clinics.includes(cl.id)).map(([id,s])=>s);return(
-      <Card key={cl.id}>
-        <div style={{fontSize:15,fontWeight:600,marginBottom:4}}>{cl.icon} {cl.name}</div>
-        <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem",lineHeight:1.5}}>{cl.note}</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:"0.875rem"}}>{cs.map(s=><Chip key={s.name} color="teal">{s.name.split(" ")[0]}</Chip>)}</div>
-        <Divider/>
-        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-          <BSm onClick={()=>setActiveAudit("fire_drill")} color={C.red}>🔥 Fire drill</BSm>
-          <BSm onClick={()=>setActiveAudit("hygiene")} color={C.teal}>🧼 Hygiene</BSm>
-          <BSm onClick={()=>setActiveAudit("hs_audit")} color={C.amber}>⚠️ H&S</BSm>
-          <BSm onClick={()=>setActiveAudit("equipment")} color={C.blue}>⚡ Equipment</BSm>
-        </div>
-      </Card>
-    );})}
-  </div></div>
-);
-
-function InservicePage(p){
-  const cx=React.useContext(AppCtx);
-  const {inservices,setInservices,setVf}=cx;
+// ── Standalone page components (outside App to prevent remount on re-render) ──
+function InservicePage({inservices,setInservices,setVf}){
   const[isrvTab,setIsrvTab]=useState("log");
   const[ivf,setIvf]=useState(null);
   const[showForm,setShowForm]=useState(false);
@@ -2148,39 +1840,17 @@ function ContractRow({staffId,s,canSee,onView}){
     </div>
   );
 }
+}
 
-function DocumentsPage(p){
-  const cx=React.useContext(AppCtx);
-  const[docsTab,setDocsTab]=useState("contracts");
-  const[dvf,setDvf]=useState(null);return(
-  <div><PH title="Documents" sub="Contracts, job descriptions & legislation"/>
-  <TabBar items={[["contracts","Contracts"],["jd","Job descriptions"],["leg","Legislation"]]} current={docsTab} setter={setDocsTab}/>
-  {docsTab==="contracts"&&<div><Alert type="blue" title="🔒 Contract privacy — P&P Section 7.2">Contracts visible to Jade (owner) and the individual staff member only. Others see a locked indicator. Two signed copies: one for employee, one in personnel file.</Alert><Card>{Object.entries(STAFF).map(([id,s])=>{const canSee=role==="owner"||role===id;return <ContractRow key={id} staffId={id} s={s} canSee={canSee} onView={f=>setDvf(f)}/>;})}</Card></div>}
-  {docsTab==="jd"&&<Card><div style={{fontSize:13,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Tap 👁 View to open the current job description. Use 📄 Add another to upload a new or updated version. All signed copies kept on file — P&P §7.3.</div>{Object.entries(STAFF).map(([id,s])=><MultiFileRow key={id} label={`${s.name} — Job Description`} gkey={`jd_${id}`} onView={f=>setDvf(f)} accent={s.color}/>)}</Card>}
-  {docsTab==="leg"&&<div><Alert type="blue" title="Key legislation — all staff read during orientation">Click any link to open the source document.</Alert>{LEGISLATION.map(leg=><Card key={leg.name} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}><div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}><div><a href={leg.url} target="_blank" rel="noreferrer" style={{fontSize:13,fontWeight:600,color:C.blue,textDecoration:"none"}}>{leg.name} ↗</a><div style={{fontSize:12,color:C.muted,marginTop:3,lineHeight:1.5}}>{leg.desc}</div></div><a href={leg.url} target="_blank" rel="noreferrer" style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:C.blueL,color:C.blue,textDecoration:"none",fontWeight:500,whiteSpace:"nowrap",flexShrink:0}}>Open ↗</a></div></Card>)}</div>}
-  {dvf&&<FileViewer file={dvf} onClose={()=>setDvf(null)}/>}
-  </div>
-);};
-
-function ManagementPage(p){
-  const cx=React.useContext(AppCtx);
-  const {meetings,setMeetings,audits,setAudits,extAudits,setExtAudits,
-    setActiveAudit,setViewAudit,role,setEavf,setVf,ppDocs,setPpDocs,setProfile}=cx;
+function ManagementPage({meetings,setMeetings,audits,setAudits,extAudits,setExtAudits,setActiveAudit,setViewAudit,setEavf,setVf}){
   const[mgmtTab,setMgmtTab]=useState("audits");
   const[nm,setNm]=useState({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});
   const[logAudit,setLogAudit]=useState({type:"hygiene",date:"",clinic:CLINICS[0].short,auditor:"",outcome:"Passed",notes:""});
   const[showLogAudit,setShowLogAudit]=useState(false);
-  const[showExtForm,setShowExtForm]=useState(false);
-  const[extLabel,setExtLabel]=useState("");
-  const[mFilter,setMFilter]=useState("");
-  const[mYearFilter,setMYearFilter]=useState("all");
-  const[mClinicFilter,setMClinicFilter]=useState("all");
   const[auditTypeFilter,setAuditTypeFilter]=useState("all");
-  const[auditYearFilter,setAuditYearFilter]=useState("all");
   const[auditClinicFilter,setAuditClinicFilter]=useState("all");
   const[collapsedYears,setCollapsedYears]=useState({});
-  const[analysing,setAnalysing]=useState(null);
-  const[mvf,setMvf]=useState(null);return(
+const[mvf,setMvf]=useState(null);return(
   <div><PH title="Management" sub="Audits, staff meetings, equipment — DAA / ACC Allied Health Standards"/>
   <TabBar items={[["audits","Audits"],["meetings","Staff Meetings"],["equipment","Equipment"],["accreditation","Accreditation"]]} current={mgmtTab} setter={setMgmtTab}/>
   {mgmtTab==="audits"&&<div>
@@ -2490,14 +2160,21 @@ function ManagementPage(p){
     ))}
   </div>}
   </div>
-);};
+
+}
+
+
+const INIT_MEETINGS=[
+  {id:1,date:"2025-11-15",clinic:"All clinics",topic:"Q4 staff meeting — H&S review, CPD updates",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"Discussed APC renewal cycle, updated first aid booking process."},
+];
+const INIT_AUDITS=[];
 
 export default function App(){
   const[page,setPage]=useState("dashboard");const[profile,setProfile]=useState(null);const[role,setRole]=useState("owner");
   const[portalLoading,setPortalLoading]=useState(true);
   const[portalConnected,setPortalConnected]=useState(false);
   const[,forceRender]=useState(0);
-  const[saveNotif,setSaveNotif]=useState(null); // "saved"|"error"|null
+  const[compTab,setCompTab]=useState("overview");const[docsTab,setDocsTab]=useState("contracts");
   const[meetings,setMeetings]=useState([]);
   const[audits,setAudits]=useState(INIT_AUDITS);
   const[inservices,setInservices]=useState([{id:1,date:"2025-08-10",clinic:"Titirangi",topic:"Shoulder rehab protocols",presenter:"Hans Vermeulen",attendees:"Hans, Alistair",notes:"Reviewed UniSportsOrtho shoulder stabilisation phases.",year:2025}]);
@@ -2512,21 +2189,12 @@ export default function App(){
   const[showAdd,setShowAdd]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
   const[navOpen,setNavOpen]=useState(false);
   const[isMobile,setIsMobile]=useState(()=>window.innerWidth<768);
-  useEffect(()=>{
-    let rTimer=null;
-    const h=()=>{clearTimeout(rTimer);rTimer=setTimeout(()=>{const m=window.innerWidth<768;setIsMobile(prev=>prev===m?prev:m);},150);};
-    window.addEventListener("resize",h);
-    return()=>{window.removeEventListener("resize",h);clearTimeout(rTimer);};
-  },[]);
+  useEffect(()=>{const h=()=>setIsMobile(window.innerWidth<768);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);},[]);
   const meetRef=useRef();
   const[staffOverrides,setStaffOverrides]=useState({});
   const roleNames={owner:"Jade Warren",alistair:"Alistair Burgess",hans:"Hans Vermeulen",staff:"Staff member"};
   useEffect(()=>{
     _portalForceUpdate=forceRender;
-    _saveStatus={
-      timer:null,
-      set:(s)=>{ setSaveNotif(s); clearTimeout(_saveStatus.timer); _saveStatus.timer=setTimeout(()=>setSaveNotif(null),3000); }
-    };
     _loadStore().then((ok)=>{
       setPortalConnected(ok&&_portalReady);
       if(ok){
@@ -2574,21 +2242,268 @@ export default function App(){
 
   function TabBar({items,current,setter}){return <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,marginBottom:"1rem",overflowX:"auto"}}>{items.map(([id,label])=><div key={id} onClick={()=>setter(id)} style={{padding:"7px 14px",fontSize:13,color:current===id?C.teal:C.muted,cursor:"pointer",borderBottom:current===id?`2px solid ${C.teal}`:"2px solid transparent",fontWeight:current===id?500:400,whiteSpace:"nowrap"}}>{label}</div>)}</div>;}
 
+  const Dashboard=()=>{
+    const sa=Object.entries(STAFF);const tr=sa.reduce((acc,[id])=>acc+staffComp(id).total,0);const td=sa.reduce((a,[id])=>a+staffComp(id).done,0);const pct=tr>0?Math.round((td/tr)*100):0;
+    return(
+      <div>
+        <PH title="Good morning, Jade 👋" sub={"Total Body Physio — Compliance & HR Portal · April 2026" + (portalConnected ? " · ☁️ Cloud connected" : " · ⚠️ Local storage only")}/>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.75rem",marginBottom:"1rem"}}>
+          {[[String(Object.keys(STAFF).length),"Staff",C.teal],[`${pct}%`,"Compliance",pct>=80?C.teal:pct>50?C.amber:C.red],[String(urgentCount),"Due/overdue",urgentCount>0?C.red:C.teal],[String(audits.length),"Audit records",C.blue]].map(([n,l,c])=>(
+            <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",textAlign:"center"}}>
+              <div style={{fontSize:26,fontWeight:700,color:c}}>{n}</div><div style={{fontSize:11,color:C.muted,marginTop:3}}>{l}</div>
+            </div>
+          ))}
+        </div>
+        {(()=>{
+          const issues=Object.entries(STAFF).flatMap(([id,s])=>{
+            const found=[];
+            const isOwner=STAFF[id]?.type==="Owner";
+            CORE_CERTS.filter(c=>c.required&&!(c.notForOwner&&isOwner)).forEach(cert=>{
+              const f=loadFile(id,cert.key);
+              if(!f){found.push({name:s.name,id,issue:cert.label+" — missing",level:"missing"});}
+              else if(f.expiry&&getExpiryStatus(f.expiry).status==="expired"){found.push({name:s.name,id,issue:cert.label+" — expired "+new Date(f.expiry).toLocaleDateString("en-NZ"),level:"expired"});}
+            });
+            return found;
+          });
+          if(!issues.length)return <Alert type="green" title="✅ All certifications current">No expired or missing required documents.</Alert>;
+          const grouped={};issues.forEach(i=>{if(!grouped[i.name])grouped[i.name]={id:i.id,items:[]};grouped[i.name].items.push(i.issue);});
+          const count=Object.keys(grouped).length;
+          return(
+            <div style={{background:"#FCEBEB",borderLeft:`3px solid ${C.red}`,borderRadius:6,marginBottom:"0.875rem",overflow:"hidden"}}>
+              <div onClick={()=>setUrgentOpen(o=>!o)} style={{padding:"0.875rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+                <div style={{fontSize:13,fontWeight:600,color:C.red}}>🔴 Urgent — {count} staff member{count!==1?"s":""} need action</div>
+                <span style={{fontSize:18,color:C.red,transform:urgentOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.2s",display:"inline-block"}}>›</span>
+              </div>
+              {urgentOpen&&<div style={{padding:"0 1rem 0.875rem"}}>
+                {Object.entries(grouped).map(([name,{id,items}])=>(
+                  <div key={name} onClick={()=>setProfile(id)} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:6,padding:"6px 8px",borderRadius:6,cursor:"pointer",background:"rgba(226,75,74,0.06)"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(226,75,74,0.12)"} onMouseLeave={e=>e.currentTarget.style.background="rgba(226,75,74,0.06)"}>
+                    <div style={{width:28,height:28,borderRadius:"50%",background:STAFF[id]?.color||C.red,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"white",flexShrink:0}}>{STAFF[id]?.ini}</div>
+                    <div><div style={{fontSize:12,fontWeight:600,color:C.text}}>{name}</div><div style={{fontSize:11,color:C.muted,marginTop:1}}>{items.join(" · ")}</div></div>
+                    <span style={{marginLeft:"auto",fontSize:11,color:C.red,fontWeight:500,flexShrink:0}}>Upload →</span>
+                  </div>
+                ))}
+                <div style={{fontSize:11,color:C.muted,marginTop:"0.25rem"}}>Tap a staff member to open their profile and upload. Required for ACC compliance.</div>
+              </div>}
+            </div>
+          );
+        })()}
+        {urgentCount>0&&<Alert type="amber" title={`🔔 ${urgentCount} items due or overdue`}><span onClick={()=>setPage("reminders")} style={{color:C.blue,cursor:"pointer",fontWeight:500,textDecoration:"underline"}}>View reminders →</span></Alert>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"1.25rem"}}>
+          <div onClick={()=>setPage("pp")} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",cursor:"pointer",display:"flex",alignItems:"center",gap:12}} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 12px rgba(15,110,86,0.1)"} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+            <span style={{fontSize:28}}>📖</span><div><div style={{fontSize:13,fontWeight:600}}>Policies & Procedures</div><div style={{fontSize:11,color:C.muted}}>8 sections · All staff · Annual review April</div></div>
+          </div>
+          <div onClick={()=>setPage("reminders")} style={{background:C.card,border:`1px solid ${urgentCount>0?C.red:C.border}`,borderRadius:10,padding:"1rem",cursor:"pointer",display:"flex",alignItems:"center",gap:12}} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.06)"} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+            <span style={{fontSize:28}}>🔔</span><div><div style={{fontSize:13,fontWeight:600}}>Reminders</div><div style={{fontSize:11,color:urgentCount>0?C.red:C.muted}}>{urgentCount>0?`${urgentCount} items need attention`:"All up to date"}</div></div>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"0 0 0.875rem"}}>
+          <div style={{fontSize:14,fontWeight:600}}>Staff compliance — tap row to view &amp; upload</div>
+          <Btn onClick={()=>setPage("staff")}>View all →</Btn>
+        </div>
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <thead><TH headers={["Staff","Type","Clinics","APC","First Aid","Cultural","Contract","JD","Vetting","Orientation","Notes Audit","Progress"]}/></thead>
+            <tbody>
+              {Object.entries(STAFF).map(([id,s])=>{
+                const fs=k=>certStatus(id,k);const comp=staffComp(id);const esData=es(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[esData.type]||"gray";
+                return(
+                  <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                    <TD><strong>{s.name}</strong></TD><TD><Chip color={tc}>{esData.type}</Chip></TD>
+                    <TD style={{fontSize:11,color:C.muted}}>{esData.clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</TD>
+                    <TD><Pill s={fs("apc")}/></TD><TD><Pill s={fs("firstaid")}/></TD><TD><Pill s={fs("cultural")}/></TD><TD>{CORE_CERTS.find(c=>c.key==="contract")?.notForOwner&&esData.type==="Owner"?<span style={{fontSize:11,color:C.hint}}>N/A</span>:<Pill s={fs("contract")}/>}</TD><TD><Pill s={fs("jd")}/></TD><TD><Pill s={fs("policevetting")}/></TD><TD><Pill s={fs("orientation")}/></TD><TD><Pill s={(()=>{const a=[...(_portalStore.data["audits"]||[])].filter(x=>x.type==="clinical_notes"&&x.physioAudited===s.name);return a.length>0?"ok":"pending";})()}/></TD>
+                    <TD><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:52,height:5,background:C.grayL,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:comp.pct===100?C.teal:comp.pct>50?C.amber:C.red,width:`${comp.pct}%`}}/></div><span style={{fontSize:11,color:C.muted}}>{comp.done}/{comp.total}</span></div></TD>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const RemindersPage=()=>{
+    const over=reminders.filter(r=>r.status==="overdue");const due=reminders.filter(r=>r.status==="due");const coming=reminders.filter(r=>r.status==="ok"&&r.days<=90);
+    function RGroup({title,items,col}){if(!items.length)return null;return(
+      <div style={{marginBottom:"1.25rem"}}>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:"0.75rem",color:col}}>{title} ({items.length})</div>
+        {items.map((r,i)=>(
+          <div key={i} style={{background:C.card,border:`1px solid ${r.status==="overdue"?"#f5c1c1":r.status==="due"?"#fac775":C.border}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"0.5rem",display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:22,flexShrink:0}}>{r.icon}</span>
+            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{r.label}</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>{r.target} · {r.freq} · Next: {r.nextDate}</div></div>
+            <div style={{textAlign:"right",flexShrink:0}}>
+              <Pill s={r.status==="overdue"?"overdue":r.status==="due"?"due":"ok"} label={r.days<=0?"Overdue":r.days===0?"Today":`${r.days}d`}/>
+              {r.auditKey&&<div style={{marginTop:4}}><BSm onClick={()=>setActiveAudit(r.auditKey)} color={C.teal}>Start audit →</BSm></div>}
+            </div>
+          </div>
+        ))}
+      </div>
+    );}
+    return(
+      <div>
+        <PH title="🔔 Reminders" sub="Upcoming compliance tasks, audits, renewals and drills"/>
+        {over.length===0&&due.length===0&&<Alert type="green" title="All up to date">No overdue or imminent reminders.</Alert>}
+        <RGroup title="Overdue — action required" items={over} col={C.red}/>
+        <RGroup title="Due in next 30 days" items={due} col={C.amber}/>
+        <RGroup title="Coming up — next 90 days" items={coming} col={C.muted}/>
+        <Divider/>
+        <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Full compliance schedule</div>
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <thead><TH headers={["Item","Frequency","Applies to","Typical month","Action"]}/></thead>
+            <tbody>
+              {REMINDER_SCHEDULE.map(r=>(
+                <tr key={r.key+r.freq}>
+                  <TD><span style={{fontSize:14,marginRight:6}}>{r.icon}</span><strong>{r.label}</strong></TD>
+                  <TD>{r.freq}</TD><TD style={{fontSize:12,color:C.muted}}>{r.applies}</TD>
+                  <TD style={{fontSize:12}}>{new Date(2026,r.month-1,1).toLocaleString("en-NZ",{month:"long"})}</TD>
+                  <TD>{r.auditKey?<BSm onClick={()=>setActiveAudit(r.auditKey)} color={C.teal}>Start →</BSm>:<BSm onClick={()=>setPage(r.applies==="Management"?"pp":"staff")} color={C.blue}>View →</BSm>}</TD>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const StaffPage=()=>(
+    <div>
+      <PH title="All Staff" sub="Tap any card to view compliance, upload certs or complete orientation"/>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(265px,1fr))",gap:"0.875rem"}}>
+        {Object.entries(STAFF).map(([id,s])=>{
+          const comp=staffComp(id);const bc=comp.pct===100?C.teal:comp.pct>50?C.amber:C.red;const esData=es(id);const tc={Owner:"purple",Employee:"teal",Contractor:"amber"}[esData.type]||"gray";
+          return(
+            <div key={id} onClick={()=>setProfile(id)} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 16px rgba(15,110,86,0.12)"} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+              <div style={{padding:"1rem 1rem 0.75rem",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${C.border}`}}>
+                <div style={{width:46,height:46,borderRadius:"50%",background:s.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,color:"white",flexShrink:0}}>{s.ini}</div>
+                <div><div style={{fontSize:14,fontWeight:600}}>{s.name}</div><div style={{fontSize:11,marginTop:2}}><Chip color={tc}>{esData.type}</Chip></div></div>
+              </div>
+              <div style={{padding:"0.75rem 1rem"}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>{esData.clinics.slice(0,3).map(c=><Chip key={c} color="blue">{CLINICS.find(cl=>cl.id===c)?.short}</Chip>)}</div>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}><div style={{flex:1,height:6,background:C.grayL,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",borderRadius:3,background:bc,width:`${comp.pct}%`}}/></div><span style={{fontSize:11,color:bc,fontWeight:500,whiteSpace:"nowrap"}}>{comp.done}/{comp.total}</span></div>
+                <div style={{fontSize:11,color:C.muted}}>{comp.pct===100?"All required docs on file ✓":comp.pct===0?"No documents yet":`${comp.total-comp.done} required doc${comp.total-comp.done>1?"s":""} missing`}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const CompliancePage=()=>(
+    <div>
+      <PH title="Compliance tracker" sub="All staff — employees and contractors — must hold all required certifications."/>
+      <Alert type="blue" title="📌 Universal requirements — everyone">APC · First Aid / CPR · Cultural Competency · Contract · Job Description · Orientation. Peer review & appraisal for staff 12+ months.</Alert>
+      <TabBar items={[["overview","Overview"],["apc","APC"],["firstaid","First Aid"],["cultural","Cultural"],["vetting","🚔 Police Vetting"],["reviews","Reviews & Audits"],["clinicaudit","Clinic Audits"]]} current={compTab} setter={setCompTab}/>
+      {compTab==="vetting"&&<><Alert type="blue" title="Police Vetting — §4.2 P&P Manual">Required for all staff working with vulnerable clients (children, older adults, people with disabilities). Renewed every 3 years. Evidence is the email from NZ Police showing a clear result. Upload the email or PDF confirmation to each staff member's profile.</Alert><Tbl headers={["Staff","Vetting on file","File","Notes"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"policevetting");const note={gwenne:"Vetting completed — clear ✓",ibrahim:"Vetting completed — clear ✓"}[id]||"Upload email confirmation";return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={f?"ok":"pending"} label={f?`Uploaded ${f.uploadedDate}`:"Not uploaded"}/></TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD><TD style={{fontSize:11,color:C.muted}}>{note}</TD></tr>;})}</Tbl><div style={{fontSize:12,color:C.muted,marginTop:"0.75rem",lineHeight:1.6,padding:"0.75rem 1rem",background:C.grayXL,borderRadius:8}}>📌 Per §4.2 P&P Manual: police vetting and risk assessment must be completed every 3 years. The NZ Police vetting email or PDF showing "no information to release" is sufficient evidence. Tap any staff member to upload their certificate.</div></>}
+      {compTab==="overview"&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><TH headers={["Staff","APC","First Aid","Cultural","Contract","JD","Orientation","Police Vetting","Peer Review","Appraisal","Notes Audit"]}/></thead><tbody>{Object.entries(STAFF).map(([id,s])=><tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD>{CORE_CERTS.map(c=><TD key={c.key}>{c.ownerOnly&&role!=="owner"&&role!==id?<span style={{fontSize:11,color:C.hint}}>🔒</span>:<Pill s={certStatus(id,c.key)}/>}</TD>)}</tr>)}</tbody></table></div>}
+      {compTab==="apc"&&<><Alert type="amber" title="Annual Practising Certificate">Issued by PBNZ. Renews 1 April. Must be sighted and copy on file for all staff.</Alert><Tbl headers={["Staff","Status","Expiry","File"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"apc");const st=certStatus(id,"apc");const exp=f?.expiry?getExpiryStatus(f.expiry):null;return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={st} label={st==="expired"?"Expired ⚠":st==="ok"?`On file ✓`:"Not uploaded"}/></TD><TD style={{fontSize:12,color:exp?exp.color:C.hint}}>{exp?exp.label:"—"}</TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD></tr>;})}</Tbl></>}
+      {compTab==="firstaid"&&<><Alert type="amber" title="First Aid / CPR — all staff required">Valid 2 years. Renewed every 2 years. All staff must hold current cert.</Alert><Tbl headers={["Staff","Status","Expiry","File"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"firstaid");const st=certStatus(id,"firstaid");const exp=f?.expiry?getExpiryStatus(f.expiry):null;return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={st} label={st==="expired"?"Expired ⚠":st==="ok"?"On file ✓":"Not uploaded"}/></TD><TD style={{fontSize:12,color:exp?exp.color:C.hint}}>{exp?exp.label:"—"}</TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD></tr>;})}</Tbl></>}
+      {compTab==="cultural"&&<><Alert type="amber" title="Cultural Competency (Māori) — all staff required">Annual renewal required. Complete Mauriora course at <a href="https://mauriora.co.nz" target="_blank" rel="noreferrer" style={{color:C.blue}}>mauriora.co.nz</a>. Upload certificate to each staff profile.</Alert><Tbl headers={["Staff","Status","Expiry","File"]}>{Object.entries(STAFF).map(([id,s])=>{const f=loadFile(id,"cultural");const st=certStatus(id,"cultural");const exp=f?.expiry?getExpiryStatus(f.expiry):null;return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}><TD><strong>{s.name}</strong></TD><TD><Pill s={st} label={st==="expired"?"Expired ⚠":st==="ok"?"On file ✓":"Not uploaded"}/></TD><TD style={{fontSize:12,color:exp?exp.color:C.hint}}>{exp?exp.label:"—"}</TD><TD><span style={{fontSize:12,color:f?C.teal:C.hint}}>{f?`📄 ${f.fileName}`:"—"}</span></TD></tr>;})}</Tbl></>}
+      {compTab==="reviews"&&<div>
+        <Alert type="blue" title="P&P §7 — Annual reviews & clinical notes audits">Peer review and performance appraisal annually for all staff. Clinical notes audit every 6 months (5 current + 5 past records per physio).</Alert>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",marginTop:"0.75rem"}}>Peer Reviews & Appraisals</div>
+        <Tbl headers={["Staff","Peer Review","Expiry","Appraisal","Expiry","Notes"]}>{Object.entries(STAFF).map(([id,s])=>{
+          const pr=loadFile(id,"peerreview");const ap=loadFile(id,"appraisal");
+          const prExp=pr?.expiry?getExpiryStatus(pr.expiry):null;const apExp=ap?.expiry?getExpiryStatus(ap.expiry):null;
+          const n={alistair:"Clinical Director",hans:"20+ years",dylan:"New Dec 2025",ibrahim:"New grad",komal:"Contractor",gwenne:"First cycle"}[id]||"Annual cycle";
+          return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
+            <TD><strong>{s.name}</strong></TD>
+            <TD><Pill s={pr?(prExp?.status==="expired"?"expired":"ok"):"pending"} label={pr?"On file ✓":"Needed"}/></TD>
+            <TD style={{fontSize:11,color:prExp?prExp.color:C.hint}}>{prExp?prExp.label:"—"}</TD>
+            <TD><Pill s={ap?(apExp?.status==="expired"?"expired":"ok"):"pending"} label={ap?"On file ✓":"Needed"}/></TD>
+            <TD style={{fontSize:11,color:apExp?apExp.color:C.hint}}>{apExp?apExp.label:"—"}</TD>
+            <TD style={{fontSize:11,color:C.muted}}>{n}</TD>
+          </tr>;})}
+        </Tbl>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",marginTop:"1.25rem"}}>Clinical Notes Audits <span style={{fontSize:11,color:C.muted,fontWeight:400}}>— P&P §1.5.1 · Every 6 months · 10 records per physio</span></div>
+        <Tbl headers={["Staff","Last audit","Outcome","Notes"]}>{Object.entries(STAFF).filter(([id,s])=>s.type!=="Owner"||id==="jade").map(([id,s])=>{
+          const a=[...audits].filter(x=>x.type==="clinical_notes"&&x.physioAudited===s.name).sort((a,b)=>b.date.localeCompare(a.date))[0]||null;
+          return <tr key={id} onClick={()=>{setPage("management");setMgmtTab("audits");}} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
+            <TD><strong>{s.name}</strong></TD>
+            <TD><Pill s={a?"ok":"pending"} label={a?a.date:"Not yet run"}/></TD>
+            <TD>{a?<Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>:<span style={{fontSize:11,color:C.hint}}>—</span>}</TD>
+            <TD style={{fontSize:11,color:C.muted}}>{a?.notes||"—"}</TD>
+          </tr>;})}
+        </Tbl>
+      </div>}      {compTab==="clinicaudit"&&<div>
+        <Alert type="amber" title="Clinic compliance audits">Log historical audits and upload evidence. Fire drills annual · H&S quarterly · Hygiene quarterly · Equipment annual. Run live audits from Management or Clinics page.</Alert>
+        <div style={{display:"flex",gap:8,marginBottom:"1rem",flexWrap:"wrap"}}>
+          <Btn onClick={()=>{setPage("management");setMgmtTab("audits");}}>Run new audit →</Btn>
+          <Btn outline onClick={()=>{setPage("clinics");}}>View by clinic →</Btn>
+        </div>
+        {Object.entries(AUDIT_FORMS).filter(([k])=>k!=="clinical_notes").map(([key,form])=>{
+          const typeAudits=[...audits].filter(a=>a.type===key).sort((a,b)=>b.date.localeCompare(a.date));
+          const lastDate=typeAudits[0]?.date||null;
+          const clinicsDone=[...new Set(typeAudits.map(a=>a.clinic))];
+          return(
+            <div key={key} style={{marginBottom:"1.25rem"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+                <div style={{fontSize:13,fontWeight:600}}>{form.icon} {form.title} <span style={{fontSize:11,color:C.muted,fontWeight:400}}>· {form.freq}</span></div>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  {lastDate&&<span style={{fontSize:11,color:C.muted}}>Last: {lastDate}</span>}
+                  <Pill s={typeAudits.length>0?"ok":"pending"} label={typeAudits.length>0?`${typeAudits.length} records`:"No records"}/>
+                </div>
+              </div>
+              {typeAudits.length>0&&<div style={{background:C.grayXL,borderRadius:8,padding:"0.75rem",fontSize:12}}>
+                {typeAudits.slice(0,3).map((a,i)=>(
+                  <div key={a.id} style={{display:"flex",alignItems:"center",gap:10,padding:"4px 0",borderBottom:i<Math.min(typeAudits.length,3)-1?`1px solid ${C.border}`:""}}>
+                    <span style={{color:C.muted,minWidth:80}}>{a.date}</span>
+                    <span style={{flex:1,color:C.text}}>{a.clinic}</span>
+                    <span style={{color:C.muted}}>Auditor: {a.auditor}</span>
+                    <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
+                  </div>
+                ))}
+                {typeAudits.length>3&&<div style={{fontSize:11,color:C.muted,marginTop:4,textAlign:"right"}}><span style={{cursor:"pointer",color:C.teal}} onClick={()=>{setPage("management");setMgmtTab("audits");}}>View all {typeAudits.length} records →</span></div>}
+              </div>}
+              {typeAudits.length===0&&<div style={{background:C.amberL,borderRadius:6,padding:"8px 12px",fontSize:12,color:C.amber}}>No records yet — complete an audit or add past records from Management → Audits.</div>}
+            </div>
+          );
+        })}
+      </div>}
+    </div>
+  );
+
+  const ArchivePage=()=>(
+    <div><PH title="Past employees" sub="Archived records — kept for DAA / ACC audit purposes"/>
+    <Card><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>Former staff — 7 records</div>{["Alice Keane","Aoife Hussey","Ishwari Pillay","Jennifer Hong","Maria Alonzo","Sasha McBain","Stephen Gray"].map(n=><div key={n} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}><div style={{width:32,height:32,borderRadius:"50%",background:C.grayL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:C.gray,flexShrink:0}}>{n.slice(0,2).toUpperCase()}</div><div><strong style={{fontSize:13}}>{n}</strong><div style={{fontSize:12,color:C.muted}}>Former physiotherapist · Records archived</div></div><span style={{marginLeft:"auto"}}><Chip color="gray">Archived</Chip></span></div>)}</Card></div>
+  );
+
+  const ClinicsPage=()=>(
+    <div><PH title="Clinics" sub="Run audits directly from each clinic card"/>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:"0.875rem"}}>
+      {CLINICS.map(cl=>{const cs=Object.entries(STAFF).filter(([id,s])=>es(id).clinics.includes(cl.id)).map(([id,s])=>s);return(
+        <Card key={cl.id}>
+          <div style={{fontSize:15,fontWeight:600,marginBottom:4}}>{cl.icon} {cl.name}</div>
+          <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem",lineHeight:1.5}}>{cl.note}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:"0.875rem"}}>{cs.map(s=><Chip key={s.name} color="teal">{s.name.split(" ")[0]}</Chip>)}</div>
+          <Divider/>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+            <BSm onClick={()=>setActiveAudit("fire_drill")} color={C.red}>🔥 Fire drill</BSm>
+            <BSm onClick={()=>setActiveAudit("hygiene")} color={C.teal}>🧼 Hygiene</BSm>
+            <BSm onClick={()=>setActiveAudit("hs_audit")} color={C.amber}>⚠️ H&S</BSm>
+            <BSm onClick={()=>setActiveAudit("equipment")} color={C.blue}>⚡ Equipment</BSm>
+          </div>
+        </Card>
+      );})}
+    </div></div>
+  );
+
+  const DocumentsPage=()=>{const[dvf,setDvf]=useState(null);return(
+    <div><PH title="Documents" sub="Contracts, job descriptions & legislation"/>
+    <TabBar items={[["contracts","Contracts"],["jd","Job descriptions"],["leg","Legislation"]]} current={docsTab} setter={setDocsTab}/>
+    {docsTab==="contracts"&&<div><Alert type="blue" title="🔒 Contract privacy — P&P Section 7.2">Contracts visible to Jade (owner) and the individual staff member only. Others see a locked indicator. Two signed copies: one for employee, one in personnel file.</Alert><Card>{Object.entries(STAFF).map(([id,s])=>{const canSee=role==="owner"||role===id;return <ContractRow key={id} staffId={id} s={s} canSee={canSee} onView={f=>setDvf(f)}/>;})}</Card></div>}
+    {docsTab==="jd"&&<Card><div style={{fontSize:13,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Tap 👁 View to open the current job description. Use 📄 Add another to upload a new or updated version. All signed copies kept on file — P&P §7.3.</div>{Object.entries(STAFF).map(([id,s])=><MultiFileRow key={id} label={`${s.name} — Job Description`} gkey={`jd_${id}`} onView={f=>setDvf(f)} accent={s.color}/>)}</Card>}
+    {docsTab==="leg"&&<div><Alert type="blue" title="Key legislation — all staff read during orientation">Click any link to open the source document.</Alert>{LEGISLATION.map(leg=><Card key={leg.name} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}><div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}><div><a href={leg.url} target="_blank" rel="noreferrer" style={{fontSize:13,fontWeight:600,color:C.blue,textDecoration:"none"}}>{leg.name} ↗</a><div style={{fontSize:12,color:C.muted,marginTop:3,lineHeight:1.5}}>{leg.desc}</div></div><a href={leg.url} target="_blank" rel="noreferrer" style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:C.blueL,color:C.blue,textDecoration:"none",fontWeight:500,whiteSpace:"nowrap",flexShrink:0}}>Open ↗</a></div></Card>)}</div>}
+    {dvf&&<FileViewer file={dvf} onClose={()=>setDvf(null)}/>}
+    </div>
+  );};
+
 
   if(portalLoading)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:C.bg,fontFamily:"-apple-system,'Segoe UI',sans-serif"}}><div style={{textAlign:"center"}}><div style={{width:48,height:48,borderRadius:"50%",background:C.teal,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 1rem"}}><svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm-1-5h2v2h-2zm0-8h2v6h-2z"/></svg></div><div style={{fontSize:16,fontWeight:600,color:C.text,marginBottom:4}}>Total Body Physio</div><div style={{fontSize:13,color:C.muted}}>Loading portal...</div></div></div>);
 
-  const ctxValue={
-    meetings,setMeetings,audits,setAudits,extAudits,setExtAudits,
-    inservices,setInservices,ppDocs,setPpDocs,ppReviews,setPpReviews,
-    activeAudit,setActiveAudit,viewAudit,setViewAudit,
-    eavf,setEavf,vf,setVf,role,setProfile,setPage,
-    portalConnected,staffOverrides,setStaffOverrides,
-    urgentCount,isMobile,setActiveAudit,ppAiAnalysis,setPpAiAnalysis,
-    setActiveAudit,
-  };
-
   return(
-    <AppCtx.Provider value={ctxValue}>
     <div style={{display:"flex",minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"-apple-system,'Segoe UI',sans-serif"}}>
       {/* ── Mobile overlay backdrop ── */}
       {isMobile&&navOpen&&<div onClick={()=>setNavOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:19}}/>}
@@ -2626,7 +2541,6 @@ export default function App(){
         <div style={{padding:"0.875rem 1rem",borderTop:`1px solid ${C.border}`}}>
           <div style={{fontSize:13,fontWeight:600}}>{roleNames[role]}</div>
           <div style={{fontSize:11,color:C.muted}}>{role==="owner"?"Owner / Director":role==="alistair"?"Clinical Director":role==="hans"?"Clinic Lead — Titirangi":"Physiotherapist"}</div>
-          {saveNotif&&<div style={{marginTop:6,fontSize:11,fontWeight:600,color:saveNotif==="saved"?C.green:C.red,background:saveNotif==="saved"?C.greenL:C.redL,borderRadius:6,padding:"3px 8px",display:"inline-block"}}>{saveNotif==="saved"?"✓ Saved to cloud":"⚠ Save failed — retrying"}</div>}
         </div>
       </div>
 
@@ -2652,9 +2566,9 @@ export default function App(){
           {page==="compliance"&&<CompliancePage/>}
           {page==="archive"&&<ArchivePage/>}
           {page==="clinics"&&<ClinicsPage/>}
-          {page==="inservice"&&<InservicePage/>}
+          {page==="inservice"&&<InservicePage inservices={inservices} setInservices={setInservices} setVf={setVf}/>}
           {page==="documents"&&<DocumentsPage/>}
-          {page==="management"&&<ManagementPage/>}
+          {page==="management"&&<ManagementPage meetings={meetings} setMeetings={setMeetings} audits={audits} setAudits={setAudits} extAudits={extAudits} setExtAudits={setExtAudits} setActiveAudit={setActiveAudit} setViewAudit={setViewAudit} setEavf={setEavf} setVf={setVf}/>}
         </div>
       </div>
 
@@ -2664,7 +2578,5 @@ export default function App(){
       {eavf&&<FileViewer file={eavf} onClose={()=>setEavf(null)}/>}
       {vf&&<FileViewer file={vf} onClose={()=>setVf(null)}/>}
     </div>
-  
-    </AppCtx.Provider>
   );
 }
