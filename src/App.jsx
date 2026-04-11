@@ -292,6 +292,11 @@ const AUDIT_FORMS = {
 let _portalStore = { files: {}, data: {} };
 let _portalReady = false;
 let _portalForceUpdate = null;
+let _fuTimer = null;
+function _scheduleForceUpdate() {
+  clearTimeout(_fuTimer);
+  _fuTimer = setTimeout(() => { if (_portalForceUpdate) _portalForceUpdate(n => n + 1); }, 400);
+}
 
 async function _loadStore() {
   try {
@@ -337,17 +342,22 @@ function saveFile(id, k, d) {
     // Archive old file before overwriting
     _archiveFile(key, _portalStore.files[key]);
     _portalStore.files[key] = d;
+    // Save a lightweight backup to localStorage immediately (dataUrl may be large but is the only
+    // viewable copy until the blob upload finishes — replaced with blobUrl version below)
+    try { localStorage.setItem(key, JSON.stringify(d)); } catch {}
     fetch(PORTAL_API + "/upload", {
       method: "POST", headers: _apiHeaders,
       body: JSON.stringify({ fileKey: key, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl, meta: d.expiry ? { expiry: d.expiry } : d.issued ? { issued: d.issued } : undefined }),
     }).then(r => r.json()).then(result => {
       if (result.ok && result.file) {
         _portalStore.files[key] = result.file;
+        // Update localStorage backup with the blobUrl version (much smaller than dataUrl)
+        try { localStorage.setItem(key, JSON.stringify(result.file)); } catch {}
         fetch(PORTAL_API + "/store", {
           method: "POST", headers: _apiHeaders,
           body: JSON.stringify({ key, value: result.file, store: "files" }),
         }).catch(e => _err("[Portal] Sync error:", e));
-        if (_portalForceUpdate) _portalForceUpdate(n => n + 1);
+        _scheduleForceUpdate();
       }
     }).catch(e => _err("[Upload] Failed:", e.message));
     return true;
@@ -357,7 +367,13 @@ function saveFile(id, k, d) {
 
 function loadFile(id, k) {
   const key = sKey(id, k);
-  if (_portalReady) return _portalStore.files[key] || null;
+  if (_portalReady) {
+    const cloudFile = _portalStore.files[key] || null;
+    if (cloudFile) return cloudFile;
+    // Cloud doesn't have it — fall back to localStorage backup so certs survive
+    // even if the /store sync failed after upload
+    try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : null; } catch { return null; }
+  }
   try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : null; } catch { return null; }
 }
 
@@ -387,7 +403,15 @@ function saveGen(k, d) {
         method: "POST", headers: _apiHeaders,
         body: JSON.stringify({ fileKey: k, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl }),
       }).then(r => r.json()).then(result => {
-        if (result.ok && result.file) { _portalStore.files[k] = result.file; if (_portalForceUpdate) _portalForceUpdate(n => n + 1); }
+        if (result.ok && result.file) {
+          _portalStore.files[k] = result.file;
+          _portalStore.data[k] = result.file;
+          fetch(PORTAL_API + "/store", {
+            method: "POST", headers: _apiHeaders,
+            body: JSON.stringify({ key: k, value: result.file }),
+          }).catch(()=>{});
+          _scheduleForceUpdate();
+        }
       }).catch(e => _err("[Portal] Upload error:", e));
     } else {
       _portalStore.data[k] = d;
@@ -614,7 +638,7 @@ function CertCard({staffId,cert,role,onView}){
       const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:cert.key,expiry:null,issued:null};
       if(saveFile(staffId,cert.key,d)){
         setFile(d);
-        if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
+        _scheduleForceUpdate();
         setScanning(true);
         detectExpiryDate(ev.target.result,cert.label).then(result=>{
           const expiry=result.expiry||null;const issued=result.issued||null;
@@ -626,7 +650,7 @@ function CertCard({staffId,cert,role,onView}){
               _portalStore.data["expiry_"+key]={expiry,issued};
               fetch(PORTAL_API+"/store",{method:"POST",headers:_apiHeaders,body:JSON.stringify({key:"expiry_"+key,value:{expiry,issued}})}).catch(()=>{});
             }
-            if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
+            _scheduleForceUpdate();
           }
           setScanning(false);
         }).catch(()=>setScanning(false));
@@ -667,7 +691,7 @@ function CertCard({staffId,cert,role,onView}){
           if(_portalReady){delete _portalStore.data["expiry_"+key];fetch(PORTAL_API+"/store?key="+encodeURIComponent("expiry_"+key),{method:"DELETE",headers:{"X-Portal-Secret":PORTAL_SECRET}}).catch(()=>{});}
           if(_portalStore.files[key]){_portalStore.files[key].expiry=null;_portalStore.files[key].issued=null;}
           setFile(f=>({...f,expiry:null,issued:null}));
-          if(_portalForceUpdate)_portalForceUpdate(n=>n+1);
+          _scheduleForceUpdate();
         }} color={C.amber}>Clear expiry</BSm>}
         {file&&<BSm onClick={()=>{if(window.confirm("Remove?")){removeFile(staffId,cert.key);setFile(null);}}} color={C.red}>Remove</BSm>}
         {file&&<BSm onClick={()=>setShowHist(h=>!h)} color={C.gray}>{showHist?"Hide history":"History"+(loadFileHistory(staffId,cert.key).length>0?` (${loadFileHistory(staffId,cert.key).length})`:"")}</BSm>}
@@ -1709,461 +1733,6 @@ function PPPage({setPage,setActiveAudit,ppDocs,setPpDocs,ppReviews,setPpReviews}
   );
 }
 
-
-// ── Standalone page components (outside App to prevent remount on re-render) ──
-function InservicePage({inservices,setInservices,setVf}){
-  const[isrvTab,setIsrvTab]=useState("log");
-  const[ivf,setIvf]=useState(null);
-  const[showForm,setShowForm]=useState(false);
-  const[filterClinic,setFilterClinic]=useState("all");
-  const[filterYear,setFilterYear]=useState(String(new Date().getFullYear()));
-  const[ni,setNi]=useState({date:"",clinic:"All clinics",topic:"",presenter:"",attendees:"",notes:""});
-  const years=[...new Set(inservices.map(i=>String(i.year||i.date?.slice(0,4)||"2025")))].sort((a,b)=>b-a);
-  if(!years.includes(filterYear))years.unshift(filterYear);
-  const clinicOptions=["all",...CLINICS.filter(c=>c.id!=="schools").map(c=>c.short)];
-  const visible=inservices.filter(i=>{
-    const yr=String(i.year||i.date?.slice(0,4)||"");
-    const cl=i.clinic||"";
-    return(filterYear==="all"||yr===filterYear)&&(filterClinic==="all"||cl===filterClinic||cl.includes(filterClinic));
-  }).sort((a,b)=>b.date.localeCompare(a.date));
-  function addInservice(){
-    if(!ni.date||!ni.topic){alert("Date and topic required.");return;}
-    const rec={...ni,id:Date.now(),year:parseInt(ni.date.slice(0,4))};
-    const updated=[...inservices,rec];
-    setInservices(updated);saveGen("inservices",updated);
-    setNi({date:"",clinic:"All clinics",topic:"",presenter:"",attendees:"",notes:""});
-    setShowForm(false);
-  }
-  // Per-clinic status for current year
-  const thisYear=String(new Date().getFullYear());
-  const clinicStatus=CLINICS.filter(c=>c.id!=="schools").map(cl=>{
-    const done=inservices.filter(i=>String(i.year||i.date?.slice(0,4)||"")===thisYear&&(i.clinic===cl.short||i.clinic===cl.name||(i.clinic||"").includes(cl.short)));
-    return{...cl,count:done.length,done:done.length>0};
-  });
-  return(
-  <div>
-    <PH title="In-service training log" sub="Annual requirement — at least one per clinic per year · P&P §7.7.3"/>
-    <Alert type="amber" title="P&P requirement">Section 7.7.3: Regular in-service education done at TBP. Topics suggested by staff, physios or selected by presenter. No client-identifying details in case studies.</Alert>
-    <TabBar items={[["log","Session log"],["status",thisYear+" Status"],["resources","Resources & files"]]} current={isrvTab} setter={setIsrvTab}/>
-    {isrvTab==="status"&&(
-      <div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:"0.75rem",marginBottom:"1rem"}}>
-          {clinicStatus.map(cl=>(
-            <Card key={cl.id} style={{padding:"1rem",borderColor:cl.done?C.teal:C.amber}}>
-              <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>{cl.icon} {cl.short}</div>
-              <div style={{fontSize:12,color:C.muted,marginBottom:8}}>{cl.note}</div>
-              <Pill s={cl.done?"ok":"pending"} label={cl.done?`${cl.count} session${cl.count!==1?"s":""} done ✓`:"Required — none yet"}/>
-            </Card>
-          ))}
-        </div>
-        <Btn onClick={()=>setShowForm(true)}>+ Log in-service session</Btn>
-      </div>
-    )}
-    {isrvTab==="log"&&(
-      <div>
-        <div style={{display:"flex",gap:8,marginBottom:"1rem",alignItems:"center",flexWrap:"wrap"}}>
-          <div style={{display:"flex",gap:4}}>
-            {["all",...years.slice(0,4)].filter((v,i,a)=>a.indexOf(v)===i).map(y=><button key={y} onClick={()=>setFilterYear(y)} style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:filterYear===y?C.teal:"white",color:filterYear===y?"white":C.muted,border:`1px solid ${filterYear===y?C.teal:C.border}`,cursor:"pointer"}}>{y==="all"?"All years":y}</button>)}
-          </div>
-          <select value={filterClinic} onChange={e=>setFilterClinic(e.target.value)} style={{fontSize:12,padding:"4px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL}}>
-            {clinicOptions.map(c=><option key={c} value={c}>{c==="all"?"All clinics":c}</option>)}
-          </select>
-          <Btn onClick={()=>setShowForm(true)} style={{marginLeft:"auto"}}>+ Log session</Btn>
-        </div>
-        {showForm&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
-          <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Log in-service session</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
-            <Input label="Date" value={ni.date} onChange={e=>setNi({...ni,date:e.target.value})} type="date"/>
-            <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Clinic</label>
-              <select value={ni.clinic} onChange={e=>setNi({...ni,clinic:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
-                <option>All clinics</option>{CLINICS.filter(c=>c.id!=="schools").map(c=><option key={c.id}>{c.short}</option>)}
-              </select>
-            </div>
-          </div>
-          <Input label="Topic" value={ni.topic} onChange={e=>setNi({...ni,topic:e.target.value})} placeholder="e.g. Shoulder rehab protocols"/>
-          <Input label="Presenter" value={ni.presenter} onChange={e=>setNi({...ni,presenter:e.target.value})} placeholder="e.g. Hans Vermeulen"/>
-          <Input label="Attendees" value={ni.attendees} onChange={e=>setNi({...ni,attendees:e.target.value})} placeholder="e.g. Hans, Alistair, Timothy"/>
-          <Textarea label="Notes / topics covered" value={ni.notes} onChange={e=>setNi({...ni,notes:e.target.value})} rows={2}/>
-          <div style={{display:"flex",gap:8}}><Btn onClick={addInservice}>Save session</Btn><Btn outline onClick={()=>setShowForm(false)}>Cancel</Btn></div>
-        </Card>}
-        {visible.length===0&&<Alert type="blue" title="No sessions found">No in-service sessions match this filter. Log a new session above.</Alert>}
-        {visible.map(s=>(
-          <Card key={s.id} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}>
-            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:600}}>{s.topic}</div>
-                <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.date} · {s.clinic}{s.presenter?` · Presenter: ${s.presenter}`:""}</div>
-                {s.attendees&&<div style={{fontSize:12,color:C.muted,marginTop:1}}>Attendees: {s.attendees}</div>}
-                {s.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"5px 8px",borderRadius:5,marginTop:6,lineHeight:1.5}}>{s.notes}</div>}
-              </div>
-              <Pill s="ok" label="Completed ✓"/>
-            </div>
-          </Card>
-        ))}
-      </div>
-    )}
-    {isrvTab==="resources"&&<Card><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>In-service resources — all clinics</div><div style={{fontSize:12,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Shared resource library. Upload handouts, slides or reading materials. All staff can view.</div><MultiFileRow label="📚 Shared in-service resources — all clinics" gkey="isrv_communal" onView={f=>setIvf(f)}/><div style={{marginTop:"0.75rem",fontSize:11,color:C.muted}}>Accepted: PDF, Word, image. Max 3MB.</div></Card>}
-    {ivf&&<FileViewer file={ivf} onClose={()=>setIvf(null)}/>}
-  </div>
-);};
-
-function ContractRow({staffId,s,canSee,onView}){
-  const ref=useRef();
-  const[file,setFile]=useState(()=>loadFile(staffId,"contract"));
-  function handle(e){
-    const f=e.target.files[0];if(!f)return;
-    if(f.size>3*1024*1024){alert("File over 3MB.");return;}
-    const r=new FileReader();
-    r.onload=ev=>{
-      const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:"contract"};
-      if(saveFile(staffId,"contract",d))setFile(d);
-    };
-    r.readAsDataURL(f);e.target.value="";
-  }
-  return(
-    <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
-      <div style={{width:34,height:34,borderRadius:"50%",background:s.color+"25",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:s.color,flexShrink:0}}>{s.ini}</div>
-      <div style={{flex:1}}>
-        <strong style={{fontSize:13}}>{s.name}</strong>
-        <div style={{fontSize:12,color:C.muted}}>{es(staffId).type} · {es(staffId).clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</div>
-        {file&&<div style={{fontSize:11,color:C.muted,marginTop:1}}>{file.fileName} · {file.uploadedDate}</div>}
-      </div>
-      {canSee
-        ?<div style={{display:"flex",gap:5,alignItems:"center",flexShrink:0}}>
-          {file&&<BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>}
-          <BSm onClick={()=>ref.current.click()} color={C.teal}>📄 {file?"Upload new":"Upload"}</BSm>
-          {file&&<BSm onClick={()=>{if(window.confirm("Remove contract?")){ removeFile(staffId,"contract");setFile(null);}}} color={C.red}>✕</BSm>}
-        </div>
-        :<span style={{fontSize:12,color:C.hint,flexShrink:0}}>🔒 Restricted</span>
-      }
-      <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
-    </div>
-  );
-}
-}
-
-function ManagementPage({meetings,setMeetings,audits,setAudits,extAudits,setExtAudits,setActiveAudit,setViewAudit,setEavf,setVf}){
-  const[mgmtTab,setMgmtTab]=useState("audits");
-  const[nm,setNm]=useState({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});
-  const[logAudit,setLogAudit]=useState({type:"hygiene",date:"",clinic:CLINICS[0].short,auditor:"",outcome:"Passed",notes:""});
-  const[showLogAudit,setShowLogAudit]=useState(false);
-  const[auditTypeFilter,setAuditTypeFilter]=useState("all");
-  const[auditClinicFilter,setAuditClinicFilter]=useState("all");
-  const[collapsedYears,setCollapsedYears]=useState({});
-const[mvf,setMvf]=useState(null);return(
-  <div><PH title="Management" sub="Audits, staff meetings, equipment — DAA / ACC Allied Health Standards"/>
-  <TabBar items={[["audits","Audits"],["meetings","Staff Meetings"],["equipment","Equipment"],["accreditation","Accreditation"]]} current={mgmtTab} setter={setMgmtTab}/>
-  {mgmtTab==="audits"&&<div>
-    <div style={{marginBottom:"1.25rem"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem"}}>
-        <div style={{fontSize:14,fontWeight:600}}>Start a new audit</div>
-        <BSm onClick={()=>setShowLogAudit(v=>!v)} color={C.gray}>📋 {showLogAudit?"Cancel":"Log past / manual audit"}</BSm>
-      </div>
-      {showLogAudit&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
-        <div style={{fontSize:13,fontWeight:600,marginBottom:"0.875rem"}}>Log a past or manual audit <span style={{fontSize:11,color:C.muted,fontWeight:400}}>(no checklist required — just record the outcome and optionally attach evidence)</span></div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
-          <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Audit type</label>
-            <select value={logAudit.type} onChange={e=>setLogAudit({...logAudit,type:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
-              {Object.entries(AUDIT_FORMS).map(([k,f])=><option key={k} value={k}>{f.icon} {f.title}</option>)}
-            </select>
-          </div>
-          <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Clinic</label>
-            <select value={logAudit.clinic} onChange={e=>setLogAudit({...logAudit,clinic:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
-              {CLINICS.map(c=><option key={c.id}>{c.short}</option>)}
-            </select>
-          </div>
-          <Input label="Date" value={logAudit.date} onChange={e=>setLogAudit({...logAudit,date:e.target.value})} type="date"/>
-          <Input label="Auditor name" value={logAudit.auditor} onChange={e=>setLogAudit({...logAudit,auditor:e.target.value})} placeholder="e.g. Jade Warren"/>
-        </div>
-        <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Outcome</label>
-          <div style={{display:"flex",gap:8}}>
-            {["Passed","Issues found","N/A"].map(o=><div key={o} onClick={()=>setLogAudit({...logAudit,outcome:o})} style={{padding:"6px 14px",borderRadius:6,border:`1.5px solid ${logAudit.outcome===o?C.teal:C.border}`,background:logAudit.outcome===o?C.tealL:"white",fontSize:13,cursor:"pointer",fontWeight:logAudit.outcome===o?600:400}}>{o}</div>)}
-          </div>
-        </div>
-        <Textarea label="Notes" value={logAudit.notes} onChange={e=>setLogAudit({...logAudit,notes:e.target.value})} rows={2} placeholder="Any issues found, actions taken, general observations…"/>
-        <LogAuditEvidenceRow logAudit={logAudit} setLogAudit={setLogAudit}/>
-        <div style={{display:"flex",gap:8,marginTop:"0.5rem"}}>
-          <Btn onClick={()=>{
-            if(!logAudit.date||!logAudit.auditor.trim()){alert("Date and auditor name required.");return;}
-            const form=AUDIT_FORMS[logAudit.type];
-            const rec={id:Date.now(),type:logAudit.type,title:form.title,icon:form.icon,clinic:logAudit.clinic,auditor:logAudit.auditor,date:logAudit.date,outcome:logAudit.outcome,notes:logAudit.notes,manual:true,...(logAudit.evidence?{evidence:logAudit.evidence}:{})};
-            const updated=[...audits,rec];setAudits(updated);saveGen("audits",updated);
-            setLogAudit({type:"hygiene",date:"",clinic:CLINICS[0].short,auditor:"",outcome:"Passed",notes:""});
-            setShowLogAudit(false);
-          }}>Save record</Btn>
-          <Btn outline onClick={()=>setShowLogAudit(false)}>Cancel</Btn>
-        </div>
-      </Card>}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(175px,1fr))",gap:"0.75rem"}}>
-      {Object.entries(AUDIT_FORMS).map(([k,f])=>(
-        <div key={k} onClick={()=>setActiveAudit(k)} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",cursor:"pointer"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=C.teal;e.currentTarget.style.boxShadow="0 2px 12px rgba(15,110,86,0.1)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.boxShadow="none";}}>
-          <div style={{fontSize:26,marginBottom:6}}>{f.icon}</div><div style={{fontSize:13,fontWeight:600,marginBottom:2}}>{f.title}</div>
-          <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{f.freq} · {f.sections.flatMap(s=>s.items).length} items</div>
-          <span style={{color:C.teal,fontSize:11,fontWeight:500}}>Start →</span>
-        </div>
-      ))}
-    </div></div>
-    <Divider/>
-    {/* Audit history — Year → Type → expandable records */}
-    {(()=>{
-      const thisYearA=String(new Date().getFullYear());
-      const allYears=[...new Set([thisYearA,...audits.map(a=>a.date?.slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
-      const filtered=audits.filter(a=>(auditTypeFilter==="all"||a.type===auditTypeFilter)&&(auditClinicFilter==="all"||a.clinic===auditClinicFilter));
-
-      function isAyrOpen(yr){const k="ayr_"+yr;return k in collapsedYears?collapsedYears[k]:yr===thisYearA;}
-      function isAOpen(id){return!!collapsedYears["ao_"+id];}
-      function toggleAyr(yr){setCollapsedYears(p=>({...p,["ayr_"+yr]:!isAyrOpen(yr)}));}
-      function toggleA(id){setCollapsedYears(p=>({...p,["ao_"+id]:!isAOpen(id)}));}
-
-      return(
-        <div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem",flexWrap:"wrap",gap:8}}>
-            <div style={{fontSize:14,fontWeight:600}}>Audit history — {audits.length} record{audits.length!==1?"s":""}</div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              <select value={auditTypeFilter} onChange={e=>setAuditTypeFilter(e.target.value)} style={{fontSize:12,padding:"5px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL,color:C.text}}>
-                <option value="all">All audit types</option>
-                {Object.entries(AUDIT_FORMS).map(([k,f])=><option key={k} value={k}>{f.icon} {f.title}</option>)}
-              </select>
-              <select value={auditClinicFilter} onChange={e=>setAuditClinicFilter(e.target.value)} style={{fontSize:12,padding:"5px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL,color:C.text}}>
-                <option value="all">All clinics</option>
-                {CLINICS.map(c=><option key={c.id} value={c.short}>{c.short}</option>)}
-              </select>
-            </div>
-          </div>
-          {audits.length===0&&<Alert type="blue" title="No audit records yet">Complete an audit above to create your first record.</Alert>}
-          {filtered.length===0&&audits.length>0&&<Alert type="blue" title="No records match">Try changing the filters.</Alert>}
-          {allYears.map(year=>{
-            const yrOpen=isAyrOpen(year);
-            const yearAudits=filtered.filter(a=>a.date?.slice(0,4)===year).sort((a,b)=>b.date.localeCompare(a.date));
-            const yearTotal=yearAudits.length;
-            const yearPassed=yearAudits.filter(a=>a.outcome==="Passed").length;
-            const yearFailed=yearTotal-yearPassed;
-            return(
-              <div key={year} style={{marginBottom:"0.625rem"}}>
-                {/* Year header */}
-                <div onClick={()=>toggleAyr(year)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:year===thisYearA?C.tealL:C.grayXL,border:`1px solid ${year===thisYearA?C.teal:C.border}`,borderRadius:yrOpen?"8px 8px 0 0":8,cursor:"pointer",userSelect:"none"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                    <span style={{fontSize:15,fontWeight:700,color:year===thisYearA?C.teal:C.text}}>{year}</span>
-                    {year===thisYearA&&<span style={{fontSize:10,background:C.teal,color:"white",borderRadius:8,padding:"1px 7px",fontWeight:600}}>CURRENT</span>}
-                    {yearTotal>0&&<><span style={{fontSize:12,color:C.muted}}>{yearTotal} audit{yearTotal!==1?"s":""}</span><span style={{fontSize:12,color:C.green,fontWeight:500}}>✓ {yearPassed} passed</span>{yearFailed>0&&<span style={{fontSize:12,color:C.red,fontWeight:500}}>✗ {yearFailed} issues</span>}</>}
-                    {yearTotal===0&&<span style={{fontSize:12,color:C.muted}}>No records</span>}
-                  </div>
-                  <span style={{color:C.muted,fontSize:18,transform:yrOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.18s",display:"inline-block"}}>›</span>
-                </div>
-
-                {yrOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",background:C.card,padding:"0.625rem"}}>
-                  {yearTotal===0&&<div style={{fontSize:12,color:C.muted,padding:"8px 4px"}}>No audits match the current filters for this year.</div>}
-                  {/* Group by audit type */}
-                  {Object.entries(AUDIT_FORMS).map(([key,form])=>{
-                    const ta=yearAudits.filter(a=>a.type===key);
-                    if(!ta.length)return null;
-                    return(
-                      <div key={key} style={{marginBottom:"0.75rem"}}>
-                        <div style={{fontSize:11,fontWeight:600,color:C.muted,marginBottom:"0.375rem",display:"flex",alignItems:"center",gap:6,textTransform:"uppercase",letterSpacing:"0.04em"}}>
-                          <span>{form.icon}</span> {form.title} <span style={{background:C.grayL,borderRadius:8,padding:"0 6px",fontSize:10,textTransform:"none",letterSpacing:0,fontWeight:500,color:C.muted}}>{ta.length}</span>
-                        </div>
-                        {ta.map(a=>{
-                          const aOpen=isAOpen(a.id);
-                          return(
-                            <div key={a.id} style={{marginBottom:4}}>
-                              {/* Audit summary row — tap to expand */}
-                              <div onClick={()=>toggleA(a.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px",borderRadius:aOpen?"6px 6px 0 0":6,background:C.grayXL,border:`1px solid ${aOpen?C.border:C.border}`,cursor:"pointer",userSelect:"none"}}>
-                                <div style={{flex:1,minWidth:0}}>
-                                  <div style={{fontSize:12,fontWeight:600,color:C.text}}>{a.date} <span style={{color:C.muted,fontWeight:400}}>· {a.clinic}</span></div>
-                                  <div style={{fontSize:11,color:C.muted,marginTop:1}}>Auditor: {a.auditor}{a.physioAudited?` · Physio: ${a.physioAudited}`:""}</div>
-                                </div>
-                                {a.evidence&&<span style={{fontSize:11,color:C.teal,flexShrink:0}}>📎</span>}
-                                <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
-                                <span style={{color:C.muted,fontSize:14,transform:aOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.13s",display:"inline-block",flexShrink:0}}>›</span>
-                              </div>
-                              {/* Expanded audit detail */}
-                              {aOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 6px 6px",background:"white",padding:"10px 12px"}}>
-                                {a.passed!==undefined&&<div style={{display:"flex",gap:14,marginBottom:6,fontSize:12}}>
-                                  <span style={{color:C.green,fontWeight:500}}>✓ {a.passed} passed</span>
-                                  {a.failed>0&&<span style={{color:C.red,fontWeight:500}}>✗ {a.failed} failed</span>}
-                                  {a.na>0&&<span style={{color:C.muted}}>{a.na} N/A</span>}
-                                  <span style={{color:C.muted}}>{a.total} total items</span>
-                                </div>}
-                                {a.notes&&<div style={{fontSize:12,background:C.grayXL,padding:"7px 10px",borderRadius:5,lineHeight:1.6,marginBottom:6,border:`1px solid ${C.border}`}}>{a.notes}</div>}
-                                {a.evidence&&<div style={{marginBottom:6}}><BSm onClick={()=>setEavf(a.evidence)} color={C.teal}>📎 View evidence — {a.evidence.fileName}</BSm></div>}
-                                <div style={{display:"flex",gap:6}}>
-                                  <BSm onClick={e=>{e.stopPropagation();setViewAudit(a);}} color={C.blue}>View full report →</BSm>
-                                  <AuditEvidenceBtn audit={a} audits={audits} setAudits={setAudits} onView={setEavf}/>
-                                </div>
-                              </div>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>}
-              </div>
-            );
-          })}
-        </div>
-      );
-    })()}
-  </div>}
-  {mgmtTab==="meetings"&&(()=>{
-    const thisYear=String(new Date().getFullYear());
-    const nowMonth=new Date().getMonth();
-    const currentQ=nowMonth<3?0:nowMonth<6?1:nowMonth<9?2:3;
-    const qDefs=[{n:"Q1",label:"Jan – Mar",months:[0,1,2]},{n:"Q2",label:"Apr – Jun",months:[3,4,5]},{n:"Q3",label:"Jul – Sep",months:[6,7,8]},{n:"Q4",label:"Oct – Dec",months:[9,10,11]}];
-    const allMeetingYears=[...new Set([thisYear,...meetings.map(m=>m.date.slice(0,4))])].sort((a,b)=>b-a);
-    const mainClinics=CLINICS.filter(c=>c.id!=="schools");
-
-    // Year open by default for all years (collapse only on explicit click)
-    function isYrOpen(yr){const k="myr_"+yr;return k in collapsedYears?collapsedYears[k]:true;}
-    function toggleYr(yr){setCollapsedYears(p=>({...p,["myr_"+yr]:!isYrOpen(yr)}));}
-
-    function qMeetings(year,qi){
-      return meetings.filter(m=>{
-        if(m.date.slice(0,4)!==year)return false;
-        return qDefs[qi].months.includes(new Date(m.date).getMonth());
-      }).sort((a,b)=>a.date.localeCompare(b.date));
-    }
-
-    return <div>
-      <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly per clinic. {meetings.length} meeting{meetings.length!==1?"s":""} logged.</Alert>
-      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"1rem"}}>
-        <Btn onClick={()=>setShowAdd(true)}>+ Log meeting</Btn>
-      </div>
-
-      {/* ── Log form ── */}
-      {showAdd&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
-        <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Log meeting <span style={{fontSize:12,color:C.muted,fontWeight:400}}>(set any past date for historical records)</span></div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
-          <Input label="Date" value={nm.date} onChange={e=>setNm({...nm,date:e.target.value})} type="date"/>
-          <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Clinic / location</label>
-            <select value={nm.clinic} onChange={e=>setNm({...nm,clinic:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
-              <option>All clinics</option>{CLINICS.map(c=><option key={c.id}>{c.short}</option>)}
-            </select>
-          </div>
-        </div>
-        <Input label="Topic / agenda" value={nm.topic} onChange={e=>setNm({...nm,topic:e.target.value})} placeholder="e.g. Q4 staff meeting — H&S review, CPD updates"/>
-        <Input label="Attendees" value={nm.attendees} onChange={e=>setNm({...nm,attendees:e.target.value})} placeholder="e.g. Jade, Alistair, Hans, Timothy"/>
-        <Textarea label="Notes / minutes" value={nm.notes} onChange={e=>setNm({...nm,notes:e.target.value})} rows={3}/>
-        <div style={{marginBottom:"0.625rem"}}>
-          <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Attach minutes / notes document (optional)</label>
-          {nm.attachment
-            ?<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:C.grayXL,borderRadius:6,marginBottom:4}}>
-              <span style={{fontSize:12,flex:1}}>📎 {nm.attachment.fileName}</span>
-              <BSm onClick={()=>setNm({...nm,attachment:null})} color={C.red}>✕</BSm>
-            </div>
-            :<BSm onClick={()=>meetRef.current.click()} color={C.gray}>📎 Attach document or photo</BSm>
-          }
-          <input ref={meetRef} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;if(f.size>10*1024*1024){alert("File over 10MB.");return;}const r=new FileReader();r.onload=async ev=>{const att={id:Date.now(),fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};setNm(n=>({...n,attachment:att}));const bf=await _uploadToBlob("mtgatt_"+att.id,f.name,f.type,ev.target.result);if(bf)setNm(n=>({...n,attachment:{...n.attachment,blobUrl:bf.blobUrl,dataUrl:undefined}}));};r.readAsDataURL(f);e.target.value="";}}/>
-        </div>
-        <div style={{display:"flex",gap:8}}>
-          <Btn onClick={()=>{if(nm.date&&nm.topic){
-            // Strip heavy dataUrl from attachment before saving — blobUrl is enough for viewing
-            const att=nm.attachment?{...nm.attachment,dataUrl:undefined}:null;
-            const rec={...nm,id:Date.now(),attachment:att};
-            const updated=[...meetings,rec];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});setShowAdd(false);}}}>Save</Btn>
-          <Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn>
-        </div>
-      </Card>}
-
-      {/* ── Year → Quarter label → Meeting cards ── */}
-      {allMeetingYears.map(year=>{
-        const yearMeetings=meetings.filter(m=>m.date.slice(0,4)===year);
-        const yrOpen=isYrOpen(year);
-        return(
-          <div key={year} style={{marginBottom:"0.75rem"}}>
-            {/* Year header — tap to collapse/expand */}
-            <div onClick={()=>toggleYr(year)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:year===thisYear?C.tealL:C.grayXL,border:`1px solid ${year===thisYear?C.teal:C.border}`,borderRadius:yrOpen?"8px 8px 0 0":8,cursor:"pointer",userSelect:"none"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:15,fontWeight:700,color:year===thisYear?C.teal:C.text}}>{year}</span>
-                {year===thisYear&&<span style={{fontSize:10,background:C.teal,color:"white",borderRadius:8,padding:"1px 7px",fontWeight:600}}>CURRENT</span>}
-                <span style={{fontSize:12,color:C.muted}}>{yearMeetings.length} meeting{yearMeetings.length!==1?"s":""}</span>
-              </div>
-              <span style={{color:C.muted,fontSize:18,transform:yrOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.18s",display:"inline-block"}}>›</span>
-            </div>
-
-            {yrOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",background:C.card,padding:"0.75rem"}}>
-              {/* Q1–Q4 as static labels — no extra tap needed */}
-              {qDefs.map((q,qi)=>{
-                const qms=qMeetings(year,qi);
-                const isCurrent=year===thisYear&&qi===currentQ;
-                const isPast=(parseInt(year)<parseInt(thisYear))||(year===thisYear&&qi<currentQ);
-                if(qms.length===0&&!isPast&&!isCurrent)return null; // hide future quarters with nothing
-                return(
-                  <div key={qi} style={{marginBottom:"0.875rem"}}>
-                    {/* Quarter label — static, not a button */}
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:"0.5rem"}}>
-                      <span style={{fontSize:12,fontWeight:700,color:qms.length>0?C.teal:isPast?C.red:C.muted}}>{q.n}</span>
-                      <span style={{fontSize:11,color:C.muted}}>{q.label}</span>
-                      {isCurrent&&<span style={{fontSize:10,background:C.teal+"22",color:C.teal,borderRadius:6,padding:"1px 6px",fontWeight:500}}>current</span>}
-                      {qms.length===0&&isPast&&<span style={{fontSize:11,color:C.red}}>— no meeting logged</span>}
-                      {qms.length===0&&isCurrent&&<span style={{fontSize:11,color:C.muted}}>— not yet logged</span>}
-                    </div>
-                    {/* Meeting cards — always fully expanded */}
-                    {qms.map(m=>(
-                      <div key={m.id} style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8,padding:"12px 14px",marginBottom:"0.5rem"}}>
-                        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:3}}>{m.topic||"Staff meeting"}</div>
-                            <div style={{fontSize:11,color:C.muted}}>📅 {m.date} &nbsp;·&nbsp; 📍 {m.clinic}</div>
-                          </div>
-                          <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
-                            <Pill s="ok" label="Done ✓"/>
-                            <BSm onClick={()=>{if(window.confirm("Delete this meeting?")){const u=meetings.filter(x=>x.id!==m.id);setMeetings(u);saveGen("meetings",u);}}} color={C.red}>✕</BSm>
-                          </div>
-                        </div>
-                        {m.attendees&&<div style={{fontSize:12,color:C.muted,marginTop:6}}>👥 {m.attendees}</div>}
-                        {m.notes&&<div style={{fontSize:12,color:C.text,background:"white",padding:"8px 10px",borderRadius:6,border:`1px solid ${C.border}`,lineHeight:1.6,marginTop:6}}>{m.notes}</div>}
-                        <div style={{marginTop:8}}>
-                          <MeetingAttachBtn meeting={m} meetings={meetings} setMeetings={setMeetings} onView={setEavf}/>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-              {yearMeetings.length===0&&<div style={{padding:"10px 4px",fontSize:12,color:C.muted,display:"flex",alignItems:"center",gap:10}}>No meetings logged for {year}. <BSm onClick={()=>setShowAdd(true)} color={C.teal}>+ Log one →</BSm></div>}
-            </div>}
-          </div>
-        );
-      })}
-    </div>;
-  })()}}
-  {mgmtTab==="equipment"&&<div>
-    <Alert type="amber" title="P&P Section 3.1.15 — Equipment">Annual service and test/tag. Upload service certs below. Instruction manuals on manufacturer websites. Equipment maintenance register on shared drive.</Alert>
-    <Card>{CLINICS.filter(c=>c.id!=="schools").map(cl=><FileRow key={cl.id} label={`${cl.icon} ${cl.short} — service certificate`} gkey={`equip_${cl.id}`} onView={f=>setMvf(f)} accent={C.amber}/>)}</Card>
-    <Btn outline onClick={()=>setActiveAudit("equipment")}>Run equipment audit →</Btn>
-    {mvf&&<FileViewer file={mvf} onClose={()=>setMvf(null)}/>}
-  </div>}
-  {mgmtTab==="accreditation"&&<div>
-    <Alert type="green" title="DAA Group — ACC Allied Health Standards">All sections of this portal support your DAA audit readiness. P&P manual underpins all requirements below.</Alert>
-    {[
-      {t:"Staff credentials — APC, First Aid, Cultural",s:Object.entries(STAFF).every(([id])=>["apc","firstaid","cultural"].every(k=>loadFile(id,k)))?"ok":"pending",d:"All staff hold current APC, First Aid and Cultural Competency — P&P §7",action:()=>{setPage("compliance");setCompTab("overview");}},
-      {t:"Police vetting — all staff",s:Object.entries(STAFF).every(([id])=>loadFile(id,"policevetting"))?"ok":"pending",d:"Every 3 years — NZ Police email confirmation — P&P §4.2",action:()=>{setPage("compliance");setCompTab("vetting");}},
-      {t:"Clinical notes audits — 6-monthly",s:[...audits].filter(a=>a.type==="clinical_notes").length>0?"ok":"pending",d:"10 records per physio (5 current + 5 past) — P&P §1.5.1",action:()=>{setMgmtTab("audits");setActiveAudit("clinical_notes");}},
-      {t:"Orientation — all staff",s:Object.keys(STAFF).every(id=>loadFile(id,"orientation"))?"ok":"pending",d:"Complete digital checklist for each staff member — P&P §7.1",action:()=>setPage("staff")},
-      {t:"P&P annual review",s:Object.keys(ppReviews||{}).length>=(PP_SECTIONS?.length||8)?"ok":"pending",d:"Due April — P&P §1.1",action:()=>{setPage("pp");}},
-      {t:"In-service training",s:inservices.some(i=>String(i.year||i.date?.slice(0,4)||"")===String(new Date().getFullYear()))?"ok":"pending",d:"At least one per clinic per year — P&P §7.7.3",action:()=>setPage("inservice")},
-      {t:"H&S audits — quarterly",s:[...audits].filter(a=>a.type==="hs_audit").length>0?"ok":"pending",d:"Records in audit history — P&P §1.5.2",action:()=>{setMgmtTab("audits");}},
-      {t:"Fire drills — annual",s:[...audits].filter(a=>a.type==="fire_drill").length>0?"ok":"pending",d:"Annual requirement — P&P §3.1.2",action:()=>{setMgmtTab("audits");}},
-      {t:"Staff meetings — quarterly",s:meetings.length>0?"ok":"pending",d:"Minutes logged in Staff Meetings tab — P&P §7.6",action:()=>setMgmtTab("meetings")},
-      {t:"Equipment servicing — annual",s:[...audits].filter(a=>a.type==="equipment").length>0?"ok":"pending",d:"Annual service and test/tag — P&P §3.1.15",action:()=>setMgmtTab("equipment")},
-      {t:"Hygiene audits — quarterly",s:[...audits].filter(a=>a.type==="hygiene").length>0?"ok":"pending",d:"Quarterly per clinic — P&P §1.5.2",action:()=>{setMgmtTab("audits");}},
-      {t:"Client satisfaction survey",s:"pending",d:"Via website or forms — P&P §1.5.3",action:null},
-    ].map(({t,s,d,action})=>(
-      <div key={t} onClick={action||undefined} style={{background:C.card,border:`1px solid ${s==="ok"?C.teal:C.border}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"0.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:action?"pointer":"default"}} onMouseEnter={e=>{if(action)e.currentTarget.style.boxShadow="0 2px 12px rgba(15,110,86,0.08)";}} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-        <div style={{flex:1}}>
-          <div style={{fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>{t}{action&&<span style={{fontSize:10,color:C.teal}}>→</span>}</div>
-          <div style={{fontSize:12,color:C.muted,marginTop:2}}>{d}</div>
-        </div>
-        <Pill s={s} label={s==="ok"?"Compliant ✓":"Action needed"}/>
-      </div>
-    ))}
-  </div>}
-  </div>
-
-}
-
-
 const INIT_MEETINGS=[
   {id:1,date:"2025-11-15",clinic:"All clinics",topic:"Q4 staff meeting — H&S review, CPD updates",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"Discussed APC renewal cycle, updated first aid booking process."},
 ];
@@ -2174,23 +1743,38 @@ export default function App(){
   const[portalLoading,setPortalLoading]=useState(true);
   const[portalConnected,setPortalConnected]=useState(false);
   const[,forceRender]=useState(0);
-  const[compTab,setCompTab]=useState("overview");const[docsTab,setDocsTab]=useState("contracts");
+  const[compTab,setCompTab]=useState("overview");const[mgmtTab,setMgmtTab]=useState("audits");const[docsTab,setDocsTab]=useState("contracts");const[isrvTab,setIsrvTab]=useState("log");
   const[meetings,setMeetings]=useState([]);
   const[audits,setAudits]=useState(INIT_AUDITS);
   const[inservices,setInservices]=useState([{id:1,date:"2025-08-10",clinic:"Titirangi",topic:"Shoulder rehab protocols",presenter:"Hans Vermeulen",attendees:"Hans, Alistair",notes:"Reviewed UniSportsOrtho shoulder stabilisation phases.",year:2025}]);
   const[activeAudit,setActiveAudit]=useState(null);
   const[viewAudit,setViewAudit]=useState(null);
+  // logAudit and showLogAudit moved into ManagementPage to prevent re-mount on every keystroke
   const[extAudits,setExtAudits]=useState(()=>loadGen("extAudits")||[]);
   const[eavf,setEavf]=useState(null);
+  const[analysing,setAnalysing]=useState(null);
+  const[showExtForm,setShowExtForm]=useState(false);
+  const[extLabel,setExtLabel]=useState("");
+  const[mFilter,setMFilter]=useState("");
+  const[mYearFilter,setMYearFilter]=useState("all");
+  const[mClinicFilter,setMClinicFilter]=useState("all");
   const[ppDocs,setPpDocs]=useState(()=>loadGen("ppDocs")||[]);
   const[ppReviews,setPpReviews]=useState(()=>loadGen("ppReviews")||{});
   const[ppAiAnalysis,setPpAiAnalysis]=useState({});
   const[urgentOpen,setUrgentOpen]=useState(true);
-  const[showAdd,setShowAdd]=useState(false);const[vf,setVf]=useState(null);const[,fu]=useState(0);
+  const[auditTypeFilter,setAuditTypeFilter]=useState("all");
+  const[auditYearFilter,setAuditYearFilter]=useState("all");
+  const[auditClinicFilter,setAuditClinicFilter]=useState("all");
+  const[collapsedYears,setCollapsedYears]=useState({});
+  const[vf,setVf]=useState(null);const[,fu]=useState(0);
   const[navOpen,setNavOpen]=useState(false);
   const[isMobile,setIsMobile]=useState(()=>window.innerWidth<768);
-  useEffect(()=>{const h=()=>setIsMobile(window.innerWidth<768);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);},[]);
-  const meetRef=useRef();
+  useEffect(()=>{
+    let rTimer=null;
+    const h=()=>{clearTimeout(rTimer);rTimer=setTimeout(()=>{const m=window.innerWidth<768;setIsMobile(prev=>prev===m?prev:m);},150);};
+    window.addEventListener("resize",h);
+    return()=>{window.removeEventListener("resize",h);clearTimeout(rTimer);};
+  },[]);
   const[staffOverrides,setStaffOverrides]=useState({});
   const roleNames={owner:"Jade Warren",alistair:"Alistair Burgess",hans:"Hans Vermeulen",staff:"Staff member"};
   useEffect(()=>{
@@ -2490,6 +2074,135 @@ export default function App(){
     </div></div>
   );
 
+  const InservicePage=()=>{
+    const[ivf,setIvf]=useState(null);
+    const[showForm,setShowForm]=useState(false);
+    const[filterClinic,setFilterClinic]=useState("all");
+    const[filterYear,setFilterYear]=useState(String(new Date().getFullYear()));
+    const[ni,setNi]=useState({date:"",clinic:"All clinics",topic:"",presenter:"",attendees:"",notes:""});
+    const years=[...new Set(inservices.map(i=>String(i.year||i.date?.slice(0,4)||"2025")))].sort((a,b)=>b-a);
+    if(!years.includes(filterYear))years.unshift(filterYear);
+    const clinicOptions=["all",...CLINICS.filter(c=>c.id!=="schools").map(c=>c.short)];
+    const visible=inservices.filter(i=>{
+      const yr=String(i.year||i.date?.slice(0,4)||"");
+      const cl=i.clinic||"";
+      return(filterYear==="all"||yr===filterYear)&&(filterClinic==="all"||cl===filterClinic||cl.includes(filterClinic));
+    }).sort((a,b)=>b.date.localeCompare(a.date));
+    function addInservice(){
+      if(!ni.date||!ni.topic){alert("Date and topic required.");return;}
+      const rec={...ni,id:Date.now(),year:parseInt(ni.date.slice(0,4))};
+      const updated=[...inservices,rec];
+      setInservices(updated);saveGen("inservices",updated);
+      setNi({date:"",clinic:"All clinics",topic:"",presenter:"",attendees:"",notes:""});
+      setShowForm(false);
+    }
+    // Per-clinic status for current year
+    const thisYear=String(new Date().getFullYear());
+    const clinicStatus=CLINICS.filter(c=>c.id!=="schools").map(cl=>{
+      const done=inservices.filter(i=>String(i.year||i.date?.slice(0,4)||"")===thisYear&&(i.clinic===cl.short||i.clinic===cl.name||(i.clinic||"").includes(cl.short)));
+      return{...cl,count:done.length,done:done.length>0};
+    });
+    return(
+    <div>
+      <PH title="In-service training log" sub="Annual requirement — at least one per clinic per year · P&P §7.7.3"/>
+      <Alert type="amber" title="P&P requirement">Section 7.7.3: Regular in-service education done at TBP. Topics suggested by staff, physios or selected by presenter. No client-identifying details in case studies.</Alert>
+      <TabBar items={[["log","Session log"],["status",thisYear+" Status"],["resources","Resources & files"]]} current={isrvTab} setter={setIsrvTab}/>
+      {isrvTab==="status"&&(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:"0.75rem",marginBottom:"1rem"}}>
+            {clinicStatus.map(cl=>(
+              <Card key={cl.id} style={{padding:"1rem",borderColor:cl.done?C.teal:C.amber}}>
+                <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>{cl.icon} {cl.short}</div>
+                <div style={{fontSize:12,color:C.muted,marginBottom:8}}>{cl.note}</div>
+                <Pill s={cl.done?"ok":"pending"} label={cl.done?`${cl.count} session${cl.count!==1?"s":""} done ✓`:"Required — none yet"}/>
+              </Card>
+            ))}
+          </div>
+          <Btn onClick={()=>setShowForm(true)}>+ Log in-service session</Btn>
+        </div>
+      )}
+      {isrvTab==="log"&&(
+        <div>
+          <div style={{display:"flex",gap:8,marginBottom:"1rem",alignItems:"center",flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:4}}>
+              {["all",...years.slice(0,4)].filter((v,i,a)=>a.indexOf(v)===i).map(y=><button key={y} onClick={()=>setFilterYear(y)} style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:filterYear===y?C.teal:"white",color:filterYear===y?"white":C.muted,border:`1px solid ${filterYear===y?C.teal:C.border}`,cursor:"pointer"}}>{y==="all"?"All years":y}</button>)}
+            </div>
+            <select value={filterClinic} onChange={e=>setFilterClinic(e.target.value)} style={{fontSize:12,padding:"4px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL}}>
+              {clinicOptions.map(c=><option key={c} value={c}>{c==="all"?"All clinics":c}</option>)}
+            </select>
+            <Btn onClick={()=>setShowForm(true)} style={{marginLeft:"auto"}}>+ Log session</Btn>
+          </div>
+          {showForm&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
+            <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Log in-service session</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
+              <Input label="Date" value={ni.date} onChange={e=>setNi({...ni,date:e.target.value})} type="date"/>
+              <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Clinic</label>
+                <select value={ni.clinic} onChange={e=>setNi({...ni,clinic:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
+                  <option>All clinics</option>{CLINICS.filter(c=>c.id!=="schools").map(c=><option key={c.id}>{c.short}</option>)}
+                </select>
+              </div>
+            </div>
+            <Input label="Topic" value={ni.topic} onChange={e=>setNi({...ni,topic:e.target.value})} placeholder="e.g. Shoulder rehab protocols"/>
+            <Input label="Presenter" value={ni.presenter} onChange={e=>setNi({...ni,presenter:e.target.value})} placeholder="e.g. Hans Vermeulen"/>
+            <Input label="Attendees" value={ni.attendees} onChange={e=>setNi({...ni,attendees:e.target.value})} placeholder="e.g. Hans, Alistair, Timothy"/>
+            <Textarea label="Notes / topics covered" value={ni.notes} onChange={e=>setNi({...ni,notes:e.target.value})} rows={2}/>
+            <div style={{display:"flex",gap:8}}><Btn onClick={addInservice}>Save session</Btn><Btn outline onClick={()=>setShowForm(false)}>Cancel</Btn></div>
+          </Card>}
+          {visible.length===0&&<Alert type="blue" title="No sessions found">No in-service sessions match this filter. Log a new session above.</Alert>}
+          {visible.map(s=>(
+            <Card key={s.id} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}>
+              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600}}>{s.topic}</div>
+                  <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.date} · {s.clinic}{s.presenter?` · Presenter: ${s.presenter}`:""}</div>
+                  {s.attendees&&<div style={{fontSize:12,color:C.muted,marginTop:1}}>Attendees: {s.attendees}</div>}
+                  {s.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"5px 8px",borderRadius:5,marginTop:6,lineHeight:1.5}}>{s.notes}</div>}
+                </div>
+                <Pill s="ok" label="Completed ✓"/>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+      {isrvTab==="resources"&&<Card><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>In-service resources — all clinics</div><div style={{fontSize:12,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Shared resource library. Upload handouts, slides or reading materials. All staff can view.</div><MultiFileRow label="📚 Shared in-service resources — all clinics" gkey="isrv_communal" onView={f=>setIvf(f)}/><div style={{marginTop:"0.75rem",fontSize:11,color:C.muted}}>Accepted: PDF, Word, image. Max 3MB.</div></Card>}
+      {ivf&&<FileViewer file={ivf} onClose={()=>setIvf(null)}/>}
+    </div>
+  );};
+
+  function ContractRow({staffId,s,canSee,onView}){
+    const ref=useRef();
+    const[file,setFile]=useState(()=>loadFile(staffId,"contract"));
+    function handle(e){
+      const f=e.target.files[0];if(!f)return;
+      if(f.size>3*1024*1024){alert("File over 3MB.");return;}
+      const r=new FileReader();
+      r.onload=ev=>{
+        const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:"contract"};
+        if(saveFile(staffId,"contract",d))setFile(d);
+      };
+      r.readAsDataURL(f);e.target.value="";
+    }
+    return(
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+        <div style={{width:34,height:34,borderRadius:"50%",background:s.color+"25",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:s.color,flexShrink:0}}>{s.ini}</div>
+        <div style={{flex:1}}>
+          <strong style={{fontSize:13}}>{s.name}</strong>
+          <div style={{fontSize:12,color:C.muted}}>{es(staffId).type} · {es(staffId).clinics.map(c=>CLINICS.find(cl=>cl.id===c)?.short).join(", ")}</div>
+          {file&&<div style={{fontSize:11,color:C.muted,marginTop:1}}>{file.fileName} · {file.uploadedDate}</div>}
+        </div>
+        {canSee
+          ?<div style={{display:"flex",gap:5,alignItems:"center",flexShrink:0}}>
+            {file&&<BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>}
+            <BSm onClick={()=>ref.current.click()} color={C.teal}>📄 {file?"Upload new":"Upload"}</BSm>
+            {file&&<BSm onClick={()=>{if(window.confirm("Remove contract?")){ removeFile(staffId,"contract");setFile(null);}}} color={C.red}>✕</BSm>}
+          </div>
+          :<span style={{fontSize:12,color:C.hint,flexShrink:0}}>🔒 Restricted</span>
+        }
+        <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
+      </div>
+    );
+  }
+
   const DocumentsPage=()=>{const[dvf,setDvf]=useState(null);return(
     <div><PH title="Documents" sub="Contracts, job descriptions & legislation"/>
     <TabBar items={[["contracts","Contracts"],["jd","Job descriptions"],["leg","Legislation"]]} current={docsTab} setter={setDocsTab}/>
@@ -2500,6 +2213,324 @@ export default function App(){
     </div>
   );};
 
+  const ManagementPage=()=>{
+  const[mvf,setMvf]=useState(null);
+  const[showLogAudit,setShowLogAudit]=useState(false);
+  const[logAudit,setLogAudit]=useState({type:"hygiene",date:"",clinic:CLINICS[0].short,auditor:"",outcome:"Passed",notes:""});
+  const[showAdd,setShowAdd]=useState(false);
+  const[nm,setNm]=useState({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});
+  const meetRef=useRef();
+  return(
+    <div><PH title="Management" sub="Audits, staff meetings, equipment — DAA / ACC Allied Health Standards"/>
+    <TabBar items={[["audits","Audits"],["meetings","Staff Meetings"],["equipment","Equipment"],["accreditation","Accreditation"]]} current={mgmtTab} setter={setMgmtTab}/>
+    {mgmtTab==="audits"&&<div>
+      <div style={{marginBottom:"1.25rem"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem"}}>
+          <div style={{fontSize:14,fontWeight:600}}>Start a new audit</div>
+          <BSm onClick={()=>setShowLogAudit(v=>!v)} color={C.gray}>📋 {showLogAudit?"Cancel":"Log past / manual audit"}</BSm>
+        </div>
+        {showLogAudit&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:"0.875rem"}}>Log a past or manual audit <span style={{fontSize:11,color:C.muted,fontWeight:400}}>(no checklist required — just record the outcome and optionally attach evidence)</span></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
+            <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Audit type</label>
+              <select value={logAudit.type} onChange={e=>setLogAudit({...logAudit,type:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
+                {Object.entries(AUDIT_FORMS).map(([k,f])=><option key={k} value={k}>{f.icon} {f.title}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Clinic</label>
+              <select value={logAudit.clinic} onChange={e=>setLogAudit({...logAudit,clinic:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
+                {CLINICS.map(c=><option key={c.id}>{c.short}</option>)}
+              </select>
+            </div>
+            <Input label="Date" value={logAudit.date} onChange={e=>setLogAudit({...logAudit,date:e.target.value})} type="date"/>
+            <Input label="Auditor name" value={logAudit.auditor} onChange={e=>setLogAudit({...logAudit,auditor:e.target.value})} placeholder="e.g. Jade Warren"/>
+          </div>
+          <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Outcome</label>
+            <div style={{display:"flex",gap:8}}>
+              {["Passed","Issues found","N/A"].map(o=><div key={o} onClick={()=>setLogAudit({...logAudit,outcome:o})} style={{padding:"6px 14px",borderRadius:6,border:`1.5px solid ${logAudit.outcome===o?C.teal:C.border}`,background:logAudit.outcome===o?C.tealL:"white",fontSize:13,cursor:"pointer",fontWeight:logAudit.outcome===o?600:400}}>{o}</div>)}
+            </div>
+          </div>
+          <Textarea label="Notes" value={logAudit.notes} onChange={e=>setLogAudit({...logAudit,notes:e.target.value})} rows={2} placeholder="Any issues found, actions taken, general observations…"/>
+          <LogAuditEvidenceRow logAudit={logAudit} setLogAudit={setLogAudit}/>
+          <div style={{display:"flex",gap:8,marginTop:"0.5rem"}}>
+            <Btn onClick={()=>{
+              if(!logAudit.date||!logAudit.auditor.trim()){alert("Date and auditor name required.");return;}
+              const form=AUDIT_FORMS[logAudit.type];
+              const rec={id:Date.now(),type:logAudit.type,title:form.title,icon:form.icon,clinic:logAudit.clinic,auditor:logAudit.auditor,date:logAudit.date,outcome:logAudit.outcome,notes:logAudit.notes,manual:true,...(logAudit.evidence?{evidence:logAudit.evidence}:{})};
+              const updated=[...audits,rec];setAudits(updated);saveGen("audits",updated);
+              setLogAudit({type:"hygiene",date:"",clinic:CLINICS[0].short,auditor:"",outcome:"Passed",notes:""});
+              setShowLogAudit(false);
+            }}>Save record</Btn>
+            <Btn outline onClick={()=>setShowLogAudit(false)}>Cancel</Btn>
+          </div>
+        </Card>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(175px,1fr))",gap:"0.75rem"}}>
+        {Object.entries(AUDIT_FORMS).map(([k,f])=>(
+          <div key={k} onClick={()=>setActiveAudit(k)} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",cursor:"pointer"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=C.teal;e.currentTarget.style.boxShadow="0 2px 12px rgba(15,110,86,0.1)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.boxShadow="none";}}>
+            <div style={{fontSize:26,marginBottom:6}}>{f.icon}</div><div style={{fontSize:13,fontWeight:600,marginBottom:2}}>{f.title}</div>
+            <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{f.freq} · {f.sections.flatMap(s=>s.items).length} items</div>
+            <span style={{color:C.teal,fontSize:11,fontWeight:500}}>Start →</span>
+          </div>
+        ))}
+      </div></div>
+      <Divider/>
+      {/* Audit history — Year → Type → expandable records */}
+      {(()=>{
+        const thisYearA=String(new Date().getFullYear());
+        const allYears=[...new Set([thisYearA,...audits.map(a=>a.date?.slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
+        const filtered=audits.filter(a=>(auditTypeFilter==="all"||a.type===auditTypeFilter)&&(auditClinicFilter==="all"||a.clinic===auditClinicFilter));
+
+        function isAyrOpen(yr){const k="ayr_"+yr;return k in collapsedYears?collapsedYears[k]:yr===thisYearA;}
+        function isAOpen(id){return!!collapsedYears["ao_"+id];}
+        function toggleAyr(yr){setCollapsedYears(p=>({...p,["ayr_"+yr]:!isAyrOpen(yr)}));}
+        function toggleA(id){setCollapsedYears(p=>({...p,["ao_"+id]:!isAOpen(id)}));}
+
+        return(
+          <div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem",flexWrap:"wrap",gap:8}}>
+              <div style={{fontSize:14,fontWeight:600}}>Audit history — {audits.length} record{audits.length!==1?"s":""}</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <select value={auditTypeFilter} onChange={e=>setAuditTypeFilter(e.target.value)} style={{fontSize:12,padding:"5px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL,color:C.text}}>
+                  <option value="all">All audit types</option>
+                  {Object.entries(AUDIT_FORMS).map(([k,f])=><option key={k} value={k}>{f.icon} {f.title}</option>)}
+                </select>
+                <select value={auditClinicFilter} onChange={e=>setAuditClinicFilter(e.target.value)} style={{fontSize:12,padding:"5px 8px",border:`1px solid ${C.border}`,borderRadius:6,background:C.grayXL,color:C.text}}>
+                  <option value="all">All clinics</option>
+                  {CLINICS.map(c=><option key={c.id} value={c.short}>{c.short}</option>)}
+                </select>
+              </div>
+            </div>
+            {audits.length===0&&<Alert type="blue" title="No audit records yet">Complete an audit above to create your first record.</Alert>}
+            {filtered.length===0&&audits.length>0&&<Alert type="blue" title="No records match">Try changing the filters.</Alert>}
+            {allYears.map(year=>{
+              const yrOpen=isAyrOpen(year);
+              const yearAudits=filtered.filter(a=>a.date?.slice(0,4)===year).sort((a,b)=>b.date.localeCompare(a.date));
+              const yearTotal=yearAudits.length;
+              const yearPassed=yearAudits.filter(a=>a.outcome==="Passed").length;
+              const yearFailed=yearTotal-yearPassed;
+              return(
+                <div key={year} style={{marginBottom:"0.625rem"}}>
+                  {/* Year header */}
+                  <div onClick={()=>toggleAyr(year)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:year===thisYearA?C.tealL:C.grayXL,border:`1px solid ${year===thisYearA?C.teal:C.border}`,borderRadius:yrOpen?"8px 8px 0 0":8,cursor:"pointer",userSelect:"none"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontSize:15,fontWeight:700,color:year===thisYearA?C.teal:C.text}}>{year}</span>
+                      {year===thisYearA&&<span style={{fontSize:10,background:C.teal,color:"white",borderRadius:8,padding:"1px 7px",fontWeight:600}}>CURRENT</span>}
+                      {yearTotal>0&&<><span style={{fontSize:12,color:C.muted}}>{yearTotal} audit{yearTotal!==1?"s":""}</span><span style={{fontSize:12,color:C.green,fontWeight:500}}>✓ {yearPassed} passed</span>{yearFailed>0&&<span style={{fontSize:12,color:C.red,fontWeight:500}}>✗ {yearFailed} issues</span>}</>}
+                      {yearTotal===0&&<span style={{fontSize:12,color:C.muted}}>No records</span>}
+                    </div>
+                    <span style={{color:C.muted,fontSize:18,transform:yrOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.18s",display:"inline-block"}}>›</span>
+                  </div>
+
+                  {yrOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",background:C.card,padding:"0.625rem"}}>
+                    {yearTotal===0&&<div style={{fontSize:12,color:C.muted,padding:"8px 4px"}}>No audits match the current filters for this year.</div>}
+                    {/* Group by audit type */}
+                    {Object.entries(AUDIT_FORMS).map(([key,form])=>{
+                      const ta=yearAudits.filter(a=>a.type===key);
+                      if(!ta.length)return null;
+                      return(
+                        <div key={key} style={{marginBottom:"0.75rem"}}>
+                          <div style={{fontSize:11,fontWeight:600,color:C.muted,marginBottom:"0.375rem",display:"flex",alignItems:"center",gap:6,textTransform:"uppercase",letterSpacing:"0.04em"}}>
+                            <span>{form.icon}</span> {form.title} <span style={{background:C.grayL,borderRadius:8,padding:"0 6px",fontSize:10,textTransform:"none",letterSpacing:0,fontWeight:500,color:C.muted}}>{ta.length}</span>
+                          </div>
+                          {ta.map(a=>{
+                            const aOpen=isAOpen(a.id);
+                            return(
+                              <div key={a.id} style={{marginBottom:4}}>
+                                {/* Audit summary row — tap to expand */}
+                                <div onClick={()=>toggleA(a.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px",borderRadius:aOpen?"6px 6px 0 0":6,background:C.grayXL,border:`1px solid ${aOpen?C.border:C.border}`,cursor:"pointer",userSelect:"none"}}>
+                                  <div style={{flex:1,minWidth:0}}>
+                                    <div style={{fontSize:12,fontWeight:600,color:C.text}}>{a.date} <span style={{color:C.muted,fontWeight:400}}>· {a.clinic}</span></div>
+                                    <div style={{fontSize:11,color:C.muted,marginTop:1}}>Auditor: {a.auditor}{a.physioAudited?` · Physio: ${a.physioAudited}`:""}</div>
+                                  </div>
+                                  {a.evidence&&<span style={{fontSize:11,color:C.teal,flexShrink:0}}>📎</span>}
+                                  <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
+                                  <span style={{color:C.muted,fontSize:14,transform:aOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.13s",display:"inline-block",flexShrink:0}}>›</span>
+                                </div>
+                                {/* Expanded audit detail */}
+                                {aOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 6px 6px",background:"white",padding:"10px 12px"}}>
+                                  {a.passed!==undefined&&<div style={{display:"flex",gap:14,marginBottom:6,fontSize:12}}>
+                                    <span style={{color:C.green,fontWeight:500}}>✓ {a.passed} passed</span>
+                                    {a.failed>0&&<span style={{color:C.red,fontWeight:500}}>✗ {a.failed} failed</span>}
+                                    {a.na>0&&<span style={{color:C.muted}}>{a.na} N/A</span>}
+                                    <span style={{color:C.muted}}>{a.total} total items</span>
+                                  </div>}
+                                  {a.notes&&<div style={{fontSize:12,background:C.grayXL,padding:"7px 10px",borderRadius:5,lineHeight:1.6,marginBottom:6,border:`1px solid ${C.border}`}}>{a.notes}</div>}
+                                  {a.evidence&&<div style={{marginBottom:6}}><BSm onClick={()=>setEavf(a.evidence)} color={C.teal}>📎 View evidence — {a.evidence.fileName}</BSm></div>}
+                                  <div style={{display:"flex",gap:6}}>
+                                    <BSm onClick={e=>{e.stopPropagation();setViewAudit(a);}} color={C.blue}>View full report →</BSm>
+                                    <AuditEvidenceBtn audit={a} audits={audits} setAudits={setAudits} onView={setEavf}/>
+                                  </div>
+                                </div>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+    </div>}
+    {mgmtTab==="meetings"&&(()=>{
+      const thisYear=String(new Date().getFullYear());
+      const nowMonth=new Date().getMonth();
+      const currentQ=nowMonth<3?0:nowMonth<6?1:nowMonth<9?2:3;
+      const qDefs=[{n:"Q1",label:"Jan – Mar",months:[0,1,2]},{n:"Q2",label:"Apr – Jun",months:[3,4,5]},{n:"Q3",label:"Jul – Sep",months:[6,7,8]},{n:"Q4",label:"Oct – Dec",months:[9,10,11]}];
+      const allMeetingYears=[...new Set([thisYear,...meetings.map(m=>m.date.slice(0,4))])].sort((a,b)=>b-a);
+      const mainClinics=CLINICS.filter(c=>c.id!=="schools");
+
+      // Year open by default for all years (collapse only on explicit click)
+      function isYrOpen(yr){const k="myr_"+yr;return k in collapsedYears?collapsedYears[k]:true;}
+      function toggleYr(yr){setCollapsedYears(p=>({...p,["myr_"+yr]:!isYrOpen(yr)}));}
+
+      function qMeetings(year,qi){
+        return meetings.filter(m=>{
+          if(m.date.slice(0,4)!==year)return false;
+          return qDefs[qi].months.includes(new Date(m.date).getMonth());
+        }).sort((a,b)=>a.date.localeCompare(b.date));
+      }
+
+      return <div>
+        <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly per clinic. {meetings.length} meeting{meetings.length!==1?"s":""} logged.</Alert>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"1rem"}}>
+          <Btn onClick={()=>setShowAdd(true)}>+ Log meeting</Btn>
+        </div>
+
+        {/* ── Log form ── */}
+        {showAdd&&<Card style={{borderColor:C.teal,marginBottom:"1rem"}}>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:"0.875rem"}}>Log meeting <span style={{fontSize:12,color:C.muted,fontWeight:400}}>(set any past date for historical records)</span></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 1rem"}}>
+            <Input label="Date" value={nm.date} onChange={e=>setNm({...nm,date:e.target.value})} type="date"/>
+            <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Clinic / location</label>
+              <select value={nm.clinic} onChange={e=>setNm({...nm,clinic:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
+                <option>All clinics</option>{CLINICS.map(c=><option key={c.id}>{c.short}</option>)}
+              </select>
+            </div>
+          </div>
+          <Input label="Topic / agenda" value={nm.topic} onChange={e=>setNm({...nm,topic:e.target.value})} placeholder="e.g. Q4 staff meeting — H&S review, CPD updates"/>
+          <Input label="Attendees" value={nm.attendees} onChange={e=>setNm({...nm,attendees:e.target.value})} placeholder="e.g. Jade, Alistair, Hans, Timothy"/>
+          <Textarea label="Notes / minutes" value={nm.notes} onChange={e=>setNm({...nm,notes:e.target.value})} rows={3}/>
+          <div style={{marginBottom:"0.625rem"}}>
+            <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Attach minutes / notes document (optional)</label>
+            {nm.attachment
+              ?<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:C.grayXL,borderRadius:6,marginBottom:4}}>
+                <span style={{fontSize:12,flex:1}}>📎 {nm.attachment.fileName}</span>
+                <BSm onClick={()=>setNm({...nm,attachment:null})} color={C.red}>✕</BSm>
+              </div>
+              :<BSm onClick={()=>meetRef.current.click()} color={C.gray}>📎 Attach document or photo</BSm>
+            }
+            <input ref={meetRef} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;if(f.size>10*1024*1024){alert("File over 10MB.");return;}const r=new FileReader();r.onload=async ev=>{const att={id:Date.now(),fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};setNm(n=>({...n,attachment:att}));const bf=await _uploadToBlob("mtgatt_"+att.id,f.name,f.type,ev.target.result);if(bf)setNm(n=>({...n,attachment:{...n.attachment,blobUrl:bf.blobUrl,dataUrl:undefined}}));};r.readAsDataURL(f);e.target.value="";}}/>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <Btn onClick={()=>{if(nm.date&&nm.topic){
+              // Strip heavy dataUrl from attachment before saving — blobUrl is enough for viewing
+              const att=nm.attachment?{...nm.attachment,dataUrl:undefined}:null;
+              const rec={...nm,id:Date.now(),attachment:att};
+              const updated=[...meetings,rec];setMeetings(updated);saveGen("meetings",updated);setNm({date:"",clinic:"All clinics",topic:"",attendees:"",notes:"",attachment:null});setShowAdd(false);}}}>Save</Btn>
+            <Btn outline onClick={()=>setShowAdd(false)}>Cancel</Btn>
+          </div>
+        </Card>}
+
+        {/* ── Year → Quarter label → Meeting cards ── */}
+        {allMeetingYears.map(year=>{
+          const yearMeetings=meetings.filter(m=>m.date.slice(0,4)===year);
+          const yrOpen=isYrOpen(year);
+          return(
+            <div key={year} style={{marginBottom:"0.75rem"}}>
+              {/* Year header — tap to collapse/expand */}
+              <div onClick={()=>toggleYr(year)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:year===thisYear?C.tealL:C.grayXL,border:`1px solid ${year===thisYear?C.teal:C.border}`,borderRadius:yrOpen?"8px 8px 0 0":8,cursor:"pointer",userSelect:"none"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:15,fontWeight:700,color:year===thisYear?C.teal:C.text}}>{year}</span>
+                  {year===thisYear&&<span style={{fontSize:10,background:C.teal,color:"white",borderRadius:8,padding:"1px 7px",fontWeight:600}}>CURRENT</span>}
+                  <span style={{fontSize:12,color:C.muted}}>{yearMeetings.length} meeting{yearMeetings.length!==1?"s":""}</span>
+                </div>
+                <span style={{color:C.muted,fontSize:18,transform:yrOpen?"rotate(90deg)":"rotate(0)",transition:"transform 0.18s",display:"inline-block"}}>›</span>
+              </div>
+
+              {yrOpen&&<div style={{border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 8px 8px",background:C.card,padding:"0.75rem"}}>
+                {/* Q1–Q4 as static labels — no extra tap needed */}
+                {qDefs.map((q,qi)=>{
+                  const qms=qMeetings(year,qi);
+                  const isCurrent=year===thisYear&&qi===currentQ;
+                  const isPast=(parseInt(year)<parseInt(thisYear))||(year===thisYear&&qi<currentQ);
+                  if(qms.length===0&&!isPast&&!isCurrent)return null; // hide future quarters with nothing
+                  return(
+                    <div key={qi} style={{marginBottom:"0.875rem"}}>
+                      {/* Quarter label — static, not a button */}
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:"0.5rem"}}>
+                        <span style={{fontSize:12,fontWeight:700,color:qms.length>0?C.teal:isPast?C.red:C.muted}}>{q.n}</span>
+                        <span style={{fontSize:11,color:C.muted}}>{q.label}</span>
+                        {isCurrent&&<span style={{fontSize:10,background:C.teal+"22",color:C.teal,borderRadius:6,padding:"1px 6px",fontWeight:500}}>current</span>}
+                        {qms.length===0&&isPast&&<span style={{fontSize:11,color:C.red}}>— no meeting logged</span>}
+                        {qms.length===0&&isCurrent&&<span style={{fontSize:11,color:C.muted}}>— not yet logged</span>}
+                      </div>
+                      {/* Meeting cards — always fully expanded */}
+                      {qms.map(m=>(
+                        <div key={m.id} style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8,padding:"12px 14px",marginBottom:"0.5rem"}}>
+                          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:3}}>{m.topic||"Staff meeting"}</div>
+                              <div style={{fontSize:11,color:C.muted}}>📅 {m.date} &nbsp;·&nbsp; 📍 {m.clinic}</div>
+                            </div>
+                            <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
+                              <Pill s="ok" label="Done ✓"/>
+                              <BSm onClick={()=>{if(window.confirm("Delete this meeting?")){const u=meetings.filter(x=>x.id!==m.id);setMeetings(u);saveGen("meetings",u);}}} color={C.red}>✕</BSm>
+                            </div>
+                          </div>
+                          {m.attendees&&<div style={{fontSize:12,color:C.muted,marginTop:6}}>👥 {m.attendees}</div>}
+                          {m.notes&&<div style={{fontSize:12,color:C.text,background:"white",padding:"8px 10px",borderRadius:6,border:`1px solid ${C.border}`,lineHeight:1.6,marginTop:6}}>{m.notes}</div>}
+                          <div style={{marginTop:8}}>
+                            <MeetingAttachBtn meeting={m} meetings={meetings} setMeetings={setMeetings} onView={setEavf}/>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+                {yearMeetings.length===0&&<div style={{padding:"10px 4px",fontSize:12,color:C.muted,display:"flex",alignItems:"center",gap:10}}>No meetings logged for {year}. <BSm onClick={()=>setShowAdd(true)} color={C.teal}>+ Log one →</BSm></div>}
+              </div>}
+            </div>
+          );
+        })}
+      </div>;
+    })()}
+    {mgmtTab==="equipment"&&<div>
+      <Alert type="amber" title="P&P Section 3.1.15 — Equipment">Annual service and test/tag. Upload service certs below. Instruction manuals on manufacturer websites. Equipment maintenance register on shared drive.</Alert>
+      <Card>{CLINICS.filter(c=>c.id!=="schools").map(cl=><FileRow key={cl.id} label={`${cl.icon} ${cl.short} — service certificate`} gkey={`equip_${cl.id}`} onView={f=>setMvf(f)} accent={C.amber}/>)}</Card>
+      <Btn outline onClick={()=>setActiveAudit("equipment")}>Run equipment audit →</Btn>
+      {mvf&&<FileViewer file={mvf} onClose={()=>setMvf(null)}/>}
+    </div>}
+    {mgmtTab==="accreditation"&&<div>
+      <Alert type="green" title="DAA Group — ACC Allied Health Standards">All sections of this portal support your DAA audit readiness. P&P manual underpins all requirements below.</Alert>
+      {[
+        {t:"Staff credentials — APC, First Aid, Cultural",s:Object.entries(STAFF).every(([id])=>["apc","firstaid","cultural"].every(k=>loadFile(id,k)))?"ok":"pending",d:"All staff hold current APC, First Aid and Cultural Competency — P&P §7",action:()=>{setPage("compliance");setCompTab("overview");}},
+        {t:"Police vetting — all staff",s:Object.entries(STAFF).every(([id])=>loadFile(id,"policevetting"))?"ok":"pending",d:"Every 3 years — NZ Police email confirmation — P&P §4.2",action:()=>{setPage("compliance");setCompTab("vetting");}},
+        {t:"Clinical notes audits — 6-monthly",s:[...audits].filter(a=>a.type==="clinical_notes").length>0?"ok":"pending",d:"10 records per physio (5 current + 5 past) — P&P §1.5.1",action:()=>{setMgmtTab("audits");setActiveAudit("clinical_notes");}},
+        {t:"Orientation — all staff",s:Object.keys(STAFF).every(id=>loadFile(id,"orientation"))?"ok":"pending",d:"Complete digital checklist for each staff member — P&P §7.1",action:()=>setPage("staff")},
+        {t:"P&P annual review",s:Object.keys(ppReviews||{}).length>=(PP_SECTIONS?.length||8)?"ok":"pending",d:"Due April — P&P §1.1",action:()=>{setPage("pp");}},
+        {t:"In-service training",s:inservices.some(i=>String(i.year||i.date?.slice(0,4)||"")===String(new Date().getFullYear()))?"ok":"pending",d:"At least one per clinic per year — P&P §7.7.3",action:()=>setPage("inservice")},
+        {t:"H&S audits — quarterly",s:[...audits].filter(a=>a.type==="hs_audit").length>0?"ok":"pending",d:"Records in audit history — P&P §1.5.2",action:()=>{setMgmtTab("audits");}},
+        {t:"Fire drills — annual",s:[...audits].filter(a=>a.type==="fire_drill").length>0?"ok":"pending",d:"Annual requirement — P&P §3.1.2",action:()=>{setMgmtTab("audits");}},
+        {t:"Staff meetings — quarterly",s:meetings.length>0?"ok":"pending",d:"Minutes logged in Staff Meetings tab — P&P §7.6",action:()=>setMgmtTab("meetings")},
+        {t:"Equipment servicing — annual",s:[...audits].filter(a=>a.type==="equipment").length>0?"ok":"pending",d:"Annual service and test/tag — P&P §3.1.15",action:()=>setMgmtTab("equipment")},
+        {t:"Hygiene audits — quarterly",s:[...audits].filter(a=>a.type==="hygiene").length>0?"ok":"pending",d:"Quarterly per clinic — P&P §1.5.2",action:()=>{setMgmtTab("audits");}},
+        {t:"Client satisfaction survey",s:"pending",d:"Via website or forms — P&P §1.5.3",action:null},
+      ].map(({t,s,d,action})=>(
+        <div key={t} onClick={action||undefined} style={{background:C.card,border:`1px solid ${s==="ok"?C.teal:C.border}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"0.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:action?"pointer":"default"}} onMouseEnter={e=>{if(action)e.currentTarget.style.boxShadow="0 2px 12px rgba(15,110,86,0.08)";}} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>{t}{action&&<span style={{fontSize:10,color:C.teal}}>→</span>}</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>{d}</div>
+          </div>
+          <Pill s={s} label={s==="ok"?"Compliant ✓":"Action needed"}/>
+        </div>
+      ))}
+    </div>}
+    </div>
+  );};
 
   if(portalLoading)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:C.bg,fontFamily:"-apple-system,'Segoe UI',sans-serif"}}><div style={{textAlign:"center"}}><div style={{width:48,height:48,borderRadius:"50%",background:C.teal,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 1rem"}}><svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm-1-5h2v2h-2zm0-8h2v6h-2z"/></svg></div><div style={{fontSize:16,fontWeight:600,color:C.text,marginBottom:4}}>Total Body Physio</div><div style={{fontSize:13,color:C.muted}}>Loading portal...</div></div></div>);
 
@@ -2566,9 +2597,9 @@ export default function App(){
           {page==="compliance"&&<CompliancePage/>}
           {page==="archive"&&<ArchivePage/>}
           {page==="clinics"&&<ClinicsPage/>}
-          {page==="inservice"&&<InservicePage inservices={inservices} setInservices={setInservices} setVf={setVf}/>}
+          {page==="inservice"&&<InservicePage/>}
           {page==="documents"&&<DocumentsPage/>}
-          {page==="management"&&<ManagementPage meetings={meetings} setMeetings={setMeetings} audits={audits} setAudits={setAudits} extAudits={extAudits} setExtAudits={setExtAudits} setActiveAudit={setActiveAudit} setViewAudit={setViewAudit} setEavf={setEavf} setVf={setVf}/>}
+          {page==="management"&&<ManagementPage/>}
         </div>
       </div>
 
