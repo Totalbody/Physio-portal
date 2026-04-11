@@ -384,6 +384,23 @@ function removeFile(id, k) {
   try { localStorage.removeItem(key); } catch {}
 }
 
+let _saveStatus = null; // {set, clear} — injected by App
+function _showSave(ok) {
+  if (_saveStatus) _saveStatus(ok ? "saved" : "error");
+}
+async function _saveToState(k, val, retries=2) {
+  for (let i=0; i<=retries; i++) {
+    try {
+      const r = await fetch(PORTAL_API + "/store", {
+        method: "POST", headers: _apiHeaders,
+        body: JSON.stringify({ key: k, value: val }),
+      });
+      if (r.ok) { _portalStore.data[k] = val; return true; }
+    } catch {}
+    if (i < retries) await new Promise(res=>setTimeout(res, 600*(i+1)));
+  }
+  return false;
+}
 function saveGen(k, d) {
   if (_portalReady) {
     if (d && d.dataUrl) {
@@ -391,23 +408,29 @@ function saveGen(k, d) {
       fetch(PORTAL_API + "/upload", {
         method: "POST", headers: _apiHeaders,
         body: JSON.stringify({ fileKey: k, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl }),
-      }).then(r => r.json()).then(result => {
-        if (result.ok && result.file) {
-          _portalStore.files[k] = result.file;
-          _portalStore.data[k] = result.file;
-          fetch(PORTAL_API + "/store", {
-            method: "POST", headers: _apiHeaders,
-            body: JSON.stringify({ key: k, value: result.file }),
-          }).catch(()=>{});
+      }).then(r => r.json()).then(async result => {
+        // Handle various field name formats upload.js might return
+        const fileRec = result.file || (result.blobUrl ? result : null);
+        const blobUrl = fileRec?.blobUrl || fileRec?.url || result.url || null;
+        if (blobUrl) {
+          const saved = { fileName: d.fileName, fileType: d.fileType, uploadedDate: d.uploadedDate, blobUrl };
+          _portalStore.files[k] = saved;
+          const ok = await _saveToState(k, saved);
+          _showSave(ok);
           _scheduleForceUpdate();
+        } else {
+          _warn("[Portal] Upload response missing blobUrl:", result);
+          // Still try to save what we have
+          await _saveToState(k, { fileName: d.fileName, fileType: d.fileType, uploadedDate: d.uploadedDate });
+          _showSave(false);
         }
-      }).catch(e => _err("[Portal] Upload error:", e));
+      }).catch(async e => {
+        _err("[Portal] Upload error:", e.message);
+        _showSave(false);
+      });
     } else {
-      _portalStore.data[k] = d;
-      fetch(PORTAL_API + "/store", {
-        method: "POST", headers: _apiHeaders,
-        body: JSON.stringify({ key: k, value: d }),
-      }).catch(e => _err("[Portal] Save error:", e));
+      const ok = _saveToState(k, d);
+      ok.then(v => _showSave(v));
     }
     return true;
   }
@@ -1732,6 +1755,7 @@ export default function App(){
   const[portalLoading,setPortalLoading]=useState(true);
   const[portalConnected,setPortalConnected]=useState(false);
   const[,forceRender]=useState(0);
+  const[saveNotif,setSaveNotif]=useState(null); // "saved"|"error"|null
   const[compTab,setCompTab]=useState("overview");const[mgmtTab,setMgmtTab]=useState("audits");const[docsTab,setDocsTab]=useState("contracts");const[isrvTab,setIsrvTab]=useState("log");
   const[meetings,setMeetings]=useState([]);
   const[audits,setAudits]=useState(INIT_AUDITS);
@@ -1771,6 +1795,10 @@ export default function App(){
   const roleNames={owner:"Jade Warren",alistair:"Alistair Burgess",hans:"Hans Vermeulen",staff:"Staff member"};
   useEffect(()=>{
     _portalForceUpdate=forceRender;
+    _saveStatus={
+      timer:null,
+      set:(s)=>{ setSaveNotif(s); clearTimeout(_saveStatus.timer); _saveStatus.timer=setTimeout(()=>setSaveNotif(null),3000); }
+    };
     _loadStore().then((ok)=>{
       setPortalConnected(ok&&_portalReady);
       if(ok){
@@ -2557,6 +2585,7 @@ export default function App(){
         <div style={{padding:"0.875rem 1rem",borderTop:`1px solid ${C.border}`}}>
           <div style={{fontSize:13,fontWeight:600}}>{roleNames[role]}</div>
           <div style={{fontSize:11,color:C.muted}}>{role==="owner"?"Owner / Director":role==="alistair"?"Clinical Director":role==="hans"?"Clinic Lead — Titirangi":"Physiotherapist"}</div>
+          {saveNotif&&<div style={{marginTop:6,fontSize:11,fontWeight:600,color:saveNotif==="saved"?C.green:C.red,background:saveNotif==="saved"?C.greenL:C.redL,borderRadius:6,padding:"3px 8px",display:"inline-block"}}>{saveNotif==="saved"?"✓ Saved to cloud":"⚠ Save failed — retrying"}</div>}
         </div>
       </div>
 
