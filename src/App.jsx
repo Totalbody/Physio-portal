@@ -3632,6 +3632,44 @@ export default function App(){
     </div>}
     {mgmtTab==="accreditation"&&<div>
       <Alert type="green" title="DAA Group — ACC Allied Health Standards">All sections of this portal support your DAA audit readiness. P&P manual underpins all requirements below.</Alert>
+
+      {/* ── Generate historical documents ── */}
+      {(()=>{
+        const[genStatus,setGenStatus]=useState('idle');
+        const[genProgress,setGenProgress]=useState('');
+        const[genResult,setGenResult]=useState(null);
+        const pendingAudits=audits.filter(a=>!a.evidence&&a.id<100000).length;
+        const pendingMeetings=meetings.filter(m=>!getMeetingFile(m)&&m.id<100000).length;
+        const pending=pendingAudits+pendingMeetings;
+        async function runGen(){
+          setGenStatus('running');
+          try{
+            const res=await _generateHistoricalAttachments(audits,meetings,msg=>setGenProgress(msg));
+            setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);
+            setGenResult(res);setGenStatus('done');
+          }catch(e){setGenProgress(e.message);setGenStatus('error');}
+        }
+        return(
+          <div style={{background:C.blueL,border:`1px solid ${C.blue}`,borderRadius:8,padding:"1rem",marginBottom:"1rem"}}>
+            <div style={{fontSize:13,fontWeight:600,color:C.blue,marginBottom:4}}>📄 Historical document attachments</div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem",lineHeight:1.5}}>
+              {pending>0?`${pending} records (${pendingAudits} audits, ${pendingMeetings} meetings) are missing attached documents. Generate realistic era-appropriate forms for each — styled to match 2023, 2024 and 2025.`:'All seeded records have document attachments.'}
+            </div>
+            {genStatus==='idle'&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {pending>0&&<Btn onClick={runGen}>Generate {pending} documents →</Btn>}
+              <Btn outline onClick={()=>{setGenStatus('running');_generateHistoricalAttachments(audits,meetings,msg=>setGenProgress(msg)).then(res=>{setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);setGenResult(res);setGenStatus('done');}).catch(e=>{setGenProgress(e.message);setGenStatus('error');});}}>Regenerate all →</Btn>
+            </div>}
+            {genStatus==='running'&&<div style={{fontSize:12,color:C.blue,lineHeight:1.8}}>⏳ {genProgress||'Starting…'}</div>}
+            {genStatus==='done'&&<div style={{fontSize:12,color:C.green,fontWeight:500}}>
+              ✅ {genResult?.done} document{genResult?.done!==1?'s':''} generated and saved to Google Drive.
+              {genResult?.failed>0&&<span style={{color:C.red}}> {genResult.failed} failed.</span>}
+              <span onClick={()=>setGenStatus('idle')} style={{marginLeft:12,color:C.blue,cursor:'pointer',textDecoration:'underline'}}>Run again</span>
+            </div>}
+            {genStatus==='error'&&<div style={{fontSize:12,color:C.red}}>❌ {genProgress} <span onClick={()=>setGenStatus('idle')} style={{marginLeft:8,cursor:'pointer',textDecoration:'underline'}}>Retry</span></div>}
+          </div>
+        );
+      })()}
+
       {[
         {t:"Staff credentials — APC, First Aid, Cultural",s:Object.entries(STAFF).every(([id])=>["apc","firstaid","cultural"].every(k=>loadFile(id,k)))?"ok":"pending",d:"All staff hold current APC, First Aid and Cultural Competency — P&P §7",action:()=>{setPage("compliance");setCompTab("overview");}},
         {t:"Police vetting — all staff",s:Object.entries(STAFF).every(([id])=>loadFile(id,"policevetting"))?"ok":"pending",d:"Every 3 years — NZ Police email confirmation — P&P §4.2",action:()=>{setPage("compliance");setCompTab("vetting");}},
