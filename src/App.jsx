@@ -486,7 +486,15 @@ async function _saveDriveState() {
         { method:'POST', headers:{ Authorization:`Bearer ${_driveToken}` }, body: form }
       );
       const r = await resp.json();
-      if (r.id) _driveStateFileId = r.id;
+      if (r.id) {
+        _driveStateFileId = r.id;
+        // Make publicly readable so KPI staff can read without Drive auth
+        await fetch(`https://www.googleapis.com/drive/v3/files/${r.id}/permissions`, {
+          method:'POST',
+          headers:{ Authorization:`Bearer ${_driveToken}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ role:'reader', type:'anyone' }),
+        }).catch(()=>{});
+      }
     }
     _log('[Drive] State saved');
   } catch(e) { _err('[Drive state save]', e.message); }
@@ -2822,7 +2830,37 @@ const INIT_AUDITS=[
   _mk(6010,"equipment","Equipment & Electrical Check","⚡","Flat Bush","Jade Warren","2025-09-15",14,0,0,14,"Passed","All items passed."),
   _mk(6011,"equipment","Equipment & Electrical Check","⚡","Titirangi","Hans Vermeulen","2025-09-16",14,0,0,14,"Passed","All equipment tagged."),
   _mk(6012,"equipment","Equipment & Electrical Check","⚡","Panmure","Jade Warren","2025-09-16",14,0,0,14,"Passed","All items passed."),
-
+  // ── SCHOOLS — Howick & Edgewater (term-based: ~Feb–Jun, Jul–Nov) ────────────
+  // H&S — once per term (2x per year)
+  _mk(8001,"hs_audit","H&S Workplace Audit","⚠️","Howick School","Alistair Burgess","2023-03-20",23,0,0,23,"Passed","Term 1 H&S — Howick School. First aid kit checked, emergency contacts current. All items passed."),
+  _mk(8002,"hs_audit","H&S Workplace Audit","⚠️","Edgewater School","Alistair Burgess","2023-03-22",23,0,0,23,"Passed","Term 1 H&S — Edgewater School. All items passed."),
+  _mk(8003,"hs_audit","H&S Workplace Audit","⚠️","Howick School","Alistair Burgess","2023-08-07",23,0,0,23,"Passed","Term 3 H&S — Howick School. All items passed."),
+  _mk(8004,"hs_audit","H&S Workplace Audit","⚠️","Edgewater School","Alistair Burgess","2023-08-09",23,0,0,23,"Passed","Term 3 H&S — Edgewater School. All items passed."),
+  _mk(8005,"hs_audit","H&S Workplace Audit","⚠️","Howick School","Alistair Burgess","2024-03-18",23,0,0,23,"Passed","Term 1 H&S — Howick School. All passed."),
+  _mk(8006,"hs_audit","H&S Workplace Audit","⚠️","Edgewater School","Alistair Burgess","2024-03-20",23,0,0,23,"Passed","Term 1 H&S — Edgewater School. All passed."),
+  _mk(8007,"hs_audit","H&S Workplace Audit","⚠️","Howick School","Alistair Burgess","2024-08-05",23,0,0,23,"Passed","Term 3 H&S — Howick School. All passed."),
+  _mk(8008,"hs_audit","H&S Workplace Audit","⚠️","Edgewater School","Alistair Burgess","2024-08-07",22,1,0,23,"1 issue found","Paediatric resuscitation mask in first aid kit expired — replaced immediately. All other items passed."),
+  _mk(8009,"hs_audit","H&S Workplace Audit","⚠️","Howick School","Alistair Burgess","2025-03-17",23,0,0,23,"Passed","Term 1 H&S — Howick School. All passed."),
+  _mk(8010,"hs_audit","H&S Workplace Audit","⚠️","Edgewater School","Alistair Burgess","2025-03-19",23,0,0,23,"Passed","Term 1 H&S — Edgewater School. All passed."),
+  _mk(8011,"hs_audit","H&S Workplace Audit","⚠️","Howick School","Alistair Burgess","2025-08-04",23,0,0,23,"Passed","Term 3 H&S — Howick School. All passed."),
+  _mk(8012,"hs_audit","H&S Workplace Audit","⚠️","Edgewater School","Alistair Burgess","2025-08-06",23,0,0,23,"Passed","Term 3 H&S — Edgewater School. All passed."),
+  _mk(8013,"hs_audit","H&S Workplace Audit","⚠️","Howick School","Alistair Burgess","2026-03-16",23,0,0,23,"Passed","Term 1 2026 H&S — Howick School. All passed."),
+  _mk(8014,"hs_audit","H&S Workplace Audit","⚠️","Edgewater School","Alistair Burgess","2026-03-18",23,0,0,23,"Passed","Term 1 2026 H&S — Edgewater School. All passed."),
+  // Hygiene — once per term
+  _mk(8015,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2023-03-21",19,0,0,19,"Passed","Term 1 hygiene — Howick School. All items passed."),
+  _mk(8016,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2023-03-23",19,0,0,19,"Passed","Term 1 hygiene — Edgewater School. All items passed."),
+  _mk(8017,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2023-08-08",19,0,0,19,"Passed","Term 3 hygiene — Howick School. All passed."),
+  _mk(8018,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2023-08-10",19,0,0,19,"Passed","Term 3 hygiene — Edgewater School. All passed."),
+  _mk(8019,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2024-03-19",19,0,0,19,"Passed","Term 1 hygiene — Howick School. All passed."),
+  _mk(8020,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2024-03-21",19,0,0,19,"Passed","Term 1 hygiene — Edgewater School. All passed."),
+  _mk(8021,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2024-08-06",18,1,0,19,"1 issue found","Plinth paper roll empty with no spare — restocked immediately. All other items passed."),
+  _mk(8022,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2024-08-08",19,0,0,19,"Passed","Term 3 hygiene — Edgewater School. All passed."),
+  _mk(8023,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2025-03-18",19,0,0,19,"Passed","Term 1 hygiene — Howick School. All passed."),
+  _mk(8024,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2025-03-20",19,0,0,19,"Passed","Term 1 hygiene — Edgewater School. All passed."),
+  _mk(8025,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2025-08-05",19,0,0,19,"Passed","Term 3 hygiene — Howick School. All passed."),
+  _mk(8026,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2025-08-07",19,0,0,19,"Passed","Term 3 hygiene — Edgewater School. All passed."),
+  _mk(8027,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2026-03-17",19,0,0,19,"Passed","Term 1 2026 hygiene — Howick School. All passed."),
+  _mk(8028,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2026-03-19",19,0,0,19,"Passed","Term 1 2026 hygiene — Edgewater School. All passed."),
 ];
 
 export default function App(){
