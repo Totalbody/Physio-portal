@@ -820,57 +820,75 @@ function MigrationTool({portalConnected,onDone}){
 // file viewer
 function FileViewer({file,onClose}){
   if(!file)return null;
-  const isImg=file.fileType?.startsWith("image/");const isPdf=file.fileType==="application/pdf";
-  const url=file.blobUrl||file.dataUrl;
-  const[pdfLoading,setPdfLoading]=useState(true);const[pdfError,setPdfError]=useState(false);
-  // Google Docs viewer for cloud files — renders all pages
-  const gdocsUrl=file.blobUrl?"https://docs.google.com/gview?embedded=true&url="+encodeURIComponent(file.blobUrl):null;
+  const isImg=file.fileType?.startsWith("image/");
+  const isPdf=file.fileType==="application/pdf";
+  const isDrive=!!file.driveId;
+  const[loading,setLoading]=useState(true);
+  const[error,setError]=useState(false);
+
+  // Use Drive-native URLs when available — much faster and more reliable than uc?export=view
+  const imgSrc  = isDrive
+    ? `https://drive.google.com/thumbnail?id=${file.driveId}&sz=w1600`
+    : (file.blobUrl||file.dataUrl);
+  const pdfSrc  = isDrive
+    ? `https://drive.google.com/file/d/${file.driveId}/preview`
+    : (file.blobUrl
+        ? "https://docs.google.com/gview?embedded=true&url="+encodeURIComponent(file.blobUrl)
+        : file.dataUrl);
+  // Link for "open full document" button
+  const openUrl = file.driveUrl||file.blobUrl||file.dataUrl;
+
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:600,display:"flex",flexDirection:"column"}}>
       <div style={{background:C.teal,padding:"0.875rem 1.25rem",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <div style={{color:"white",fontWeight:600,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:12}}>{file.fileName}</div>
         <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-          {url&&<a href={url} target="_blank" rel="noreferrer" style={{color:"white",fontSize:12,padding:"4px 12px",background:"rgba(255,255,255,0.25)",borderRadius:20,textDecoration:"none",fontWeight:500}}>↗ Open full document</a>}
-          {url&&<a href={url} download={file.fileName} style={{color:"white",fontSize:12,padding:"4px 12px",background:"rgba(255,255,255,0.2)",borderRadius:20,textDecoration:"none"}}>⬇ Download</a>}
+          {openUrl&&<a href={openUrl} target="_blank" rel="noreferrer" style={{color:"white",fontSize:12,padding:"4px 12px",background:"rgba(255,255,255,0.25)",borderRadius:20,textDecoration:"none",fontWeight:500}}>↗ Open in Drive</a>}
           <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:17,flexShrink:0}}>✕</button>
         </div>
       </div>
-      {isPdf&&<div style={{background:C.amberL,borderTop:`1px solid ${C.amber}`,padding:"6px 1.25rem",fontSize:12,color:C.amber,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-        <span>📄 Multi-page PDF</span>
-        <span style={{color:C.muted}}>·</span>
-        <span>Scroll down to see all pages in preview below, or tap</span>
-        <a href={url} target="_blank" rel="noreferrer" style={{color:C.blue,fontWeight:600,textDecoration:"none"}}>↗ Open full document</a>
-        <span>for the best viewing experience</span>
-      </div>}
       <div onClick={e=>e.stopPropagation()} style={{flex:1,overflow:"auto",display:"flex",alignItems:"stretch",justifyContent:"stretch",background:"#1a1a1a",position:"relative"}}>
-        {isImg&&<img src={url} alt={file.fileName} style={{maxWidth:"100%",maxHeight:"100%",margin:"auto",objectFit:"contain",display:"block"}}/>}
-        {isPdf&&!pdfError&&gdocsUrl&&(
-          <>
-            {pdfLoading&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#1a1a1a"}}><div style={{textAlign:"center",color:"white"}}><div style={{fontSize:40,marginBottom:8}}>📄</div><div style={{fontSize:14}}>Loading all pages…</div><div style={{fontSize:11,color:"#aaa",marginTop:4}}>May take a moment for large documents</div></div></div>}
-            <iframe
-              src={gdocsUrl}
-              style={{width:"100%",height:"100%",border:"none",opacity:pdfLoading?0:1,transition:"opacity 0.4s",display:"block"}}
-              title={file.fileName}
-              onLoad={()=>setPdfLoading(false)}
-              onError={()=>{setPdfLoading(false);setPdfError(true);}}
-            />
-          </>
-        )}
-        {isPdf&&!gdocsUrl&&url&&(
-          // dataUrl fallback — object tag works better than iframe for multi-page in most browsers
-          <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",padding:"1rem",boxSizing:"border-box"}}>
-            <object data={url} type="application/pdf" style={{width:"100%",flex:1,minHeight:"70vh",borderRadius:6}}>
-              <div style={{textAlign:"center",padding:"2rem",color:"white"}}>
-                <div style={{fontSize:40,marginBottom:"0.75rem"}}>📄</div>
-                <div style={{fontSize:14,marginBottom:"0.5rem"}}>{file.fileName}</div>
-                <div style={{fontSize:12,color:"#aaa",marginBottom:"1.25rem"}}>PDF preview not available in this browser</div>
-                {url&&<a href={url} target="_blank" rel="noreferrer" style={{color:C.tealL,fontSize:13,fontWeight:600}}>↗ Open PDF in new tab to view all pages</a>}
-              </div>
-            </object>
+        {/* Loading overlay */}
+        {loading&&(isImg||isPdf)&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#1a1a1a",zIndex:2}}>
+          <div style={{textAlign:"center",color:"white"}}>
+            <div style={{fontSize:40,marginBottom:8}}>{isPdf?"📄":"🖼️"}</div>
+            <div style={{fontSize:14,marginBottom:4}}>Loading{isDrive?" from Google Drive"}…</div>
+            <div style={{fontSize:11,color:"#aaa"}}>This may take a few seconds</div>
           </div>
-        )}
-        {isPdf&&pdfError&&<div style={{textAlign:"center",padding:"3rem",color:"white",margin:"auto"}}><div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div><div style={{fontSize:14,marginBottom:"0.5rem"}}>{file.fileName}</div><div style={{fontSize:12,color:"#aaa",marginBottom:"1.25rem"}}>Preview unavailable</div>{url&&<a href={url} target="_blank" rel="noreferrer" style={{color:C.tealL,fontSize:14,fontWeight:600}}>↗ Open PDF in new tab</a>}</div>}
-        {!isImg&&!isPdf&&<div style={{textAlign:"center",padding:"3rem",color:"white",margin:"auto"}}><div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div><div style={{fontSize:14,fontWeight:500,marginBottom:"1rem"}}>{file.fileName}</div>{url&&<a href={url} download={file.fileName} style={{color:C.tealL,fontSize:13,fontWeight:600}}>⬇ Download file</a>}</div>}
+        </div>}
+
+        {/* Image viewer */}
+        {isImg&&!error&&<img
+          src={imgSrc}
+          alt={file.fileName}
+          style={{maxWidth:"100%",maxHeight:"100%",margin:"auto",objectFit:"contain",display:"block",opacity:loading?0:1,transition:"opacity 0.3s"}}
+          onLoad={()=>setLoading(false)}
+          onError={()=>{setLoading(false);setError(true);}}
+        />}
+
+        {/* PDF viewer — Drive native preview iframe */}
+        {isPdf&&!error&&<iframe
+          src={pdfSrc}
+          style={{width:"100%",height:"100%",border:"none",opacity:loading?0:1,transition:"opacity 0.4s",display:"block"}}
+          title={file.fileName}
+          onLoad={()=>setLoading(false)}
+          onError={()=>{setLoading(false);setError(true);}}
+        />}
+
+        {/* Error fallback */}
+        {error&&<div style={{textAlign:"center",padding:"3rem",color:"white",margin:"auto"}}>
+          <div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div>
+          <div style={{fontSize:14,marginBottom:"0.5rem"}}>{file.fileName}</div>
+          <div style={{fontSize:12,color:"#aaa",marginBottom:"1.25rem"}}>Preview unavailable</div>
+          {openUrl&&<a href={openUrl} target="_blank" rel="noreferrer" style={{color:C.tealL,fontSize:14,fontWeight:600}}>↗ Open in Google Drive</a>}
+        </div>}
+
+        {/* Non-image, non-PDF */}
+        {!isImg&&!isPdf&&<div style={{textAlign:"center",padding:"3rem",color:"white",margin:"auto"}}>
+          <div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div>
+          <div style={{fontSize:14,fontWeight:500,marginBottom:"1rem"}}>{file.fileName}</div>
+          {openUrl&&<a href={openUrl} target="_blank" rel="noreferrer" style={{color:C.tealL,fontSize:13,fontWeight:600}}>↗ Open in Google Drive</a>}
+        </div>}
       </div>
     </div>
   );
@@ -881,9 +899,10 @@ function FileRow({label,gkey,onView,accent=C.teal}){
   const ref=useRef();const[file,setFile]=useState(()=>loadGen(gkey));
   function handle(e){const f=e.target.files[0];if(!f)return;if(f.size>3*1024*1024){alert("File over 3MB.");return;}const r=new FileReader();r.onload=ev=>{const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};if(saveGen(gkey,d))setFile(d);};r.readAsDataURL(f);e.target.value="";}
   const isImg=file?.fileType?.startsWith("image/");
+  const thumbSrc=file?.driveId?`https://drive.google.com/thumbnail?id=${file.driveId}&sz=w200`:(file?.blobUrl||file?.dataUrl);
   return(
     <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:`1px solid ${C.border}`}}>
-      {isImg&&file&&<div onClick={()=>onView(file)} style={{width:36,height:36,borderRadius:5,overflow:"hidden",cursor:"pointer",flexShrink:0,border:`1px solid ${C.border}`}}><img src={(file.blobUrl||file.dataUrl)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>}
+      {isImg&&file&&<div onClick={()=>onView(file)} style={{width:36,height:36,borderRadius:5,overflow:"hidden",cursor:"pointer",flexShrink:0,border:`1px solid ${C.border}`}}><img src={thumbSrc} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>}
       <div style={{flex:1}}><div style={{fontSize:13,fontWeight:500}}>{label}</div>{file&&<div style={{fontSize:11,color:C.muted,marginTop:1}}>{file.fileName} · {file.uploadedDate}</div>}</div>
       <div style={{display:"flex",gap:5,flexShrink:0}}>
         {file&&<BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>}
@@ -959,10 +978,14 @@ function CertCard({staffId,cert,role,onView}){
   const bg={ok:"#EAF3DE",expired:"#FCEBEB",pending:cert.required?"#FAEEDA":"#F1EFE8",na:"#F1EFE8"}[status];
   const bd={ok:"#c0dd97",expired:"#f5a0a0",pending:cert.required?"#fac775":C.border,na:C.border}[status];
   const isImg=file?.fileType?.startsWith("image/");const isPdf=file?.fileType==="application/pdf";
+  // Use Drive thumbnail API for Drive-hosted images — fast CDN, no rate limits
+  const thumbSrc=file?.driveId
+    ? `https://drive.google.com/thumbnail?id=${file.driveId}&sz=w200`
+    : (file?.blobUrl||file?.dataUrl);
   return(
     <div style={{background:bg,border:`1px solid ${bd}`,borderRadius:8,padding:"10px 12px",marginBottom:6}}>
       <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-        {isImg&&<div onClick={()=>onView(file)} style={{width:44,height:44,borderRadius:6,overflow:"hidden",flexShrink:0,cursor:"pointer",border:`1px solid ${C.border}`}}><img src={(file.blobUrl||file.dataUrl)} alt="cert" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>}
+        {isImg&&<div onClick={()=>onView(file)} style={{width:44,height:44,borderRadius:6,overflow:"hidden",flexShrink:0,cursor:"pointer",border:`1px solid ${C.border}`}}><img src={thumbSrc} alt="cert" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>}
         {isPdf&&<div onClick={()=>onView(file)} style={{width:44,height:44,borderRadius:6,background:C.redL,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",border:`1px solid ${C.border}`,fontSize:22}}>📄</div>}
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
