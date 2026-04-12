@@ -2356,21 +2356,47 @@ export default function App(){
     _loadStore().then((ok)=>{
       setPortalConnected(ok&&_portalReady);
       if(ok){
-        // Populate all cloud-stored state AFTER load completes
         const d=_portalStore.data;
-        if(d["audits"]&&d["audits"].length)setAudits(d["audits"]);
-        if(d["meetings"]&&d["meetings"].length)setMeetings(d["meetings"]);else setMeetings(INIT_MEETINGS);
+
+        // ── Merge strategy: Drive data takes priority for any ID that exists.
+        // INIT records are added only if their ID isn't already in Drive.
+        // This means historical data appears immediately on first load,
+        // but real user-added records are never overwritten. ──────────────────
+
+        const driveAudits  = d["audits"]   || [];
+        const driveMeetings= d["meetings"] || [];
+
+        const driveAuditIds   = new Set(driveAudits.map(a=>a.id));
+        const driveMeetingIds = new Set(driveMeetings.map(m=>m.id));
+
+        const newAudits   = [...driveAudits,   ...INIT_AUDITS.filter(a=>!driveAuditIds.has(a.id))];
+        const newMeetings = [...driveMeetings,  ...INIT_MEETINGS.filter(m=>!driveMeetingIds.has(m.id))];
+
+        // Sort by date descending
+        newAudits.sort((a,b)=>b.date.localeCompare(a.date));
+        newMeetings.sort((a,b)=>b.date.localeCompare(a.date));
+
+        setAudits(newAudits);
+        setMeetings(newMeetings);
+
+        // Save merged data back to Drive so all devices see it
+        if(newAudits.length   > driveAudits.length)   saveGen("audits",   newAudits);
+        if(newMeetings.length > driveMeetings.length)  saveGen("meetings", newMeetings);
+
         if(d["inservices"]&&d["inservices"].length)setInservices(d["inservices"]);
         if(d["extAudits"]&&d["extAudits"].length)setExtAudits(d["extAudits"]);
         if(d["ppDocs"])setPpDocs(d["ppDocs"]||[]);
         if(d["ppReviews"])setPpReviews(d["ppReviews"]||{});
-        // Staff overrides
         const overrides={};
         Object.keys(STAFF).forEach(id=>{
           const ei=d[`empinfo_${id}`]||null;
           if(ei)overrides[id]=ei;
         });
         setStaffOverrides(overrides);
+      } else {
+        // No Drive — just use INIT data locally
+        setAudits(INIT_AUDITS);
+        setMeetings(INIT_MEETINGS);
       }
       setPortalLoading(false);
     });
