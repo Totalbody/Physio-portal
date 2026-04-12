@@ -2690,30 +2690,31 @@ export default function App(){
       if(ok){
         const d=_portalStore.data;
 
-        // ── Merge strategy: Drive data takes priority for any ID that exists.
-        // INIT records are added only if their ID isn't already in Drive.
-        // This means historical data appears immediately on first load,
-        // but real user-added records are never overwritten. ──────────────────
+        // ── Merge strategy ────────────────────────────────────────────────────
+        // Seeded records (IDs < 100000) = historical data defined in code.
+        //   → INIT always wins. If the code changes, Drive gets updated too.
+        // User records (IDs >= 100000, i.e. Date.now() timestamps) = real data.
+        //   → Drive always wins. Never overwrite what the user actually added.
+        // Result: re-deploying with updated INIT data (fixed notes, removed
+        // clinical notes etc.) takes effect immediately on next load. ──────────
 
-        const driveAudits  = d["audits"]   || [];
-        const driveMeetings= d["meetings"] || [];
+        const isSeeded = id => typeof id === 'number' && id < 100000;
 
-        const driveAuditIds   = new Set(driveAudits.map(a=>a.id));
-        const driveMeetingIds = new Set(driveMeetings.map(m=>m.id));
+        const driveAudits   = (d["audits"]   || []).filter(a => !isSeeded(a.id));
+        const driveMeetings = (d["meetings"] || []).filter(m => !isSeeded(m.id));
 
-        const newAudits   = [...driveAudits,   ...INIT_AUDITS.filter(a=>!driveAuditIds.has(a.id))];
-        const newMeetings = [...driveMeetings,  ...INIT_MEETINGS.filter(m=>!driveMeetingIds.has(m.id))];
+        const newAudits   = [...INIT_AUDITS,   ...driveAudits];
+        const newMeetings = [...INIT_MEETINGS, ...driveMeetings];
 
-        // Sort by date descending
         newAudits.sort((a,b)=>b.date.localeCompare(a.date));
         newMeetings.sort((a,b)=>b.date.localeCompare(a.date));
 
         setAudits(newAudits);
         setMeetings(newMeetings);
 
-        // Save merged data back to Drive so all devices see it
-        if(newAudits.length   > driveAudits.length)   saveGen("audits",   newAudits);
-        if(newMeetings.length > driveMeetings.length)  saveGen("meetings", newMeetings);
+        // Always save merged result back so all devices stay in sync
+        saveGen("audits",   newAudits);
+        saveGen("meetings", newMeetings);
 
         if(d["inservices"]&&d["inservices"].length)setInservices(d["inservices"]);
         if(d["extAudits"]&&d["extAudits"].length)setExtAudits(d["extAudits"]);
@@ -2726,7 +2727,6 @@ export default function App(){
         });
         setStaffOverrides(overrides);
       } else {
-        // No Drive — just use INIT data locally
         setAudits(INIT_AUDITS);
         setMeetings(INIT_MEETINGS);
       }
