@@ -478,6 +478,12 @@ async function _saveDriveState() {
         headers:{ Authorization:`Bearer ${_driveToken}`, 'Content-Type':'application/json' },
         body: payload,
       });
+      // Ensure file stays publicly readable (set every save — idempotent on Drive's end)
+      fetch(`https://www.googleapis.com/drive/v3/files/${_driveStateFileId}/permissions`, {
+        method:'POST',
+        headers:{ Authorization:`Bearer ${_driveToken}`, 'Content-Type':'application/json' },
+        body: JSON.stringify({ role:'reader', type:'anyone' }),
+      }).catch(()=>{});
     } else {
       const form = new FormData();
       form.append('metadata', new Blob([JSON.stringify({ name:'portal-state.json', parents:[DRIVE_FOLDERS.root] })], { type:'application/json' }));
@@ -489,8 +495,9 @@ async function _saveDriveState() {
       const r = await resp.json();
       if (r.id) {
         _driveStateFileId = r.id;
-        // Make publicly readable so KPI staff can read without Drive auth
-        await fetch(`https://www.googleapis.com/drive/v3/files/${r.id}/permissions`, {
+        // Cache file ID for KPI public fallback
+        try { localStorage.setItem('tbp_state_file_id', r.id); } catch {}
+        fetch(`https://www.googleapis.com/drive/v3/files/${r.id}/permissions`, {
           method:'POST',
           headers:{ Authorization:`Bearer ${_driveToken}`, 'Content-Type':'application/json' },
           body: JSON.stringify({ role:'reader', type:'anyone' }),
@@ -508,6 +515,8 @@ async function _loadDriveData() {
     const list = await window.gapi.client.drive.files.list({ q, fields:'files(id)', spaces:'drive' });
     if (list.result.files.length > 0) {
       _driveStateFileId = list.result.files[0].id;
+      // Cache for KPI's public URL fallback
+      try { localStorage.setItem('tbp_state_file_id', _driveStateFileId); } catch {}
       const resp = await fetch(
         `https://www.googleapis.com/drive/v3/files/${_driveStateFileId}?alt=media`,
         { headers:{ Authorization:`Bearer ${_driveToken}` } }
