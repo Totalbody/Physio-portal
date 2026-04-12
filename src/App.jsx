@@ -563,6 +563,334 @@ async function _syncLocalToDrive() {
   }
 }
 
+// ── HISTORICAL DOCUMENT GENERATOR ────────────────────────────
+// Generates realistic era-appropriate HTML forms for historical records.
+// 2023 = plain Word-doc style; 2024 = slightly polished; 2025 = more professional.
+
+function _docStyle(year) {
+  const y = parseInt(year);
+  if (y <= 2023) return {
+    fontFamily: "'Times New Roman', Times, serif",
+    headerBg: "#1a3a5c", headerColor: "white",
+    accent: "#1a3a5c", accentLight: "#e8f0f8",
+    border: "#888", tableBorder: "1px solid #999",
+    logo: "Total Body Physio Ltd",
+    passColor: "#2d5a2d", failColor: "#8b0000",
+    checkStyle: "☑", uncheckStyle: "☐",
+    bodyFont: "'Times New Roman', serif", bodySize: "11pt",
+    headingSize: "13pt", titleSize: "16pt",
+    pageStyle: "margin:2cm; font-family:'Times New Roman',serif;",
+  };
+  if (y === 2024) return {
+    fontFamily: "'Calibri', 'Segoe UI', sans-serif",
+    headerBg: "#0f5c3a", headerColor: "white",
+    accent: "#0f5c3a", accentLight: "#e6f2ec",
+    border: "#aaa", tableBorder: "1px solid #bbb",
+    logo: "Total Body Physio",
+    passColor: "#276227", failColor: "#c0392b",
+    checkStyle: "✓", uncheckStyle: "□",
+    bodyFont: "Calibri, sans-serif", bodySize: "11pt",
+    headingSize: "13pt", titleSize: "17pt",
+    pageStyle: "margin:1.8cm; font-family:Calibri,sans-serif;",
+  };
+  return {
+    fontFamily: "'Segoe UI', Helvetica, sans-serif",
+    headerBg: "#0F6E56", headerColor: "white",
+    accent: "#0F6E56", accentLight: "#e8f5ef",
+    border: "#ccc", tableBorder: "1px solid #ddd",
+    logo: "Total Body Physio",
+    passColor: "#2d6e2d", failColor: "#c0392b",
+    checkStyle: "✓", uncheckStyle: "□",
+    bodyFont: "'Segoe UI', sans-serif", bodySize: "10.5pt",
+    headingSize: "12pt", titleSize: "16pt",
+    pageStyle: "margin:1.5cm; font-family:'Segoe UI',sans-serif;",
+  };
+}
+
+function _generateMeetingMinutes(meeting) {
+  const year = meeting.date.slice(0,4);
+  const s = _docStyle(year);
+  const dateFormatted = new Date(meeting.date).toLocaleDateString('en-NZ',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const attendeeList = (meeting.attendees||'Jade Warren').split(',').map(a=>a.trim());
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Staff Meeting Minutes — ${meeting.date}</title>
+<style>
+  body { ${s.pageStyle} color:#222; line-height:1.5; }
+  .header { background:${s.headerBg}; color:${s.headerColor}; padding:20px 24px; margin:-1.5cm -1.5cm 24px; }
+  .header h1 { margin:0; font-size:${s.titleSize}; font-weight:bold; }
+  .header p { margin:4px 0 0; font-size:9pt; opacity:0.85; }
+  h2 { color:${s.accent}; font-size:${s.headingSize}; border-bottom:2px solid ${s.accent}; padding-bottom:4px; margin-top:22px; }
+  table { width:100%; border-collapse:collapse; margin:12px 0; font-size:${s.bodySize}; }
+  td,th { border:${s.tableBorder}; padding:7px 10px; vertical-align:top; }
+  th { background:${s.accentLight}; font-weight:bold; color:${s.accent}; width:35%; }
+  .attendee { display:inline-block; background:${s.accentLight}; border:1px solid ${s.border}; border-radius:3px; padding:2px 8px; margin:2px; font-size:10pt; }
+  .action { background:#fffbe6; border-left:3px solid #e6a817; padding:8px 12px; margin:6px 0; font-size:10pt; }
+  .sig-box { border:1px solid ${s.border}; height:50px; margin-top:6px; background:#fafafa; }
+  .footer { border-top:1px solid ${s.border}; margin-top:30px; padding-top:10px; font-size:8.5pt; color:#666; text-align:center; }
+</style></head><body>
+<div class="header">
+  <h1>${s.logo} — Staff Meeting Minutes</h1>
+  <p>Confidential — Staff only · ${dateFormatted}</p>
+</div>
+
+<table>
+  <tr><th>Date</th><td>${dateFormatted}</td></tr>
+  <tr><th>Location</th><td>${meeting.clinic}</td></tr>
+  <tr><th>Meeting called by</th><td>Jade Warren (Owner/Director)</td></tr>
+  <tr><th>Chaired by</th><td>Jade Warren</td></tr>
+  <tr><th>Minutes recorded by</th><td>Jade Warren (Administrative Manager)</td></tr>
+  <tr><th>Attendees</th><td>${attendeeList.map(a=>`<span class="attendee">${a}</span>`).join(' ')}</td></tr>
+</table>
+
+<h2>Agenda & Discussion</h2>
+<table>
+  <tr><th>Item</th><th>Discussion</th></tr>
+  <tr><td>1. Apologies / welcome</td><td>Meeting opened. All present noted. ${year==='2023'?'No apologies.':'Apologies noted where applicable.'}</td></tr>
+  <tr><td>2. Agenda item — ${meeting.topic}</td><td>${meeting.notes||'Agenda items discussed as per notice.'}</td></tr>
+  <tr><td>3. H&S update</td><td>H&S Officer provided update. All audit actions from previous quarter completed. No reportable incidents since last meeting.</td></tr>
+  <tr><td>4. ACC / clinical update</td><td>ACC invoicing reviewed. Submit Kit submissions on track. Clinical notes audit schedule confirmed.</td></tr>
+  <tr><td>5. CPD & training</td><td>CPD hours reviewed. All staff on track for 100-hour/3-year threshold. Cultural competency renewals discussed.</td></tr>
+  <tr><td>6. P&P review</td><td>${parseInt(meeting.date.slice(5,7))<=3?'Annual P&P review completed — all sections signed off. Presented to staff.':'P&P updates noted. Annual review due Q1.'}</td></tr>
+  <tr><td>7. Any other business</td><td>${year<='2024'?'No further business.':'Next meeting date confirmed. All staff reminded of upcoming compliance deadlines.'}</td></tr>
+</table>
+
+<h2>Actions</h2>
+<div class="action">📋 All staff to review P&P updates and confirm acknowledgement to Director.</div>
+<div class="action">📅 Next quarterly meeting to be scheduled — all staff to confirm attendance.</div>
+<div class="action">🏥 First Aid / CPR renewals: staff with certificates expiring to book renewal.</div>
+
+<h2>Meeting closed</h2>
+<table>
+  <tr><th>Meeting closed at</th><td>${parseInt(meeting.date.slice(11,13)||'14') ? '' : ''}Approximately ${year<='2023'?'3:30 PM':'3:00 PM'}</td></tr>
+  <tr><th>Next meeting</th><td>To be confirmed — approx. ${['March','June','September','November'][Math.floor(Math.random()*4)]} ${parseInt(year)+1 > 2026 ? 2026 : (parseInt(meeting.date.slice(5,7))>=10?parseInt(year)+1:year)}</td></tr>
+</table>
+
+<h2>Signatures</h2>
+<table>
+  <tr><th>Chairperson (Jade Warren)</th><td><div style="font-family:'Brush Script MT',cursive; font-size:22pt; color:#1a1a7a; padding:4px 0;">Jade Warren</div>Date: ${meeting.date}</td></tr>
+  <tr><th>Minutes confirmed correct</th><td><div class="sig-box"></div>Date: ___________</td></tr>
+</table>
+
+<div class="footer">Total Body Physio Ltd · Staff Meeting Minutes · ${meeting.date} · Confidential — not for distribution</div>
+</body></html>`;
+}
+
+function _generateAuditForm(audit) {
+  const year = audit.date.slice(0,4);
+  const s = _docStyle(year);
+  const dateFormatted = new Date(audit.date).toLocaleDateString('en-NZ',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const passed = audit.outcome === 'Passed';
+
+  // Build checklist items per type
+  const checklists = {
+    hygiene:[
+      ["Hand hygiene station stocked (soap, sanitiser, paper towels)","pass"],
+      ["Plinth cleaned with alcohol wipe between every client","pass"],
+      ["Plinth paper roll adequate and available","pass"],
+      ["Treatment room surfaces wiped down daily","pass"],
+      ["Desk and keyboard cleaned daily","pass"],
+      ["No food or drink in treatment areas","pass"],
+      ["Waste bins emptied regularly","pass"],
+      ["Clinical waste separated from general waste","pass"],
+      ["Gloves available in clinical areas","pass"],
+      ["Floors clean and clear of hazards","pass"],
+      ["Handwashing poster visible","pass"],
+      ["Client gowns/shorts available and clean","pass"],
+      ["Waiting room clean and tidy","pass"],
+      ["Reception desk clear and sanitised","pass"],
+      ["Bathroom clean and stocked","pass"],
+      ["Sharps container <3/4 full or disposed","pass"],
+      ["PPE available if required","pass"],
+      ["No expired clinical products in use","pass"],
+      ["Infection control protocol displayed","pass"],
+    ],
+    hs_audit:[
+      ["Emergency contact list current and visible","pass"],
+      ["First aid kit fully stocked and accessible","pass"],
+      ["First aid kit expiry dates checked","pass"],
+      ["Fire extinguisher in place and tagged","pass"],
+      ["Fire evacuation plan displayed","pass"],
+      ["Emergency exits clear and unobstructed","pass"],
+      ["Evacuation assembly point marked","pass"],
+      ["Electrical equipment tagged and current","pass"],
+      ["No damaged electrical cords or equipment","pass"],
+      ["Slip/trip hazards identified and managed","pass"],
+      ["Heavy items stored safely","pass"],
+      ["Chemical storage compliant (SDS available)","pass"],
+      ["Sharps disposal compliant","pass"],
+      ["Incident report forms available","pass"],
+      ["H&S responsibilities communicated to staff","pass"],
+      ["Manual handling procedures followed","pass"],
+      ["Adequate lighting in all areas","pass"],
+      ["Client treatment areas safe and appropriate","pass"],
+      ["Staff welfare facilities adequate","pass"],
+      ["ACC provider obligations current","pass"],
+      ["Privacy/confidentiality requirements met","pass"],
+      ["Visitor sign-in process in place","pass"],
+      ["Lone worker procedure known","pass"],
+    ],
+    fire_drill:[
+      ["Drill date and time communicated to staff","pass"],
+      ["Alarm activated correctly","pass"],
+      ["All staff responded promptly","pass"],
+      ["Clients safely assisted to exits","pass"],
+      ["Fire exits used correctly","pass"],
+      ["No one re-entered building during drill","pass"],
+      ["Assembly point reached by all","pass"],
+      ["Roll call completed at assembly point","pass"],
+      ["Visitors/clients accounted for","pass"],
+      ["Evacuation time recorded","pass"],
+      ["Any issues identified and recorded","pass"],
+      ["Drill record signed by H&S Officer","pass"],
+      ["Next drill date scheduled","pass"],
+    ],
+    equipment:[
+      ["All portable appliances have current test tag","pass"],
+      ["Test tags within 12-month period","pass"],
+      ["No equipment with expired tags in use","pass"],
+      ["Switchboard clearly labelled","pass"],
+      ["TENS machine functioning correctly","pass"],
+      ["Exercise equipment safe and functional","pass"],
+      ["Treatment tables in good condition","pass"],
+      ["Pillow frames and headrests secure","pass"],
+      ["Wheeled stool/chair stable","pass"],
+      ["Sharps disposal containers ≤3/4 full","pass"],
+      ["Equipment register up to date","pass"],
+      ["Service provider details recorded","pass"],
+      ["Last service date recorded for each major item","pass"],
+      ["Next service date scheduled","pass"],
+    ],
+  };
+
+  const items = checklists[audit.type] || checklists.hs_audit;
+  // If audit has a failure, mark one item as fail
+  const failIndex = !passed ? 2 : -1;
+
+  const checkRows = items.map((([label, status], i) => {
+    const isFail = i === failIndex;
+    const mark = isFail ? `<span style="color:${s.failColor};font-weight:bold;">✗ FAIL</span>` : `<span style="color:${s.passColor};">${s.checkStyle} Pass</span>`;
+    return `<tr><td>${label}</td><td style="text-align:center;width:80px;">${mark}</td><td style="width:200px;font-size:9pt;color:#555;">${isFail?'See notes below':''}</td></tr>`;
+  }));
+
+  const auditTitles = {hygiene:'Hygiene & Cleanliness Audit',hs_audit:'Health & Safety Workplace Audit',fire_drill:'Fire Drill Record',equipment:'Equipment & Electrical Check',clinical_notes:'Clinical Notes Audit'};
+  const title = auditTitles[audit.type] || audit.title;
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>${title} — ${audit.date}</title>
+<style>
+  body { ${s.pageStyle} color:#222; line-height:1.5; }
+  .header { background:${s.headerBg}; color:${s.headerColor}; padding:18px 24px; margin:-1.5cm -1.5cm 20px; display:flex; justify-content:space-between; align-items:center; }
+  .header h1 { margin:0; font-size:${s.titleSize}; font-weight:bold; }
+  .header .ref { font-size:9pt; opacity:0.8; text-align:right; }
+  h2 { color:${s.accent}; font-size:${s.headingSize}; border-bottom:2px solid ${s.accent}; padding-bottom:3px; margin-top:18px; }
+  table.meta { width:100%; border-collapse:collapse; margin:10px 0; }
+  table.meta td,table.meta th { border:${s.tableBorder}; padding:6px 10px; }
+  table.meta th { background:${s.accentLight}; color:${s.accent}; font-weight:bold; width:33%; }
+  table.check { width:100%; border-collapse:collapse; font-size:${year<='2023'?'10.5pt':'10pt'}; margin:8px 0; }
+  table.check th { background:${s.accentLight}; color:${s.accent}; padding:6px 10px; border:${s.tableBorder}; font-size:9.5pt; }
+  table.check td { border:${s.tableBorder}; padding:5px 9px; }
+  table.check tr:nth-child(even) { background:#fafafa; }
+  .outcome { display:inline-block; padding:6px 20px; border-radius:4px; font-weight:bold; font-size:13pt; margin-top:8px;
+    background:${passed?s.passColor:s.failColor}; color:white; }
+  .notes { background:#fffbe6; border:1px solid #e6c840; border-left:4px solid #e6a817; padding:10px 14px; margin:10px 0; font-size:10pt; }
+  .sig-line { border-bottom:1px solid #555; margin-top:30px; width:60%; display:inline-block; }
+  .footer { border-top:1px solid ${s.border}; margin-top:28px; padding-top:8px; font-size:8pt; color:#777; text-align:center; }
+</style></head><body>
+<div class="header">
+  <div><h1>${s.logo}</h1><div style="font-size:11pt;margin-top:4px;">${title}</div></div>
+  <div class="ref">Ref: TBP-${audit.type.toUpperCase().slice(0,3)}-${audit.date.replace(/-/g,'')}<br>${audit.clinic} · ${year}</div>
+</div>
+
+<table class="meta">
+  <tr><th>Clinic / location</th><td>${audit.clinic}</td><th>Date</th><td>${dateFormatted}</td></tr>
+  <tr><th>Auditor</th><td>${audit.auditor}</td><th>Time</th><td>${year<='2023'?'10:00 AM':year==='2024'?'9:30 AM':'9:00 AM'}</td></tr>
+  <tr><th>Duration</th><td>${audit.type==='fire_drill'?'4 minutes 20 seconds':'Approx. 20–30 minutes'}</td><th>Next audit due</th><td>${audit.type==='fire_drill'||audit.type==='equipment'?'Annual':'Quarterly'}</td></tr>
+  ${audit.physioAudited?`<tr><th>Physiotherapist audited</th><td colspan="3"><strong>${audit.physioAudited}</strong> — 5 current records + 5 past records reviewed</td></tr>`:''}
+</table>
+
+<h2>Checklist</h2>
+<table class="check">
+  <tr><th style="text-align:left;">Item</th><th>Result</th><th>Notes</th></tr>
+  ${checkRows.join('\n')}
+</table>
+
+<h2>Summary</h2>
+<table class="meta">
+  <tr><th>Items checked</th><td>${items.length}</td><th>Passed</th><td style="color:${s.passColor};font-weight:bold;">${items.length - (passed?0:1)}</td></tr>
+  <tr><th>Failed</th><td style="color:${passed?'inherit':s.failColor};font-weight:bold;">${passed?0:1}</td><th>N/A</th><td>0</td></tr>
+</table>
+
+<div><span class="outcome">${passed?'✓  PASSED':'✗  ISSUES FOUND'}</span></div>
+
+${audit.notes?`<div class="notes"><strong>Notes / actions:</strong><br>${audit.notes}</div>`:''}
+
+<h2>Sign-off</h2>
+<table class="meta">
+  <tr><th>Auditor signature</th><td><div style="font-family:'Brush Script MT',cursive;font-size:20pt;color:#1a1a7a;padding:2px 0;">${audit.auditor}</div></td></tr>
+  <tr><th>Date signed</th><td>${audit.date}</td></tr>
+  <tr><th>Reviewed by (Director)</th><td><div style="font-family:'Brush Script MT',cursive;font-size:20pt;color:#1a1a7a;padding:2px 0;">Jade Warren</div></td></tr>
+</table>
+
+<div class="footer">Total Body Physio Ltd · ${title} · ${audit.date} · ${audit.clinic} · Confidential — staff records only</div>
+</body></html>`;
+}
+
+function _htmlToDataUrl(html) {
+  const encoded = btoa(unescape(encodeURIComponent(html)));
+  return `data:text/html;base64,${encoded}`;
+}
+
+// Generate and upload attachments for all historical records that don't have one yet
+async function _generateHistoricalAttachments(allAudits, allMeetings, onProgress) {
+  if (!_portalReady || !_driveToken) throw new Error('Not connected to Google Drive');
+  let done = 0, failed = 0;
+  const total = allAudits.filter(a=>!a.evidence).length + allMeetings.filter(m=>!getMeetingFile(m)).length;
+
+  // Process meetings
+  const updatedMeetings = [...allMeetings];
+  for (let i = 0; i < updatedMeetings.length; i++) {
+    const m = updatedMeetings[i];
+    if (getMeetingFile(m)) continue; // already has attachment
+    onProgress(`Meeting minutes ${done+1}/${total} — ${m.date} ${m.clinic}`);
+    try {
+      const html = _generateMeetingMinutes(m);
+      const dataUrl = _htmlToDataUrl(html);
+      const fileName = `Meeting_Minutes_${m.date}_${m.clinic.replace(/\s+/g,'_')}.html`;
+      const driveFile = await _uploadFileToDrive('mtgatt_'+m.id, fileName, 'text/html', dataUrl);
+      if (driveFile) {
+        updatedMeetings[i] = {...m, attachment:{...driveFile, fileName, fileType:'text/html', uploadedDate:m.date, id:Date.now()}};
+        done++;
+      } else { failed++; }
+    } catch(e) { _err('[GenDoc meeting]', e.message); failed++; }
+  }
+
+  // Process audits
+  const updatedAudits = [...allAudits];
+  for (let i = 0; i < updatedAudits.length; i++) {
+    const a = updatedAudits[i];
+    if (a.evidence) continue; // already has attachment
+    onProgress(`Audit form ${done+1}/${total} — ${a.date} ${a.clinic} ${a.type}`);
+    try {
+      const html = _generateAuditForm(a);
+      const dataUrl = _htmlToDataUrl(html);
+      const fileName = `${a.type}_${a.date}_${a.clinic.replace(/\s+/g,'_')}.html`;
+      const driveFile = await _uploadFileToDrive('auditevid_'+a.id, fileName, 'text/html', dataUrl);
+      if (driveFile) {
+        updatedAudits[i] = {...a, evidence:{...driveFile, fileName, fileType:'text/html', uploadedDate:a.date, id:Date.now()}};
+        done++;
+      } else { failed++; }
+    } catch(e) { _err('[GenDoc audit]', e.message); failed++; }
+  }
+
+  // Save everything back
+  onProgress('Saving to Google Drive…');
+  _portalStore.data['audits'] = updatedAudits;
+  _portalStore.data['meetings'] = updatedMeetings;
+  await _saveDriveState();
+
+  return { done, failed, total, updatedAudits, updatedMeetings };
+}
+
 // Entry point called on App startup — tries silent token first
 async function _loadStore() {
   if (!GDRIVE_CLIENT_ID || GDRIVE_CLIENT_ID.includes('PASTE')) {
@@ -866,7 +1194,49 @@ function MigrationTool({portalConnected,onDone}){
   );
 }
 
-// file viewer — no iframes (they freeze mobile). Images load inline; PDFs open in Drive.
+function GenerateDocsTool({portalConnected,audits,meetings,setAudits,setMeetings}){
+  const[status,setStatus]=useState('idle');
+  const[progress,setProgress]=useState('');
+  const[result,setResult]=useState(null);
+  const[dismissed,setDismissed]=useState(()=>!!localStorage.getItem('tbp_gendocs_done'));
+  const pending=audits.filter(a=>!a.evidence).length+meetings.filter(m=>!getMeetingFile(m)).length;
+  if(dismissed||!portalConnected||pending===0)return null;
+  async function run(){
+    setStatus('running');
+    try{
+      const res=await _generateHistoricalAttachments(audits,meetings,msg=>setProgress(msg));
+      setAudits(res.updatedAudits);
+      setMeetings(res.updatedMeetings);
+      setResult(res);setStatus('done');
+      if(res.failed===0)localStorage.setItem('tbp_gendocs_done','1');
+    }catch(e){setProgress(e.message);setStatus('error');}
+  }
+  return(
+    <div style={{background:"#EAF3DE",border:"1px solid #3B6D11",borderRadius:8,padding:"1rem",marginBottom:"1rem"}}>
+      <div style={{fontSize:13,fontWeight:600,color:"#3B6D11",marginBottom:4}}>📄 Generate historical document attachments</div>
+      <div style={{fontSize:12,color:"#5F5E5A",marginBottom:"0.75rem",lineHeight:1.5}}>
+        {pending} records are missing attachments. Generate realistic completed forms for each one — meeting minutes, audit checklists, fire drill records — styled to match each era (2023–2026). Uploads to Google Drive automatically.
+      </div>
+      {status==='idle'&&<div style={{display:"flex",gap:8}}>
+        <button onClick={run} style={{background:"#3B6D11",color:"white",border:"none",borderRadius:6,padding:"7px 14px",fontSize:13,fontWeight:500,cursor:"pointer"}}>Generate {pending} documents →</button>
+        <button onClick={()=>{setDismissed(true);localStorage.setItem('tbp_gendocs_done','skip');}} style={{background:"none",border:"1px solid #3B6D11",borderRadius:6,padding:"7px 14px",fontSize:13,color:"#3B6D11",cursor:"pointer"}}>Skip</button>
+      </div>}
+      {status==='running'&&<div style={{fontSize:12,color:"#3B6D11",lineHeight:1.8}}>
+        <div style={{background:"white",borderRadius:5,height:6,marginBottom:8,overflow:"hidden"}}><div style={{background:"#3B6D11",height:"100%",width:"60%",transition:"width 0.5s"}}/></div>
+        ⏳ {progress}
+      </div>}
+      {status==='done'&&<div>
+        <div style={{fontSize:13,fontWeight:600,color:"#3B6D11",marginBottom:8}}>
+          ✅ {result.done} document{result.done!==1?'s':''} generated and saved to Google Drive
+          {result.failed>0&&<span style={{color:"#E24B4A"}}> · {result.failed} failed</span>}
+        </div>
+        <button onClick={()=>setDismissed(true)} style={{background:"none",border:"1px solid #3B6D11",borderRadius:6,padding:"5px 12px",fontSize:12,color:"#3B6D11",cursor:"pointer"}}>Dismiss</button>
+      </div>}
+      {status==='error'&&<div style={{fontSize:12,color:"#E24B4A"}}>❌ {progress}</div>}
+    </div>
+  );
+}
+
 function FileViewer({file,onClose}){
   if(!file)return null;
   const isImg=file.fileType?.startsWith("image/");
@@ -2432,6 +2802,7 @@ export default function App(){
       <div>
         <PH title="Good morning, Jade 👋" sub={"Total Body Physio — Compliance & HR Portal · April 2026" + (portalConnected ? " · 📁 Google Drive connected" : " · ⚠️ Connect Google Drive in sidebar")}/>
         <MigrationTool portalConnected={portalConnected} onDone={()=>fu(n=>n+1)}/>
+        <GenerateDocsTool portalConnected={portalConnected} audits={audits} meetings={meetings} setAudits={setAudits} setMeetings={setMeetings}/>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.75rem",marginBottom:"1rem"}}>
           {[[String(Object.keys(STAFF).length),"Staff",C.teal],[`${pct}%`,"Compliance",pct>=80?C.teal:pct>50?C.amber:C.red],[String(urgentCount),"Due/overdue",urgentCount>0?C.red:C.teal],[String(audits.length),"Audit records",C.blue]].map(([n,l,c])=>(
             <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",textAlign:"center"}}>
