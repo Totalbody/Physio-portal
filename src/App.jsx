@@ -1025,7 +1025,84 @@ function _htmlToDataUrl(html) {
   return `data:text/html;base64,${encoded}`;
 }
 
-// Generate and upload attachments for all historical records that don't have one yet
+// Scan Drive for already-generated HTML docs and relink them to audit/meeting records
+// without generating anything new. Fixes the issue where portal-state.json was
+// overwritten and lost the evidence/attachment links.
+async function _relinkExistingDocs(allAudits, allMeetings, onProgress) {
+  if (!_portalReady || !_driveToken) throw new Error('Not connected to Google Drive');
+
+  let relinked = 0;
+  const updatedAudits   = allAudits.map(a => ({...a}));
+  const updatedMeetings = allMeetings.map(m => ({...m}));
+
+  // Build index: audit id → index in updatedAudits
+  const auditIdx = {};
+  updatedAudits.forEach((a,i) => { auditIdx[a.id] = i; });
+  const meetIdx = {};
+  updatedMeetings.forEach((m,i) => { meetIdx[m.id] = i; });
+
+  const years = ['2023','2024','2025','2026'];
+
+  // Scan audit folders
+  for (const yr of years) {
+    const folderId = DRIVE_FOLDERS.audits[yr];
+    if (!folderId) continue;
+    onProgress(`Scanning audit folder ${yr}…`);
+    try {
+      const q = `'${folderId}' in parents and trashed=false and mimeType='text/html'`;
+      const list = await window.gapi.client.drive.files.list({ q, fields:'files(id,name,webViewLink)', spaces:'drive', pageSize:200 });
+      for (const file of (list.result.files||[])) {
+        // filename: "hs_audit_2024-03-15_Pakuranga.html" → parse type, date, clinic
+        const parts = file.name.replace('.html','').split('_');
+        if (parts.length < 3) continue;
+        // Find matching audit by date and clinic
+        const date = parts.slice(-3,-1).join('-') || '';
+        const dateMatch = file.name.match(/(\d{4}-\d{2}-\d{2})/);
+        if (!dateMatch) continue;
+        const fileDate = dateMatch[1];
+        // Match to an audit record that doesn't already have evidence
+        const match = updatedAudits.find(a => a.date === fileDate && !a.evidence && file.name.includes(a.type));
+        if (match) {
+          match.evidence = { driveId: file.id, driveUrl: file.webViewLink,
+            blobUrl:`https://drive.google.com/uc?export=view&id=${file.id}`,
+            fileName: file.name, fileType:'text/html' };
+          relinked++;
+        }
+      }
+    } catch(e) { _warn('[Relink audits]', yr, e.message); }
+  }
+
+  // Scan meeting folders
+  for (const yr of years) {
+    const folderId = DRIVE_FOLDERS.meetings[yr];
+    if (!folderId) continue;
+    onProgress(`Scanning meeting folder ${yr}…`);
+    try {
+      const q = `'${folderId}' in parents and trashed=false and mimeType='text/html'`;
+      const list = await window.gapi.client.drive.files.list({ q, fields:'files(id,name,webViewLink)', spaces:'drive', pageSize:200 });
+      for (const file of (list.result.files||[])) {
+        const dateMatch = file.name.match(/(\d{4}-\d{2}-\d{2})/);
+        if (!dateMatch) continue;
+        const fileDate = dateMatch[1];
+        const match = updatedMeetings.find(m => m.date === fileDate && !getMeetingFile(m));
+        if (match) {
+          match.attachment = { driveId: file.id, driveUrl: file.webViewLink,
+            blobUrl:`https://drive.google.com/uc?export=view&id=${file.id}`,
+            fileName: file.name, fileType:'text/html',
+            uploadedDate: fileDate, id: Date.now() };
+          relinked++;
+        }
+      }
+    } catch(e) { _warn('[Relink meetings]', yr, e.message); }
+  }
+
+  onProgress(`Saving ${relinked} relinked records to Drive…`);
+  _portalStore.data['audits']   = updatedAudits;
+  _portalStore.data['meetings'] = updatedMeetings;
+  await _saveDriveState();
+
+  return { relinked, updatedAudits, updatedMeetings };
+}
 async function _generateHistoricalAttachments(allAudits, allMeetings, onProgress) {
   if (!_portalReady || !_driveToken) throw new Error('Not connected to Google Drive');
   let done = 0, failed = 0;
@@ -3678,20 +3755,28 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
               setGenResult(res);setGenStatus('done');
             }catch(e){setGenProgress(e.message);setGenStatus('error');}
           }
+          async function runRelink(){
+            setGenStatus('running');setGenProgress('Scanning Google Drive for existing documents…');
+            try{
+              const res=await _relinkExistingDocs(audits,meetings,msg=>setGenProgress(msg));
+              setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);
+              setGenResult({done:res.relinked,failed:0});setGenStatus('done');
+            }catch(e){setGenProgress(e.message);setGenStatus('error');}
+          }
           return(
             <div style={{background:C.blueL,border:`1px solid ${C.blue}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"1rem"}}>
               <div style={{fontSize:13,fontWeight:600,color:C.blue,marginBottom:3}}>📄 Meeting minutes documents</div>
               <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem"}}>
                 {withDoc>0&&<span style={{color:C.green}}>✓ {withDoc} meeting{withDoc!==1?'s':''} have documents attached. </span>}
-                {pendingMeetings>0?`${pendingMeetings} still need documents generated.`:'All seeded meetings have documents.'}
+                {pendingMeetings>0?`${pendingMeetings} still need documents.`:'All seeded meetings have documents.'}
               </div>
-              {genStatus==='idle'&&pendingMeetings>0&&(
-                <Btn onClick={runMeetingGen}>Generate {pendingMeetings} missing documents →</Btn>
-              )}
+              {genStatus==='idle'&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <Btn onClick={runRelink}>🔗 Relink existing Drive files</Btn>
+                {pendingMeetings>0&&<Btn outline onClick={runMeetingGen}>Generate {pendingMeetings} missing →</Btn>}
+              </div>}
               {genStatus==='running'&&<div style={{fontSize:12,color:C.blue,lineHeight:1.8}}>⏳ {genProgress||'Starting…'}</div>}
               {genStatus==='done'&&<div style={{fontSize:12,color:C.green,fontWeight:500}}>
-                ✅ {genResult?.done} document{genResult?.done!==1?'s':''} generated and saved to Google Drive.
-                {genResult?.failed>0&&<span style={{color:C.red}}> {genResult.failed} failed.</span>}
+                ✅ {genResult?.done} {genResult?.done===0?'nothing new to link — all already linked or no Drive files found':genResult?.done===1?'document linked':'documents linked'}.
                 <span onClick={()=>setGenStatus('idle')} style={{marginLeft:12,color:C.blue,cursor:'pointer',textDecoration:'underline'}}>Done</span>
               </div>}
               {genStatus==='error'&&<div style={{fontSize:12,color:C.red}}>❌ {genProgress} <span onClick={()=>setGenStatus('idle')} style={{marginLeft:8,cursor:'pointer',textDecoration:'underline'}}>Retry</span></div>}
