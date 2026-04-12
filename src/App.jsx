@@ -564,129 +564,196 @@ async function _syncLocalToDrive() {
 }
 
 // ── HISTORICAL DOCUMENT GENERATOR ────────────────────────────
-// Generates realistic era-appropriate HTML forms for historical records.
-// 2023 = plain Word-doc style; 2024 = slightly polished; 2025 = more professional.
+// 2023/2024: plain Word-doc style, blue pen checkbox ticks
+// 2025: cleaner professional layout with better typography
 
-function _docStyle(year) {
-  const y = parseInt(year);
-  if (y <= 2023) return {
-    fontFamily: "'Times New Roman', Times, serif",
-    headerBg: "#1a3a5c", headerColor: "white",
-    accent: "#1a3a5c", accentLight: "#e8f0f8",
-    border: "#888", tableBorder: "1px solid #999",
-    logo: "Total Body Physio Ltd",
-    passColor: "#2d5a2d", failColor: "#8b0000",
-    checkStyle: "☑", uncheckStyle: "☐",
-    bodyFont: "'Times New Roman', serif", bodySize: "11pt",
-    headingSize: "13pt", titleSize: "16pt",
-    pageStyle: "margin:2cm; font-family:'Times New Roman',serif;",
-  };
-  if (y === 2024) return {
-    fontFamily: "'Calibri', 'Segoe UI', sans-serif",
-    headerBg: "#0f5c3a", headerColor: "white",
-    accent: "#0f5c3a", accentLight: "#e6f2ec",
-    border: "#aaa", tableBorder: "1px solid #bbb",
-    logo: "Total Body Physio",
-    passColor: "#276227", failColor: "#c0392b",
-    checkStyle: "✓", uncheckStyle: "□",
-    bodyFont: "Calibri, sans-serif", bodySize: "11pt",
-    headingSize: "13pt", titleSize: "17pt",
-    pageStyle: "margin:1.8cm; font-family:Calibri,sans-serif;",
-  };
-  return {
-    fontFamily: "'Segoe UI', Helvetica, sans-serif",
-    headerBg: "#0F6E56", headerColor: "white",
-    accent: "#0F6E56", accentLight: "#e8f5ef",
-    border: "#ccc", tableBorder: "1px solid #ddd",
-    logo: "Total Body Physio",
-    passColor: "#2d6e2d", failColor: "#c0392b",
-    checkStyle: "✓", uncheckStyle: "□",
-    bodyFont: "'Segoe UI', sans-serif", bodySize: "10.5pt",
-    headingSize: "12pt", titleSize: "16pt",
-    pageStyle: "margin:1.5cm; font-family:'Segoe UI',sans-serif;",
-  };
+function _era(date) {
+  const y = parseInt((date||'').slice(0,4));
+  if (y <= 2023) return '2023';
+  if (y === 2024) return '2024';
+  return '2025';
+}
+
+// Blue biro-style tick for checkboxes
+function _tick(pass, era) {
+  if (!pass) return `<span style="color:#c0392b;font-weight:bold;">✗</span>`;
+  if (era === '2025') return `<span style="color:#1a5ca8;font-size:13pt;font-weight:bold;">✓</span>`;
+  // 2023/2024: slightly wobbly hand-drawn feel
+  return `<span style="color:#1a4fa0;font-family:'Comic Sans MS','Bradley Hand',cursive;font-size:14pt;font-weight:bold;">✓</span>`;
 }
 
 function _generateMeetingMinutes(meeting) {
-  const year = meeting.date.slice(0,4);
-  const s = _docStyle(year);
+  const era = _era(meeting.date);
   const dateFormatted = new Date(meeting.date).toLocaleDateString('en-NZ',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   const attendeeList = (meeting.attendees||'Jade Warren').split(',').map(a=>a.trim());
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>Staff Meeting Minutes — ${meeting.date}</title>
+  const meetMonth = parseInt(meeting.date.slice(5,7));
+  // Next meeting: next quarter
+  const nextQuarterMonths = {1:'April',2:'April',3:'June',4:'June',5:'September',6:'September',7:'November',8:'November',9:'March',10:'March',11:'March',12:'March'};
+  const nextMeetYear = meetMonth >= 10 ? parseInt(meeting.date.slice(0,4))+1 : meeting.date.slice(0,4);
+  const nextMeetMonth = nextQuarterMonths[meetMonth] || 'March';
+
+  const sig = `<span style="font-family:'Segoe Script','Brush Script MT','Comic Sans MS',cursive;font-size:${era==='2025'?'20':'22'}pt;color:#1a1a7a;">Jade Warren</span>`;
+
+  if (era === '2023') return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Staff Meeting Minutes ${meeting.date}</title>
 <style>
-  body { ${s.pageStyle} color:#222; line-height:1.5; }
-  .header { background:${s.headerBg}; color:${s.headerColor}; padding:20px 24px; margin:-1.5cm -1.5cm 24px; }
-  .header h1 { margin:0; font-size:${s.titleSize}; font-weight:bold; }
-  .header p { margin:4px 0 0; font-size:9pt; opacity:0.85; }
-  h2 { color:${s.accent}; font-size:${s.headingSize}; border-bottom:2px solid ${s.accent}; padding-bottom:4px; margin-top:22px; }
-  table { width:100%; border-collapse:collapse; margin:12px 0; font-size:${s.bodySize}; }
-  td,th { border:${s.tableBorder}; padding:7px 10px; vertical-align:top; }
-  th { background:${s.accentLight}; font-weight:bold; color:${s.accent}; width:35%; }
-  .attendee { display:inline-block; background:${s.accentLight}; border:1px solid ${s.border}; border-radius:3px; padding:2px 8px; margin:2px; font-size:10pt; }
-  .action { background:#fffbe6; border-left:3px solid #e6a817; padding:8px 12px; margin:6px 0; font-size:10pt; }
-  .sig-box { border:1px solid ${s.border}; height:50px; margin-top:6px; background:#fafafa; }
-  .footer { border-top:1px solid ${s.border}; margin-top:30px; padding-top:10px; font-size:8.5pt; color:#666; text-align:center; }
+  body{margin:2.5cm 3cm;font-family:"Times New Roman",Times,serif;font-size:11pt;color:#111;line-height:1.55;}
+  h1{font-size:15pt;text-align:center;margin-bottom:2px;}
+  h2{font-size:12pt;margin-top:18px;margin-bottom:4px;text-decoration:underline;}
+  .org{text-align:center;font-size:10pt;margin-bottom:18px;color:#333;}
+  table{width:100%;border-collapse:collapse;margin:8px 0;font-size:11pt;}
+  td,th{border:1px solid #555;padding:5px 8px;vertical-align:top;}
+  th{background:#dde;font-weight:bold;width:36%;}
+  .att{display:inline;margin-right:4px;}
+  .action{margin:4px 0;padding-left:16px;}
+  .footer{margin-top:36px;border-top:1px solid #888;padding-top:8px;font-size:9pt;color:#555;text-align:center;}
 </style></head><body>
-<div class="header">
-  <h1>${s.logo} — Staff Meeting Minutes</h1>
-  <p>Confidential — Staff only · ${dateFormatted}</p>
-</div>
-
-<table>
-  <tr><th>Date</th><td>${dateFormatted}</td></tr>
-  <tr><th>Location</th><td>${meeting.clinic}</td></tr>
-  <tr><th>Meeting called by</th><td>Jade Warren (Owner/Director)</td></tr>
-  <tr><th>Chaired by</th><td>Jade Warren</td></tr>
-  <tr><th>Minutes recorded by</th><td>Jade Warren (Administrative Manager)</td></tr>
-  <tr><th>Attendees</th><td>${attendeeList.map(a=>`<span class="attendee">${a}</span>`).join(' ')}</td></tr>
+<h1>TOTAL BODY PHYSIO LTD</h1>
+<div class="org">Staff Meeting — Minutes &amp; Record<br>Confidential — for staff use only</div>
+<h2>Meeting details</h2>
+<table><tr><th>Date</th><td>${dateFormatted}</td></tr>
+<tr><th>Location</th><td>${meeting.clinic}</td></tr>
+<tr><th>Chairperson</th><td>Jade Warren (Director)</td></tr>
+<tr><th>Minutes by</th><td>Jade Warren</td></tr>
+<tr><th>Attendees</th><td>${attendeeList.map(a=>`<span class="att">${a}</span>`).join(', ')}</td></tr>
 </table>
-
-<h2>Agenda & Discussion</h2>
+<h2>Agenda and discussion</h2>
 <table>
-  <tr><th>Item</th><th>Discussion</th></tr>
-  <tr><td>1. Apologies / welcome</td><td>Meeting opened. All present noted. ${year==='2023'?'No apologies.':'Apologies noted where applicable.'}</td></tr>
-  <tr><td>2. Agenda item — ${meeting.topic}</td><td>${meeting.notes||'Agenda items discussed as per notice.'}</td></tr>
-  <tr><td>3. H&S update</td><td>H&S Officer provided update. All audit actions from previous quarter completed. No reportable incidents since last meeting.</td></tr>
-  <tr><td>4. ACC / clinical update</td><td>ACC invoicing reviewed. Submit Kit submissions on track. Clinical notes audit schedule confirmed.</td></tr>
-  <tr><td>5. CPD & training</td><td>CPD hours reviewed. All staff on track for 100-hour/3-year threshold. Cultural competency renewals discussed.</td></tr>
-  <tr><td>6. P&P review</td><td>${parseInt(meeting.date.slice(5,7))<=3?'Annual P&P review completed — all sections signed off. Presented to staff.':'P&P updates noted. Annual review due Q1.'}</td></tr>
-  <tr><td>7. Any other business</td><td>${year<='2024'?'No further business.':'Next meeting date confirmed. All staff reminded of upcoming compliance deadlines.'}</td></tr>
+<tr><th>Item 1</th><td><b>Apologies / welcome.</b> All present as listed. No apologies.</td></tr>
+<tr><th>Item 2</th><td><b>${meeting.topic}.</b> ${meeting.notes||''}</td></tr>
+<tr><th>Item 3</th><td><b>H&amp;S update.</b> H&amp;S Officer provided update. All previous audit actions completed. No reportable incidents since last meeting. Fire drill and hygiene audits on schedule.</td></tr>
+<tr><th>Item 4</th><td><b>ACC / clinical.</b> Submit Kit invoicing reviewed and up to date. Clinical notes audit schedule confirmed. Outcome measures and SOATAP format reviewed.</td></tr>
+<tr><th>Item 5</th><td><b>CPD and training.</b> CPD hours reviewed — all staff on track. Mauriora cultural competency renewals discussed.</td></tr>
+<tr><th>Item 6</th><td><b>Any other business.</b> ${meetMonth<=3?'Annual P&P review completed, presented to staff.':'No further business.'}</td></tr>
 </table>
-
-<h2>Actions</h2>
-<div class="action">📋 All staff to review P&P updates and confirm acknowledgement to Director.</div>
-<div class="action">📅 Next quarterly meeting to be scheduled — all staff to confirm attendance.</div>
-<div class="action">🏥 First Aid / CPR renewals: staff with certificates expiring to book renewal.</div>
-
-<h2>Meeting closed</h2>
-<table>
-  <tr><th>Meeting closed at</th><td>${parseInt(meeting.date.slice(11,13)||'14') ? '' : ''}Approximately ${year<='2023'?'3:30 PM':'3:00 PM'}</td></tr>
-  <tr><th>Next meeting</th><td>To be confirmed — approx. ${['March','June','September','November'][Math.floor(Math.random()*4)]} ${parseInt(year)+1 > 2026 ? 2026 : (parseInt(meeting.date.slice(5,7))>=10?parseInt(year)+1:year)}</td></tr>
-</table>
-
+<h2>Actions arising</h2>
+<p class="action">1. All staff to review and acknowledge any P&P updates.</p>
+<p class="action">2. APC renewals — staff with April renewals to confirm registration.</p>
+<p class="action">3. Next meeting to be confirmed — approximately ${nextMeetMonth} ${nextMeetYear}.</p>
 <h2>Signatures</h2>
 <table>
-  <tr><th>Chairperson (Jade Warren)</th><td><div style="font-family:'Brush Script MT',cursive; font-size:22pt; color:#1a1a7a; padding:4px 0;">Jade Warren</div>Date: ${meeting.date}</td></tr>
-  <tr><th>Minutes confirmed correct</th><td><div class="sig-box"></div>Date: ___________</td></tr>
+<tr><th>Chairperson</th><td>${sig}<br>Date: ${meeting.date}</td></tr>
+<tr><th>Minutes confirmed by</th><td>&nbsp;<br>Date: ___________</td></tr>
 </table>
+<div class="footer">Total Body Physio Ltd · Staff Meeting Minutes · ${meeting.date} · Confidential</div>
+</body></html>`;
 
+  if (era === '2024') return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Staff Meeting Minutes ${meeting.date}</title>
+<style>
+  body{margin:2cm 2.5cm;font-family:Calibri,"Segoe UI",sans-serif;font-size:11pt;color:#1a1a1a;line-height:1.6;}
+  .header{background:#0f5c3a;color:white;padding:16px 20px;margin:-2cm -2.5cm 20px;display:flex;justify-content:space-between;align-items:center;}
+  .header h1{margin:0;font-size:17pt;font-weight:bold;}
+  .header .sub{font-size:9.5pt;opacity:0.85;text-align:right;}
+  h2{color:#0f5c3a;font-size:12pt;margin-top:20px;border-bottom:2px solid #0f5c3a;padding-bottom:3px;}
+  table{width:100%;border-collapse:collapse;margin:10px 0;}
+  td,th{border:1px solid #bbb;padding:6px 10px;vertical-align:top;}
+  th{background:#e8f4ee;color:#0f5c3a;font-weight:bold;width:34%;}
+  .att span{display:inline-block;background:#e8f4ee;border:1px solid #aad4bc;border-radius:3px;padding:1px 8px;margin:2px;font-size:10.5pt;}
+  .footer{border-top:1px solid #ccc;margin-top:30px;padding-top:8px;font-size:8.5pt;color:#666;text-align:center;}
+</style></head><body>
+<div class="header"><div><h1>Total Body Physio</h1><div style="font-size:10.5pt;margin-top:3px;">Staff Meeting — Minutes</div></div>
+<div class="sub">Confidential · Staff only<br>${meeting.date}</div></div>
+<h2>Meeting details</h2>
+<table><tr><th>Date</th><td>${dateFormatted}</td></tr>
+<tr><th>Location</th><td>${meeting.clinic}</td></tr>
+<tr><th>Chair</th><td>Jade Warren (Owner/Director)</td></tr>
+<tr><th>Minutes</th><td>Jade Warren</td></tr>
+<tr><th>Attendees</th><td class="att">${attendeeList.map(a=>`<span>${a}</span>`).join(' ')}</td></tr>
+</table>
+<h2>Agenda &amp; discussion</h2>
+<table>
+<tr><th>1. Welcome / apologies</th><td>All present as listed. No apologies.</td></tr>
+<tr><th>2. ${meeting.topic.slice(0,40)}…</th><td>${meeting.notes||'Items discussed as per agenda.'}</td></tr>
+<tr><th>3. H&amp;S update</th><td>H&amp;S Officer Alistair Burgess reported all quarterly audits completed. No incidents. Sharps disposal current. Fire extinguisher tags checked.</td></tr>
+<tr><th>4. ACC / clinical update</th><td>Invoicing on track. Submit Kit submissions current. Clinical notes audit schedule confirmed per §1.5.1.</td></tr>
+<tr><th>5. CPD / training</th><td>CPD hours reviewed. All staff on track for 100hr/3yr. Mauriora cultural competency renewals noted.</td></tr>
+<tr><th>6. Any other business</th><td>${meetMonth<=3?'Annual P&P review completed and signed off.':'No further business.'}</td></tr>
+</table>
+<h2>Actions</h2>
+<table>
+<tr><td>1</td><td>All staff to acknowledge P&P updates</td><td>All staff</td><td>Next meeting</td></tr>
+<tr><td>2</td><td>APC renewals to be confirmed by 1 April</td><td>All physios</td><td>1 April ${meeting.date.slice(0,4)}</td></tr>
+<tr><td>3</td><td>Next meeting approx. ${nextMeetMonth} ${nextMeetYear}</td><td>Jade</td><td>TBC</td></tr>
+</table>
+<h2>Sign-off</h2>
+<table>
+<tr><th>Chairperson</th><td>${sig}&nbsp;&nbsp;Date: ${meeting.date}</td></tr>
+<tr><th>Minutes confirmed</th><td>&nbsp;<br>Date: ___________</td></tr>
+</table>
 <div class="footer">Total Body Physio Ltd · Staff Meeting Minutes · ${meeting.date} · Confidential — not for distribution</div>
+</body></html>`;
+
+  // 2025+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Staff Meeting Minutes ${meeting.date}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  body{margin:0;font-family:'Inter','Segoe UI',Helvetica,sans-serif;font-size:10.5pt;color:#1a1a18;line-height:1.65;background:#fff;}
+  .header{background:#0F6E56;color:white;padding:22px 32px;display:flex;justify-content:space-between;align-items:flex-start;}
+  .header h1{margin:0 0 4px;font-size:18pt;font-weight:700;}
+  .header .sub{font-size:10pt;opacity:0.8;}
+  .header .ref{font-size:9pt;opacity:0.7;text-align:right;}
+  .body{padding:24px 32px;}
+  h2{color:#0F6E56;font-size:11pt;font-weight:600;margin:22px 0 8px;letter-spacing:0.03em;text-transform:uppercase;}
+  table{width:100%;border-collapse:collapse;margin:6px 0 16px;font-size:10.5pt;}
+  td,th{border:1px solid #ddd;padding:7px 12px;vertical-align:top;}
+  th{background:#E1F5EE;color:#0F6E56;font-weight:600;width:33%;}
+  tr:nth-child(even) td{background:#fafaf8;}
+  .tag{display:inline-block;background:#E1F5EE;color:#0F6E56;border-radius:4px;padding:2px 9px;font-size:9.5pt;margin:1px 2px;font-weight:500;}
+  .action-table td:first-child{font-weight:600;width:28px;text-align:center;}
+  .action-table td:last-child{color:#666;font-size:9.5pt;width:90px;}
+  .sig{font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;}
+  .footer{border-top:1px solid #e2e0d8;padding:10px 32px;font-size:8pt;color:#888;display:flex;justify-content:space-between;}
+  .outcome{display:inline-block;background:#E1F5EE;color:#0F6E56;border-radius:6px;padding:4px 14px;font-weight:600;font-size:10pt;}
+</style></head><body>
+<div class="header">
+  <div><h1>Total Body Physio</h1><div class="sub">Staff Meeting — Minutes &amp; Record</div></div>
+  <div class="ref">Confidential · Staff only<br>${meeting.date}</div>
+</div>
+<div class="body">
+<h2>Meeting details</h2>
+<table>
+<tr><th>Date</th><td>${dateFormatted}</td></tr>
+<tr><th>Venue</th><td>${meeting.clinic}</td></tr>
+<tr><th>Chairperson</th><td>Jade Warren — Owner / Director</td></tr>
+<tr><th>Minutes recorded by</th><td>Jade Warren</td></tr>
+<tr><th>Attendees</th><td>${attendeeList.map(a=>`<span class="tag">${a}</span>`).join(' ')}</td></tr>
+</table>
+<h2>Agenda &amp; discussion</h2>
+<table>
+<tr><th>Welcome &amp; apologies</th><td>All attendees present as listed. No apologies recorded.</td></tr>
+<tr><th>${meeting.topic.length>50?meeting.topic.slice(0,50)+'…':meeting.topic}</th><td>${meeting.notes||'Items discussed as per meeting notice.'}</td></tr>
+<tr><th>H&amp;S update</th><td>H&amp;S Officer (Alistair Burgess) reported all Q${meetMonth<=3?1:meetMonth<=6?2:meetMonth<=9?3:4} audits completed across all clinics. No reportable incidents. All actions from previous meeting closed.</td></tr>
+<tr><th>ACC / clinical</th><td>Invoicing and Submit Kit submissions current. Clinical notes audit schedule reviewed — §1.5.1 P&amp;P. Outcome measures and SOATAP compliance confirmed.</td></tr>
+<tr><th>CPD &amp; compliance</th><td>CPD hours reviewed — all staff on track for 100hr/3yr PBNZ threshold. Mauriora Cultural Competency renewals noted. APC cycle confirmed.</td></tr>
+<tr><th>Any other business</th><td>${meetMonth<=3?'Annual P&P review 2025 completed and signed off by Director. All sections reviewed and presented to staff.':'No further business raised.'}</td></tr>
+</table>
+<h2>Actions</h2>
+<table class="action-table">
+<tr><td>1</td><td>All staff to acknowledge P&P updates via portal</td><td>Jade</td><td>Next meeting</td></tr>
+<tr><td>2</td><td>APC renewals confirmed by 1 April</td><td>All physios</td><td>01/04/${meeting.date.slice(0,4)}</td></tr>
+<tr><td>3</td><td>Next meeting — approximately ${nextMeetMonth} ${nextMeetYear}</td><td>Jade</td><td>TBC</td></tr>
+</table>
+<h2>Outcome</h2>
+<p><span class="outcome">✓ Meeting completed — minutes approved</span></p>
+<h2>Signatures</h2>
+<table>
+<tr><th>Chairperson (Jade Warren)</th><td><div class="sig">Jade Warren</div>Date: ${meeting.date}</td></tr>
+<tr><th>Minutes confirmed correct</th><td>&nbsp;<br>&nbsp;Date: ___________</td></tr>
+</table>
+</div>
+<div class="footer"><span>Total Body Physio Ltd · Staff Meeting Minutes</span><span>${meeting.date} · Confidential — not for distribution</span></div>
 </body></html>`;
 }
 
 function _generateAuditForm(audit) {
-  const year = audit.date.slice(0,4);
-  const s = _docStyle(year);
+  const era = _era(audit.date);
   const dateFormatted = new Date(audit.date).toLocaleDateString('en-NZ',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   const passed = audit.outcome === 'Passed';
 
-  // Build checklist items per type
   const checklists = {
     hygiene:[
       ["Hand hygiene station stocked (soap, sanitiser, paper towels)","pass"],
       ["Plinth cleaned with alcohol wipe between every client","pass"],
-      ["Plinth paper roll adequate and available","pass"],
+      ["Plinth paper roll adequate and spare available","pass"],
       ["Treatment room surfaces wiped down daily","pass"],
       ["Desk and keyboard cleaned daily","pass"],
       ["No food or drink in treatment areas","pass"],
@@ -694,12 +761,12 @@ function _generateAuditForm(audit) {
       ["Clinical waste separated from general waste","pass"],
       ["Gloves available in clinical areas","pass"],
       ["Floors clean and clear of hazards","pass"],
-      ["Handwashing poster visible","pass"],
+      ["Handwashing poster clearly visible","pass"],
       ["Client gowns/shorts available and clean","pass"],
       ["Waiting room clean and tidy","pass"],
       ["Reception desk clear and sanitised","pass"],
       ["Bathroom clean and stocked","pass"],
-      ["Sharps container <3/4 full or disposed","pass"],
+      ["Sharps container ≤3/4 full or disposed at Chemist Warehouse","pass"],
       ["PPE available if required","pass"],
       ["No expired clinical products in use","pass"],
       ["Infection control protocol displayed","pass"],
@@ -707,53 +774,53 @@ function _generateAuditForm(audit) {
     hs_audit:[
       ["Emergency contact list current and visible","pass"],
       ["First aid kit fully stocked and accessible","pass"],
-      ["First aid kit expiry dates checked","pass"],
-      ["Fire extinguisher in place and tagged","pass"],
-      ["Fire evacuation plan displayed","pass"],
+      ["First aid kit contents within expiry dates","pass"],
+      ["Fire extinguisher in place and current tag","pass"],
+      ["Fire evacuation plan displayed and current","pass"],
       ["Emergency exits clear and unobstructed","pass"],
-      ["Evacuation assembly point marked","pass"],
-      ["Electrical equipment tagged and current","pass"],
-      ["No damaged electrical cords or equipment","pass"],
+      ["Evacuation assembly point marked and known to staff","pass"],
+      ["All electrical equipment tested and tagged","pass"],
+      ["No damaged electrical cords or equipment in use","pass"],
       ["Slip/trip hazards identified and managed","pass"],
-      ["Heavy items stored safely","pass"],
+      ["Heavy items stored safely below shoulder height","pass"],
       ["Chemical storage compliant (SDS available)","pass"],
-      ["Sharps disposal compliant","pass"],
-      ["Incident report forms available","pass"],
-      ["H&S responsibilities communicated to staff","pass"],
+      ["Sharps disposal compliant — ≤3/4 full","pass"],
+      ["Incident report forms available and location known","pass"],
+      ["H&S responsibilities communicated to all staff","pass"],
       ["Manual handling procedures followed","pass"],
       ["Adequate lighting in all areas","pass"],
       ["Client treatment areas safe and appropriate","pass"],
       ["Staff welfare facilities adequate","pass"],
       ["ACC provider obligations current","pass"],
       ["Privacy/confidentiality requirements met","pass"],
-      ["Visitor sign-in process in place","pass"],
-      ["Lone worker procedure known","pass"],
+      ["Visitor management process in place","pass"],
+      ["Lone worker procedure known to all staff","pass"],
     ],
     fire_drill:[
-      ["Drill date and time communicated to staff","pass"],
-      ["Alarm activated correctly","pass"],
-      ["All staff responded promptly","pass"],
-      ["Clients safely assisted to exits","pass"],
-      ["Fire exits used correctly","pass"],
+      ["Drill date and time communicated to staff in advance","pass"],
+      ["Fire alarm activated correctly at drill start","pass"],
+      ["All staff responded promptly to alarm","pass"],
+      ["Clients safely assisted to nearest exit","pass"],
+      ["Correct fire exits used — no locked/blocked doors","pass"],
       ["No one re-entered building during drill","pass"],
-      ["Assembly point reached by all","pass"],
+      ["Assembly point reached by all staff and clients","pass"],
       ["Roll call completed at assembly point","pass"],
-      ["Visitors/clients accounted for","pass"],
+      ["Visitors and clients accounted for","pass"],
       ["Evacuation time recorded","pass"],
-      ["Any issues identified and recorded","pass"],
+      ["Any issues identified and documented","pass"],
       ["Drill record signed by H&S Officer","pass"],
-      ["Next drill date scheduled","pass"],
+      ["Next drill date scheduled and communicated","pass"],
     ],
     equipment:[
       ["All portable appliances have current test tag","pass"],
-      ["Test tags within 12-month period","pass"],
-      ["No equipment with expired tags in use","pass"],
+      ["Test tag dates within 12-month period — none expired","pass"],
+      ["No equipment with expired/missing tags in use","pass"],
       ["Switchboard clearly labelled","pass"],
       ["TENS machine functioning correctly","pass"],
       ["Exercise equipment safe and functional","pass"],
-      ["Treatment tables in good condition","pass"],
+      ["Treatment tables in good condition — no damage","pass"],
       ["Pillow frames and headrests secure","pass"],
-      ["Wheeled stool/chair stable","pass"],
+      ["Wheeled stool/chair stable and safe","pass"],
       ["Sharps disposal containers ≤3/4 full","pass"],
       ["Equipment register up to date","pass"],
       ["Service provider details recorded","pass"],
@@ -763,75 +830,189 @@ function _generateAuditForm(audit) {
   };
 
   const items = checklists[audit.type] || checklists.hs_audit;
-  // If audit has a failure, mark one item as fail
-  const failIndex = !passed ? 2 : -1;
+  const numFailed = audit.failed||0;
+  // Mark a specific item as failed if outcome has issues
+  const failIdx = numFailed > 0 ? 2 : -1;
+  const failIdx2 = numFailed > 1 ? 7 : -1;
 
-  const checkRows = items.map((([label, status], i) => {
-    const isFail = i === failIndex;
-    const mark = isFail ? `<span style="color:${s.failColor};font-weight:bold;">✗ FAIL</span>` : `<span style="color:${s.passColor};">${s.checkStyle} Pass</span>`;
-    return `<tr><td>${label}</td><td style="text-align:center;width:80px;">${mark}</td><td style="width:200px;font-size:9pt;color:#555;">${isFail?'See notes below':''}</td></tr>`;
-  }));
+  const auditTitles = {
+    hygiene:'Hygiene & Cleanliness Audit',
+    hs_audit:'Health & Safety Workplace Audit',
+    fire_drill:'Fire Drill Record',
+    equipment:'Equipment & Electrical Check',
+  };
+  const title = auditTitles[audit.type] || audit.title || 'Audit Record';
+  const freq = {hygiene:'Quarterly',hs_audit:'Quarterly',fire_drill:'Annual',equipment:'Annual'}[audit.type]||'';
+  const ref = `TBP-${(audit.type||'').toUpperCase().slice(0,3)}-${audit.date.replace(/-/g,'')}-${audit.clinic.slice(0,3).toUpperCase()}`;
 
-  const auditTitles = {hygiene:'Hygiene & Cleanliness Audit',hs_audit:'Health & Safety Workplace Audit',fire_drill:'Fire Drill Record',equipment:'Equipment & Electrical Check',clinical_notes:'Clinical Notes Audit'};
-  const title = auditTitles[audit.type] || audit.title;
-
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>${title} — ${audit.date}</title>
+  if (era === '2023') {
+    const rows = items.map(([label],i) => {
+      const isFail = i===failIdx||i===failIdx2;
+      return `<tr><td>${label}</td><td style="text-align:center;width:65px;">${isFail?`<span style="color:#c0392b;font-weight:bold;">✗ FAIL</span>`:_tick(true,'2023')}</td><td style="width:200px;font-size:9.5pt;color:#444;">${isFail?'See notes':'—'}</td></tr>`;
+    }).join('');
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${audit.date}</title>
 <style>
-  body { ${s.pageStyle} color:#222; line-height:1.5; }
-  .header { background:${s.headerBg}; color:${s.headerColor}; padding:18px 24px; margin:-1.5cm -1.5cm 20px; display:flex; justify-content:space-between; align-items:center; }
-  .header h1 { margin:0; font-size:${s.titleSize}; font-weight:bold; }
-  .header .ref { font-size:9pt; opacity:0.8; text-align:right; }
-  h2 { color:${s.accent}; font-size:${s.headingSize}; border-bottom:2px solid ${s.accent}; padding-bottom:3px; margin-top:18px; }
-  table.meta { width:100%; border-collapse:collapse; margin:10px 0; }
-  table.meta td,table.meta th { border:${s.tableBorder}; padding:6px 10px; }
-  table.meta th { background:${s.accentLight}; color:${s.accent}; font-weight:bold; width:33%; }
-  table.check { width:100%; border-collapse:collapse; font-size:${year<='2023'?'10.5pt':'10pt'}; margin:8px 0; }
-  table.check th { background:${s.accentLight}; color:${s.accent}; padding:6px 10px; border:${s.tableBorder}; font-size:9.5pt; }
-  table.check td { border:${s.tableBorder}; padding:5px 9px; }
-  table.check tr:nth-child(even) { background:#fafafa; }
-  .outcome { display:inline-block; padding:6px 20px; border-radius:4px; font-weight:bold; font-size:13pt; margin-top:8px;
-    background:${passed?s.passColor:s.failColor}; color:white; }
-  .notes { background:#fffbe6; border:1px solid #e6c840; border-left:4px solid #e6a817; padding:10px 14px; margin:10px 0; font-size:10pt; }
-  .sig-line { border-bottom:1px solid #555; margin-top:30px; width:60%; display:inline-block; }
-  .footer { border-top:1px solid ${s.border}; margin-top:28px; padding-top:8px; font-size:8pt; color:#777; text-align:center; }
+  body{margin:2.5cm 3cm;font-family:"Times New Roman",Times,serif;font-size:11pt;color:#111;line-height:1.5;}
+  h1{font-size:14pt;text-align:center;margin-bottom:2px;}
+  .org{text-align:center;font-size:10pt;margin-bottom:16px;color:#333;}
+  h2{font-size:12pt;margin-top:16px;text-decoration:underline;}
+  table.meta{width:100%;border-collapse:collapse;margin:8px 0;}
+  table.meta td,table.meta th{border:1px solid #666;padding:5px 8px;}
+  table.meta th{background:#dde;font-weight:bold;width:36%;}
+  table.check{width:100%;border-collapse:collapse;font-size:10.5pt;margin:6px 0;}
+  table.check th{background:#dde;padding:5px 8px;border:1px solid #666;font-size:10pt;}
+  table.check td{border:1px solid #999;padding:4px 8px;}
+  .outcome{font-weight:bold;font-size:13pt;padding:4px 12px;border:2px solid #333;display:inline-block;margin-top:8px;}
+  .notes-box{border:1px solid #999;background:#fafff0;padding:8px;margin:8px 0;font-size:10.5pt;min-height:40px;}
+  .footer{border-top:1px solid #888;margin-top:30px;padding-top:8px;font-size:9pt;color:#555;text-align:center;}
 </style></head><body>
-<div class="header">
-  <div><h1>${s.logo}</h1><div style="font-size:11pt;margin-top:4px;">${title}</div></div>
-  <div class="ref">Ref: TBP-${audit.type.toUpperCase().slice(0,3)}-${audit.date.replace(/-/g,'')}<br>${audit.clinic} · ${year}</div>
-</div>
-
+<h1>TOTAL BODY PHYSIO LTD</h1>
+<div class="org">${title}<br>Reference: ${ref}</div>
+<h2>Audit details</h2>
 <table class="meta">
-  <tr><th>Clinic / location</th><td>${audit.clinic}</td><th>Date</th><td>${dateFormatted}</td></tr>
-  <tr><th>Auditor</th><td>${audit.auditor}</td><th>Time</th><td>${year<='2023'?'10:00 AM':year==='2024'?'9:30 AM':'9:00 AM'}</td></tr>
-  <tr><th>Duration</th><td>${audit.type==='fire_drill'?'4 minutes 20 seconds':'Approx. 20–30 minutes'}</td><th>Next audit due</th><td>${audit.type==='fire_drill'||audit.type==='equipment'?'Annual':'Quarterly'}</td></tr>
-  ${audit.physioAudited?`<tr><th>Physiotherapist audited</th><td colspan="3"><strong>${audit.physioAudited}</strong> — 5 current records + 5 past records reviewed</td></tr>`:''}
+<tr><th>Clinic</th><td>${audit.clinic}</td><th>Date</th><td>${dateFormatted}</td></tr>
+<tr><th>Auditor</th><td>${audit.auditor}</td><th>Frequency</th><td>${freq}</td></tr>
+<tr><th>Start time</th><td>${era==='2023'?'10:00 AM':'9:30 AM'}</td><th>Duration</th><td>${audit.type==='fire_drill'?'4 minutes 20 seconds':'Approx. 25 minutes'}</td></tr>
 </table>
-
 <h2>Checklist</h2>
 <table class="check">
-  <tr><th style="text-align:left;">Item</th><th>Result</th><th>Notes</th></tr>
-  ${checkRows.join('\n')}
+<tr><th style="text-align:left;">Item</th><th>Result</th><th>Notes</th></tr>
+${rows}
 </table>
-
 <h2>Summary</h2>
 <table class="meta">
-  <tr><th>Items checked</th><td>${items.length}</td><th>Passed</th><td style="color:${s.passColor};font-weight:bold;">${items.length - (passed?0:1)}</td></tr>
-  <tr><th>Failed</th><td style="color:${passed?'inherit':s.failColor};font-weight:bold;">${passed?0:1}</td><th>N/A</th><td>0</td></tr>
+<tr><th>Total items</th><td>${items.length}</td><th>Passed</th><td>${items.length-numFailed}</td></tr>
+<tr><th>Failed</th><td>${numFailed}</td><th>N/A</th><td>0</td></tr>
 </table>
-
-<div><span class="outcome">${passed?'✓  PASSED':'✗  ISSUES FOUND'}</span></div>
-
-${audit.notes?`<div class="notes"><strong>Notes / actions:</strong><br>${audit.notes}</div>`:''}
-
+<div class="outcome" style="color:${passed?'#1a6e1a':'#8b0000'};">${passed?'PASSED':'ISSUES FOUND'}</div>
+<h2>Notes / actions</h2>
+<div class="notes-box">${audit.notes||'No issues found. All items satisfactory.'}</div>
 <h2>Sign-off</h2>
 <table class="meta">
-  <tr><th>Auditor signature</th><td><div style="font-family:'Brush Script MT',cursive;font-size:20pt;color:#1a1a7a;padding:2px 0;">${audit.auditor}</div></td></tr>
-  <tr><th>Date signed</th><td>${audit.date}</td></tr>
-  <tr><th>Reviewed by (Director)</th><td><div style="font-family:'Brush Script MT',cursive;font-size:20pt;color:#1a1a7a;padding:2px 0;">Jade Warren</div></td></tr>
+<tr><th>Auditor signature</th><td><span style="font-family:'Comic Sans MS',cursive;font-size:18pt;color:#1a1a7a;">${audit.auditor}</span></td></tr>
+<tr><th>Date</th><td>${audit.date}</td></tr>
+<tr><th>Director review</th><td><span style="font-family:'Comic Sans MS',cursive;font-size:18pt;color:#1a1a7a;">Jade Warren</span></td></tr>
 </table>
+<div class="footer">Total Body Physio Ltd · ${title} · ${audit.date} · ${audit.clinic} · Ref: ${ref}</div>
+</body></html>`;
+  }
 
-<div class="footer">Total Body Physio Ltd · ${title} · ${audit.date} · ${audit.clinic} · Confidential — staff records only</div>
+  if (era === '2024') {
+    const rows = items.map(([label],i) => {
+      const isFail = i===failIdx||i===failIdx2;
+      return `<tr><td>${label}</td><td style="text-align:center;width:70px;background:${isFail?'#fdecea':'#f0faf4'};">${isFail?`<span style="color:#c0392b;font-weight:bold;">✗ Fail</span>`:_tick(true,'2024')}</td><td style="width:190px;font-size:9.5pt;color:#555;">${isFail?'See notes below':'—'}</td></tr>`;
+    }).join('');
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${audit.date}</title>
+<style>
+  body{margin:2cm 2.5cm;font-family:Calibri,"Segoe UI",sans-serif;font-size:11pt;color:#1a1a1a;line-height:1.6;}
+  .header{background:#0f5c3a;color:white;padding:15px 20px;margin:-2cm -2.5cm 18px;display:flex;justify-content:space-between;}
+  .header h1{margin:0;font-size:16pt;font-weight:bold;}
+  .header .sub{font-size:9pt;opacity:0.8;text-align:right;}
+  h2{color:#0f5c3a;font-size:12pt;margin-top:18px;border-bottom:2px solid #0f5c3a;padding-bottom:2px;}
+  table.meta{width:100%;border-collapse:collapse;margin:8px 0;}
+  table.meta td,table.meta th{border:1px solid #bbb;padding:6px 10px;}
+  table.meta th{background:#e8f4ee;color:#0f5c3a;font-weight:bold;width:33%;}
+  table.check{width:100%;border-collapse:collapse;font-size:10.5pt;margin:6px 0;}
+  table.check th{background:#e8f4ee;color:#0f5c3a;padding:6px 10px;border:1px solid #bbb;font-size:10pt;}
+  table.check td{border:1px solid #ccc;padding:5px 9px;}
+  table.check tr:nth-child(even) td{background:#f9fef9;}
+  .outcome{display:inline-block;padding:5px 18px;font-weight:bold;font-size:12pt;border-radius:4px;margin-top:6px;color:white;background:${passed?'#1a6e1a':'#c0392b'};}
+  .notes-box{background:#fffef0;border:1px solid #d4b800;border-left:4px solid #e6a817;padding:10px;margin:8px 0;font-size:10.5pt;min-height:36px;}
+  .footer{border-top:1px solid #ccc;margin-top:28px;padding-top:8px;font-size:8.5pt;color:#777;text-align:center;}
+</style></head><body>
+<div class="header"><div><h1>Total Body Physio</h1><div>${title}</div></div><div class="sub">Ref: ${ref}<br>${audit.clinic} · ${audit.date}</div></div>
+<h2>Audit details</h2>
+<table class="meta">
+<tr><th>Clinic / location</th><td>${audit.clinic}</td><th>Date</th><td>${dateFormatted}</td></tr>
+<tr><th>Auditor</th><td>${audit.auditor}</td><th>H&amp;S Officer</th><td>Alistair Burgess</td></tr>
+<tr><th>Time</th><td>9:30 AM</td><th>Duration</th><td>${audit.type==='fire_drill'?'4 minutes 15 seconds':'Approx. 20–25 minutes'}</td></tr>
+<tr><th>Frequency</th><td>${freq}</td><th>Next due</th><td>${freq==='Quarterly'?'In approx. 3 months':'In approx. 12 months'}</td></tr>
+</table>
+<h2>Checklist</h2>
+<table class="check">
+<tr><th style="text-align:left;width:auto;">Item</th><th style="width:70px;">Result</th><th style="width:190px;">Notes</th></tr>
+${rows}
+</table>
+<h2>Outcome</h2>
+<table class="meta">
+<tr><th>Items checked</th><td>${items.length}</td><th>Passed</th><td style="color:#1a6e1a;font-weight:bold;">${items.length-numFailed}</td></tr>
+<tr><th>Failed</th><td style="color:${numFailed?'#c0392b':'inherit'};font-weight:${numFailed?'bold':'normal'};">${numFailed}</td><th>N/A</th><td>0</td></tr>
+</table>
+<div class="outcome">${passed?'✓  Passed':'✗  Issues found'}</div>
+<h2>Notes / actions required</h2>
+<div class="notes-box">${audit.notes||'No issues identified. All items satisfactory.'}</div>
+<h2>Sign-off</h2>
+<table class="meta">
+<tr><th>Auditor signature</th><td><span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;">${audit.auditor}</span>&nbsp;&nbsp;Date: ${audit.date}</td></tr>
+<tr><th>Director review</th><td><span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;">Jade Warren</span>&nbsp;&nbsp;Date: ${audit.date}</td></tr>
+</table>
+<div class="footer">Total Body Physio Ltd · ${title} · ${audit.date} · ${audit.clinic} · Ref: ${ref} · Confidential</div>
+</body></html>`;
+  }
+
+  // 2025+ — clean professional design
+  const rows = items.map(([label],i) => {
+    const isFail = i===failIdx||i===failIdx2;
+    const bg = isFail ? '#fdecea' : (i%2===0?'#ffffff':'#f9fdf9');
+    return `<tr style="background:${bg};"><td style="padding:6px 14px;">${label}</td>
+      <td style="text-align:center;width:72px;padding:6px;">${isFail?`<span style="color:#c0392b;font-weight:700;font-size:12pt;">✗</span>`:_tick(true,'2025')}</td>
+      <td style="width:200px;font-size:9.5pt;color:#666;padding:6px 12px;">${isFail?'See notes':'—'}</td></tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${audit.date}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Inter','Segoe UI',Helvetica,sans-serif;font-size:10.5pt;color:#1a1a18;background:#fff;}
+  .header{background:#0F6E56;color:white;padding:20px 32px;display:flex;justify-content:space-between;align-items:flex-start;}
+  .header h1{margin:0 0 4px;font-size:17pt;font-weight:700;}
+  .header .type{font-size:10.5pt;opacity:0.85;}
+  .header .ref{font-size:9pt;opacity:0.7;text-align:right;line-height:1.7;}
+  .body{padding:22px 32px;}
+  h2{color:#0F6E56;font-size:9.5pt;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid #E1F5EE;}
+  table.meta{width:100%;border-collapse:collapse;margin:6px 0 16px;font-size:10.5pt;}
+  table.meta td,table.meta th{border:1px solid #e2e0d8;padding:7px 12px;vertical-align:top;}
+  table.meta th{background:#E1F5EE;color:#0F6E56;font-weight:600;width:30%;}
+  table.check{width:100%;border-collapse:collapse;font-size:10.5pt;margin:6px 0 16px;}
+  table.check th{background:#0F6E56;color:white;padding:7px 14px;font-weight:500;font-size:9.5pt;}
+  table.check td{border-bottom:1px solid #eee;}
+  .outcome{display:inline-flex;align-items:center;gap:8px;padding:7px 20px;border-radius:8px;font-weight:600;font-size:11pt;background:${passed?'#0F6E56':'#c0392b'};color:white;}
+  .notes{background:#fffef0;border:1px solid #e6c840;border-left:4px solid #e6a817;padding:12px 16px;border-radius:0 6px 6px 0;font-size:10.5pt;margin:6px 0 16px;min-height:40px;}
+  .sig{font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;}
+  .footer{background:#f5f3ee;border-top:1px solid #e2e0d8;padding:10px 32px;font-size:8pt;color:#888;display:flex;justify-content:space-between;}
+</style></head><body>
+<div class="header">
+  <div><h1>Total Body Physio</h1><div class="type">${title}</div></div>
+  <div class="ref">Ref: ${ref}<br>${audit.clinic} · ${audit.date}</div>
+</div>
+<div class="body">
+<h2>Audit details</h2>
+<table class="meta">
+<tr><th>Clinic / location</th><td>${audit.clinic}</td><th>Date</th><td>${dateFormatted}</td></tr>
+<tr><th>Auditor</th><td>${audit.auditor}</td><th>H&amp;S Officer</th><td>Alistair Burgess</td></tr>
+<tr><th>Start time</th><td>9:00 AM</td><th>Duration</th><td>${audit.type==='fire_drill'?'4 minutes 10 seconds':'Approximately 20 minutes'}</td></tr>
+<tr><th>Frequency</th><td>${freq}</td><th>Next due</th><td>${freq==='Quarterly'?'Approx. 3 months':'Approx. 12 months'}</td></tr>
+</table>
+<h2>Checklist</h2>
+<table class="check">
+<tr><th style="text-align:left;">Item</th><th>Result</th><th>Notes</th></tr>
+${rows}
+</table>
+<h2>Summary</h2>
+<table class="meta">
+<tr><th>Total items</th><td>${items.length}</td><th>Passed</th><td style="color:#0F6E56;font-weight:600;">${items.length-numFailed}</td></tr>
+<tr><th>Failed</th><td style="color:${numFailed?'#c0392b':'inherit'};font-weight:${numFailed?'600':'400'};">${numFailed}</td><th>N/A</th><td>0</td></tr>
+</table>
+<div style="margin-bottom:16px;"><div class="outcome">${passed?'✓  Passed':'✗  Issues found'}</div></div>
+<h2>Notes &amp; actions</h2>
+<div class="notes">${audit.notes||'No issues identified. All items checked and found to be satisfactory.'}</div>
+<h2>Sign-off</h2>
+<table class="meta">
+<tr><th>Auditor</th><td><span class="sig">${audit.auditor}</span>&nbsp;&nbsp;&nbsp;Date: ${audit.date}</td></tr>
+<tr><th>Director review</th><td><span class="sig">Jade Warren</span>&nbsp;&nbsp;&nbsp;Date: ${audit.date}</td></tr>
+</table>
+</div>
+<div class="footer"><span>Total Body Physio Ltd · ${title}</span><span>${audit.date} · ${audit.clinic} · Ref: ${ref} · Confidential</span></div>
 </body></html>`;
 }
 
@@ -2642,7 +2823,7 @@ const INIT_AUDITS=[
   _mk(6011,"equipment","Equipment & Electrical Check","⚡","Titirangi","Hans Vermeulen","2025-09-16",14,0,0,14,"Passed","All equipment tagged."),
   _mk(6012,"equipment","Equipment & Electrical Check","⚡","Panmure","Jade Warren","2025-09-16",14,0,0,14,"Passed","All items passed."),
 
-];;
+];
 
 export default function App(){
   const[page,setPage]=useState("dashboard");const[profile,setProfile]=useState(null);const[role,setRole]=useState("owner");
@@ -2690,29 +2871,40 @@ export default function App(){
       if(ok){
         const d=_portalStore.data;
 
-        // ── Merge strategy ────────────────────────────────────────────────────
-        // Seeded records (IDs < 100000) = historical data defined in code.
-        //   → INIT always wins. If the code changes, Drive gets updated too.
-        // User records (IDs >= 100000, i.e. Date.now() timestamps) = real data.
-        //   → Drive always wins. Never overwrite what the user actually added.
-        // Result: re-deploying with updated INIT data (fixed notes, removed
-        // clinical notes etc.) takes effect immediately on next load. ──────────
+        // Seeded records (IDs < 100000): INIT always wins for record data,
+        // BUT we preserve any evidence/attachment the user already generated
+        // so documents don't disappear when code is updated.
+        // User records (timestamp IDs >= 100000): Drive always wins.
 
         const isSeeded = id => typeof id === 'number' && id < 100000;
 
+        // Index Drive's seeded records so we can pull their evidence/attachment
+        const driveById = {};
+        (d["audits"]||[]).forEach(a => { if(isSeeded(a.id)) driveById[a.id] = a; });
+        const driveMeetById = {};
+        (d["meetings"]||[]).forEach(m => { if(isSeeded(m.id)) driveMeetById[m.id] = m; });
+
+        // User-created records (keep as-is from Drive)
         const driveAudits   = (d["audits"]   || []).filter(a => !isSeeded(a.id));
         const driveMeetings = (d["meetings"] || []).filter(m => !isSeeded(m.id));
 
-        const newAudits   = [...INIT_AUDITS,   ...driveAudits];
-        const newMeetings = [...INIT_MEETINGS, ...driveMeetings];
+        // INIT records — use INIT data but restore Drive's evidence/attachment if present
+        const initAudits   = INIT_AUDITS.map(a => {
+          const drv = driveById[a.id];
+          return drv?.evidence ? {...a, evidence: drv.evidence} : a;
+        });
+        const initMeetings = INIT_MEETINGS.map(m => {
+          const drv = driveMeetById[m.id];
+          return drv?.attachment ? {...m, attachment: drv.attachment} : m;
+        });
 
+        const newAudits   = [...initAudits,   ...driveAudits];
+        const newMeetings = [...initMeetings, ...driveMeetings];
         newAudits.sort((a,b)=>b.date.localeCompare(a.date));
         newMeetings.sort((a,b)=>b.date.localeCompare(a.date));
 
         setAudits(newAudits);
         setMeetings(newMeetings);
-
-        // Always save merged result back so all devices stay in sync
         saveGen("audits",   newAudits);
         saveGen("meetings", newMeetings);
 
