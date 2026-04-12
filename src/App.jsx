@@ -852,7 +852,7 @@ function FileViewer({file,onClose}){
         {loading&&(isImg||isPdf)&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#1a1a1a",zIndex:2}}>
           <div style={{textAlign:"center",color:"white"}}>
             <div style={{fontSize:40,marginBottom:8}}>{isPdf?"📄":"🖼️"}</div>
-            <div style={{fontSize:14,marginBottom:4}}>Loading{isDrive?" from Google Drive"}…</div>
+            <div style={{fontSize:14,marginBottom:4}}>Loading{isDrive?" from Google Drive":""}…</div>
             <div style={{fontSize:11,color:"#aaa"}}>This may take a few seconds</div>
           </div>
         </div>}
