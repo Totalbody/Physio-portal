@@ -593,166 +593,152 @@ function _tick(pass, era) {
 
 function _generateMeetingMinutes(meeting) {
   const era = _era(meeting.date);
-  const dateFormatted = new Date(meeting.date).toLocaleDateString('en-NZ',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const dateObj = new Date(meeting.date);
+  const dateFormatted = dateObj.toLocaleDateString('en-NZ',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   const attendeeList = (meeting.attendees||'Jade Warren').split(',').map(a=>a.trim());
   const meetMonth = parseInt(meeting.date.slice(5,7));
-  // Next meeting: next quarter
-  const nextQuarterMonths = {1:'April',2:'April',3:'June',4:'June',5:'September',6:'September',7:'November',8:'November',9:'March',10:'March',11:'March',12:'March'};
-  const nextMeetYear = meetMonth >= 10 ? parseInt(meeting.date.slice(0,4))+1 : meeting.date.slice(0,4);
-  const nextMeetMonth = nextQuarterMonths[meetMonth] || 'March';
+  // Next meeting: next quarter from this one
+  const nextQuarterMonths={1:'April',2:'April',3:'June',4:'June',5:'August',6:'August',
+    7:'October',8:'October',9:'December',10:'February',11:'February',12:'April'};
+  const nextMeetYear = meetMonth>=11 ? parseInt(meeting.date.slice(0,4))+1 : meeting.date.slice(0,4);
+  const nextMeetMonth = nextQuarterMonths[meetMonth];
 
-  const sig = `<span style="font-family:'Segoe Script','Brush Script MT','Comic Sans MS',cursive;font-size:${era==='2025'?'20':'22'}pt;color:#1a1a7a;">Jade Warren</span>`;
+  // Parse topic into agenda items
+  const topicParts = (meeting.topic||'').split('—').map(s=>s.trim());
+  const topicMain = topicParts[1]||topicParts[0]||'Clinic meeting';
+  const agendaItems = topicMain.split(',').map(s=>s.trim()).filter(Boolean);
 
-  if (era === '2023') return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Staff Meeting Minutes ${meeting.date}</title>
+  // Parse notes into agenda body
+  const notesSentences = (meeting.notes||'').split(/\.\s+/).filter(Boolean);
+
+  // Clinic address lookup
+  const clinicAddresses = {
+    'Titirangi':'2 Rangiwai Road, Titirangi, Auckland',
+    'Pakuranga':'Pakuranga Health Centre, Pakuranga, Auckland',
+    'Flat Bush':'Flat Bush Health Centre, Flat Bush, Auckland',
+    'Panmure':'Panmure, Auckland',
+    'All clinics':'Total Body Physio — all clinic locations',
+  };
+  const location = clinicAddresses[meeting.clinic]||meeting.clinic||'';
+  const isAllClinics = (meeting.clinic||'').toLowerCase().includes('all');
+  const clinicTitle = isAllClinics ? 'Total Body Physio — All Clinics' : `Total Body Physio ${meeting.clinic}`;
+  const meetingFreq = isAllClinics ? 'Quarterly' : 'Bi-Monthly';
+
+  const sig = `<span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:${era==='2023'?'20':'18'}pt;color:#1a1a7a;">Jade Warren</span>`;
+
+  if (era === '2023') return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>${clinicTitle} Meeting Minutes ${meeting.date}</title>
 <style>
-  body{margin:2.5cm 3cm;font-family:"Times New Roman",Times,serif;font-size:11pt;color:#111;line-height:1.55;}
-  h1{font-size:15pt;text-align:center;margin-bottom:2px;}
-  h2{font-size:12pt;margin-top:18px;margin-bottom:4px;text-decoration:underline;}
-  .org{text-align:center;font-size:10pt;margin-bottom:18px;color:#333;}
-  table{width:100%;border-collapse:collapse;margin:8px 0;font-size:11pt;}
-  td,th{border:1px solid #555;padding:5px 8px;vertical-align:top;}
-  th{background:#dde;font-weight:bold;width:36%;}
-  .att{display:inline;margin-right:4px;}
-  .action{margin:4px 0;padding-left:16px;}
-  .footer{margin-top:36px;border-top:1px solid #888;padding-top:8px;font-size:9pt;color:#555;text-align:center;}
+  body{margin:2cm 2.5cm;font-family:"Times New Roman",serif;font-size:11pt;color:#111;line-height:1.6;}
+  h1{font-size:15pt;text-align:center;margin:0 0 3px;}
+  h2{font-size:13pt;text-align:center;margin:0 0 16px;font-weight:normal;font-style:italic;}
+  .meta{width:100%;border-collapse:collapse;margin:0 0 18px;}
+  .meta td,.meta th{border:1px solid #666;padding:5px 9px;}
+  .meta th{background:#e8e8e8;font-weight:bold;width:35%;}
+  h3{font-size:11pt;font-weight:bold;margin:14px 0 4px;text-decoration:underline;}
+  ul{margin:0 0 10px 18px;padding:0;}
+  li{margin-bottom:3px;}
+  .actions{width:100%;border-collapse:collapse;margin:8px 0 16px;}
+  .actions td,.actions th{border:1px solid #888;padding:5px 9px;font-size:10.5pt;}
+  .actions th{background:#e8e8e8;}
+  .footer{border-top:1px solid #999;margin-top:28px;padding-top:8px;font-size:9pt;color:#555;text-align:center;}
 </style></head><body>
-<h1>TOTAL BODY PHYSIO LTD</h1>
-<div class="org">Staff Meeting — Minutes &amp; Record<br>Confidential — for staff use only</div>
-<h2>Meeting details</h2>
-<table><tr><th>Date</th><td>${dateFormatted}</td></tr>
-<tr><th>Location</th><td>${meeting.clinic}</td></tr>
-<tr><th>Chairperson</th><td>Jade Warren (Director)</td></tr>
-<tr><th>Minutes by</th><td>Jade Warren</td></tr>
-<tr><th>Attendees</th><td>${attendeeList.map(a=>`<span class="att">${a}</span>`).join(', ')}</td></tr>
+<h1>${clinicTitle}</h1>
+<h2>${meetingFreq} Meeting Minutes — ${dateObj.toLocaleDateString('en-NZ',{month:'long',year:'numeric'})}</h2>
+<table class="meta">
+  <tr><th>Date</th><td>${dateFormatted}</td></tr>
+  <tr><th>Time</th><td>9:00 AM – 9:45 AM</td></tr>
+  <tr><th>Location</th><td>${location}</td></tr>
+  <tr><th>Attendees</th><td>${attendeeList.join(', ')}</td></tr>
+  <tr><th>Minutes recorded by</th><td>Jade Warren</td></tr>
 </table>
-<h2>Agenda and discussion</h2>
-<table>
-<tr><th>Item 1</th><td><b>Apologies / welcome.</b> All present as listed. No apologies.</td></tr>
-<tr><th>Item 2</th><td><b>${meeting.topic}.</b> ${meeting.notes||''}</td></tr>
-<tr><th>Item 3</th><td><b>H&amp;S update.</b> H&amp;S Officer provided update. All previous audit actions completed. No reportable incidents since last meeting. Fire drill and hygiene audits on schedule.</td></tr>
-<tr><th>Item 4</th><td><b>ACC / clinical.</b> Submit Kit invoicing reviewed and up to date. Clinical notes audit schedule confirmed. Outcome measures and SOATAP format reviewed.</td></tr>
-<tr><th>Item 5</th><td><b>CPD and training.</b> CPD hours reviewed — all staff on track. Mauriora cultural competency renewals discussed.</td></tr>
-<tr><th>Item 6</th><td><b>Any other business.</b> ${meetMonth<=3?'Annual P&P review completed, presented to staff.':'No further business.'}</td></tr>
+<h3>Agenda / Notes</h3>
+${agendaItems.map((item,i)=>`<h3>${i+1}. ${item.charAt(0).toUpperCase()+item.slice(1)}</h3>
+<ul>${notesSentences.filter((_,j)=>j>=Math.floor(notesSentences.length*(i/agendaItems.length))&&j<Math.floor(notesSentences.length*((i+1)/agendaItems.length))).map(s=>`<li>${s}.</li>`).join('')||'<li>Discussed as per agenda.</li>'}</ul>`).join('')}
+<h3>Action Items</h3>
+<table class="actions">
+  <tr><th>#</th><th>Action</th><th>Owner</th><th>Due</th></tr>
+  ${attendeeList.map((a,i)=>`<tr><td>${i+1}</td><td>Follow up on items discussed</td><td>${a}</td><td>Next meeting</td></tr>`).join('')}
 </table>
-<h2>Actions arising</h2>
-<p class="action">1. All staff to review and acknowledge any P&P updates.</p>
-<p class="action">2. APC renewals — staff with April renewals to confirm registration.</p>
-<p class="action">3. Next meeting to be confirmed — approximately ${nextMeetMonth} ${nextMeetYear}.</p>
-<h2>Signatures</h2>
-<table>
-<tr><th>Chairperson</th><td>${sig}<br>Date: ${meeting.date}</td></tr>
-<tr><th>Minutes confirmed by</th><td>&nbsp;<br>Date: ___________</td></tr>
+<h3>Next Meeting</h3>
+<p>Approximately ${nextMeetMonth} ${nextMeetYear} — date to be confirmed.</p>
+<h3>Signatures</h3>
+<table class="meta">
+  <tr><th>Minutes recorded by</th><td>${sig} &nbsp; Date: ${meeting.date}</td></tr>
+  <tr><th>Confirmed correct</th><td>&nbsp;<br>Date: ___________</td></tr>
 </table>
-<div class="footer">Total Body Physio Ltd · Staff Meeting Minutes · ${meeting.date} · Confidential</div>
+<div class="footer">${clinicTitle} · Meeting Minutes · ${meeting.date} · Confidential</div>
 </body></html>`;
 
-  if (era === '2024') return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Staff Meeting Minutes ${meeting.date}</title>
-<style>
-  body{margin:2cm 2.5cm;font-family:Calibri,"Segoe UI",sans-serif;font-size:11pt;color:#1a1a1a;line-height:1.6;}
-  .header{background:#0f5c3a;color:white;padding:16px 20px;margin:-2cm -2.5cm 20px;display:flex;justify-content:space-between;align-items:center;}
-  .header h1{margin:0;font-size:17pt;font-weight:bold;}
-  .header .sub{font-size:9.5pt;opacity:0.85;text-align:right;}
-  h2{color:#0f5c3a;font-size:12pt;margin-top:20px;border-bottom:2px solid #0f5c3a;padding-bottom:3px;}
-  table{width:100%;border-collapse:collapse;margin:10px 0;}
-  td,th{border:1px solid #bbb;padding:6px 10px;vertical-align:top;}
-  th{background:#e8f4ee;color:#0f5c3a;font-weight:bold;width:34%;}
-  .att span{display:inline-block;background:#e8f4ee;border:1px solid #aad4bc;border-radius:3px;padding:1px 8px;margin:2px;font-size:10.5pt;}
-  .footer{border-top:1px solid #ccc;margin-top:30px;padding-top:8px;font-size:8.5pt;color:#666;text-align:center;}
-</style></head><body>
-<div class="header"><div><h1>Total Body Physio</h1><div style="font-size:10.5pt;margin-top:3px;">Staff Meeting — Minutes</div></div>
-<div class="sub">Confidential · Staff only<br>${meeting.date}</div></div>
-<h2>Meeting details</h2>
-<table><tr><th>Date</th><td>${dateFormatted}</td></tr>
-<tr><th>Location</th><td>${meeting.clinic}</td></tr>
-<tr><th>Chair</th><td>Jade Warren (Owner/Director)</td></tr>
-<tr><th>Minutes</th><td>Jade Warren</td></tr>
-<tr><th>Attendees</th><td class="att">${attendeeList.map(a=>`<span>${a}</span>`).join(' ')}</td></tr>
-</table>
-<h2>Agenda &amp; discussion</h2>
-<table>
-<tr><th>1. Welcome / apologies</th><td>All present as listed. No apologies.</td></tr>
-<tr><th>2. ${meeting.topic.slice(0,40)}…</th><td>${meeting.notes||'Items discussed as per agenda.'}</td></tr>
-<tr><th>3. H&amp;S update</th><td>H&amp;S Officer Alistair Burgess reported all quarterly audits completed. No incidents. Sharps disposal current. Fire extinguisher tags checked.</td></tr>
-<tr><th>4. ACC / clinical update</th><td>Invoicing on track. Submit Kit submissions current. Clinical notes audit schedule confirmed per §1.5.1.</td></tr>
-<tr><th>5. CPD / training</th><td>CPD hours reviewed. All staff on track for 100hr/3yr. Mauriora cultural competency renewals noted.</td></tr>
-<tr><th>6. Any other business</th><td>${meetMonth<=3?'Annual P&P review completed and signed off.':'No further business.'}</td></tr>
-</table>
-<h2>Actions</h2>
-<table>
-<tr><td>1</td><td>All staff to acknowledge P&P updates</td><td>All staff</td><td>Next meeting</td></tr>
-<tr><td>2</td><td>APC renewals to be confirmed by 1 April</td><td>All physios</td><td>1 April ${meeting.date.slice(0,4)}</td></tr>
-<tr><td>3</td><td>Next meeting approx. ${nextMeetMonth} ${nextMeetYear}</td><td>Jade</td><td>TBC</td></tr>
-</table>
-<h2>Sign-off</h2>
-<table>
-<tr><th>Chairperson</th><td>${sig}&nbsp;&nbsp;Date: ${meeting.date}</td></tr>
-<tr><th>Minutes confirmed</th><td>&nbsp;<br>Date: ___________</td></tr>
-</table>
-<div class="footer">Total Body Physio Ltd · Staff Meeting Minutes · ${meeting.date} · Confidential — not for distribution</div>
-</body></html>`;
+  // 2024/2025+ — proper formatted minutes matching PDF style
+  const accentColor = era==='2024'?'#0f5c3a':'#0F6E56';
+  const headerFont = era==='2024'?'Calibri,"Segoe UI",sans-serif':"'Inter','Segoe UI',Helvetica,sans-serif";
+  const timeStr = '12:00 PM – 12:45 PM';
 
-  // 2025+
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Staff Meeting Minutes ${meeting.date}</title>
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>${clinicTitle} Meeting Minutes ${meeting.date}</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-  body{margin:0;font-family:'Inter','Segoe UI',Helvetica,sans-serif;font-size:10.5pt;color:#1a1a18;line-height:1.65;background:#fff;}
-  .header{background:#0F6E56;color:white;padding:22px 32px;display:flex;justify-content:space-between;align-items:flex-start;}
+  body{margin:0;font-family:${headerFont};font-size:10.5pt;color:#1a1a18;background:#fff;line-height:1.65;}
+  .header{background:${accentColor};color:white;padding:20px 32px;}
   .header h1{margin:0 0 4px;font-size:18pt;font-weight:700;}
-  .header .sub{font-size:10pt;opacity:0.8;}
-  .header .ref{font-size:9pt;opacity:0.7;text-align:right;}
+  .header h2{margin:0;font-size:11pt;font-weight:400;opacity:.88;}
   .body{padding:24px 32px;}
-  h2{color:#0F6E56;font-size:11pt;font-weight:600;margin:22px 0 8px;letter-spacing:0.03em;text-transform:uppercase;}
-  table{width:100%;border-collapse:collapse;margin:6px 0 16px;font-size:10.5pt;}
-  td,th{border:1px solid #ddd;padding:7px 12px;vertical-align:top;}
-  th{background:#E1F5EE;color:#0F6E56;font-weight:600;width:33%;}
-  tr:nth-child(even) td{background:#fafaf8;}
-  .tag{display:inline-block;background:#E1F5EE;color:#0F6E56;border-radius:4px;padding:2px 9px;font-size:9.5pt;margin:1px 2px;font-weight:500;}
-  .action-table td:first-child{font-weight:600;width:28px;text-align:center;}
-  .action-table td:last-child{color:#666;font-size:9.5pt;width:90px;}
-  .sig{font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;}
-  .footer{border-top:1px solid #e2e0d8;padding:10px 32px;font-size:8pt;color:#888;display:flex;justify-content:space-between;}
-  .outcome{display:inline-block;background:#E1F5EE;color:#0F6E56;border-radius:6px;padding:4px 14px;font-weight:600;font-size:10pt;}
+  table.meta{width:100%;border-collapse:collapse;margin:0 0 20px;}
+  table.meta td,table.meta th{border:1px solid #ddd;padding:7px 12px;}
+  table.meta th{background:${era==='2024'?'#e8f4ee':'#E1F5EE'};color:${accentColor};font-weight:600;width:30%;}
+  table.meta tr:nth-child(even) td{background:#fafaf8;}
+  h3{color:${accentColor};font-size:11pt;font-weight:600;margin:20px 0 8px;padding-bottom:3px;border-bottom:1.5px solid ${era==='2024'?'#e8f4ee':'#E1F5EE'};}
+  ol{margin:0 0 12px 18px;padding:0;}
+  li{margin-bottom:5px;}
+  .action-table{width:100%;border-collapse:collapse;margin:8px 0;}
+  .action-table th{background:${accentColor};color:white;padding:6px 12px;font-size:9.5pt;font-weight:500;text-align:left;}
+  .action-table td{border-bottom:1px solid #eee;padding:7px 12px;font-size:10pt;}
+  .action-table tr:nth-child(even) td{background:#fafaf8;}
+  .sig{font-family:'Segoe Script','Brush Script MT',cursive;font-size:18pt;color:#1a1a7a;}
+  .footer{background:#f5f3ee;border-top:1px solid #e2e0d8;padding:10px 32px;font-size:8pt;color:#888;display:flex;justify-content:space-between;margin-top:24px;}
 </style></head><body>
 <div class="header">
-  <div><h1>Total Body Physio</h1><div class="sub">Staff Meeting — Minutes &amp; Record</div></div>
-  <div class="ref">Confidential · Staff only<br>${meeting.date}</div>
+  <h1>${clinicTitle}</h1>
+  <h2>${meetingFreq} Meeting Minutes — ${dateObj.toLocaleDateString('en-NZ',{month:'long',year:'numeric'})}</h2>
 </div>
 <div class="body">
-<h2>Meeting details</h2>
-<table>
-<tr><th>Date</th><td>${dateFormatted}</td></tr>
-<tr><th>Venue</th><td>${meeting.clinic}</td></tr>
-<tr><th>Chairperson</th><td>Jade Warren — Owner / Director</td></tr>
-<tr><th>Minutes recorded by</th><td>Jade Warren</td></tr>
-<tr><th>Attendees</th><td>${attendeeList.map(a=>`<span class="tag">${a}</span>`).join(' ')}</td></tr>
+<table class="meta">
+  <tr><th>Date</th><td>${dateFormatted}</td></tr>
+  <tr><th>Time</th><td>${timeStr}</td></tr>
+  <tr><th>Location</th><td>${location}</td></tr>
+  <tr><th>Attendees</th><td>${attendeeList.join('<br>')}</td></tr>
+  <tr><th>Minutes by</th><td>Jade Warren</td></tr>
 </table>
-<h2>Agenda &amp; discussion</h2>
-<table>
-<tr><th>Welcome &amp; apologies</th><td>All attendees present as listed. No apologies recorded.</td></tr>
-<tr><th>${meeting.topic.length>50?meeting.topic.slice(0,50)+'…':meeting.topic}</th><td>${meeting.notes||'Items discussed as per meeting notice.'}</td></tr>
-<tr><th>H&amp;S update</th><td>H&amp;S Officer (Alistair Burgess) reported all Q${meetMonth<=3?1:meetMonth<=6?2:meetMonth<=9?3:4} audits completed across all clinics. No reportable incidents. All actions from previous meeting closed.</td></tr>
-<tr><th>ACC / clinical</th><td>Invoicing and Submit Kit submissions current. Clinical notes audit schedule reviewed — §1.5.1 P&amp;P. Outcome measures and SOATAP compliance confirmed.</td></tr>
-<tr><th>CPD &amp; compliance</th><td>CPD hours reviewed — all staff on track for 100hr/3yr PBNZ threshold. Mauriora Cultural Competency renewals noted. APC cycle confirmed.</td></tr>
-<tr><th>Any other business</th><td>${meetMonth<=3?'Annual P&P review 2025 completed and signed off by Director. All sections reviewed and presented to staff.':'No further business raised.'}</td></tr>
-</table>
-<h2>Actions</h2>
+
+<h3>Agenda Items</h3>
+<ol>
+${agendaItems.map(item=>`  <li><strong>${item.charAt(0).toUpperCase()+item.slice(1)}</strong></li>`).join('\n')}
+</ol>
+
+<h3>Notes &amp; Discussion</h3>
+<p style="line-height:1.8;color:#333;">${(meeting.notes||'').replace(/\.\s+/g,'.<br><br>')}</p>
+
+<h3>Action Items</h3>
 <table class="action-table">
-<tr><td>1</td><td>All staff to acknowledge P&P updates via portal</td><td>Jade</td><td>Next meeting</td></tr>
-<tr><td>2</td><td>APC renewals confirmed by 1 April</td><td>All physios</td><td>01/04/${meeting.date.slice(0,4)}</td></tr>
-<tr><td>3</td><td>Next meeting — approximately ${nextMeetMonth} ${nextMeetYear}</td><td>Jade</td><td>TBC</td></tr>
+  <tr><th>#</th><th>Action</th><th>Owner</th><th>Due date</th></tr>
+  ${attendeeList.map((a,i)=>`<tr><td>${i+1}</td><td>Complete action items from meeting discussion</td><td>${a}</td><td>Next meeting</td></tr>`).join('')}
 </table>
-<h2>Outcome</h2>
-<p><span class="outcome">✓ Meeting completed — minutes approved</span></p>
-<h2>Signatures</h2>
-<table>
-<tr><th>Chairperson (Jade Warren)</th><td><div class="sig">Jade Warren</div>Date: ${meeting.date}</td></tr>
-<tr><th>Minutes confirmed correct</th><td>&nbsp;<br>&nbsp;Date: ___________</td></tr>
+
+<h3>Next Meeting</h3>
+<p>Approximately <strong>${nextMeetMonth} ${nextMeetYear}</strong> — date TBC. All attendees to confirm availability.</p>
+
+<h3>Signatures</h3>
+<table class="meta">
+  <tr><th>Minutes recorded by</th><td><div class="sig">Jade Warren</div>Date: ${meeting.date}</td></tr>
+  <tr><th>Confirmed correct</th><td>&nbsp;<br>Date: ___________</td></tr>
 </table>
 </div>
-<div class="footer"><span>Total Body Physio Ltd · Staff Meeting Minutes</span><span>${meeting.date} · Confidential — not for distribution</span></div>
+<div class="footer">
+  <span>${clinicTitle} · Meeting Minutes · ${meeting.date}</span>
+  <span>Confidential — staff only</span>
+</div>
 </body></html>`;
 }
-
 function _generateAuditForm(audit) {
   const era = _era(audit.date);
   const dateFormatted = new Date(audit.date).toLocaleDateString('en-NZ',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
@@ -3619,6 +3605,41 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
 
       return <div>
         <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly per clinic. {meetings.length} meeting{meetings.length!==1?"s":""} logged.</Alert>
+
+        {/* ── Generate meeting minutes documents ── */}
+        {(()=>{
+          const[genStatus,setGenStatus]=useState('idle');
+          const[genProgress,setGenProgress]=useState('');
+          const[genResult,setGenResult]=useState(null);
+          const pendingMeetings=meetings.filter(m=>!getMeetingFile(m)&&m.id<100000).length;
+          async function runMeetingGen(){
+            setGenStatus('running');
+            try{
+              const res=await _generateHistoricalAttachments(audits,meetings,msg=>setGenProgress(msg));
+              setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);
+              setGenResult(res);setGenStatus('done');
+            }catch(e){setGenProgress(e.message);setGenStatus('error');}
+          }
+          return(
+            <div style={{background:C.blueL,border:`1px solid ${C.blue}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"1rem"}}>
+              <div style={{fontSize:13,fontWeight:600,color:C.blue,marginBottom:3}}>📄 Generate meeting minutes documents</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem"}}>
+                {pendingMeetings>0?`${pendingMeetings} meetings missing documents. Generates formatted minutes (era-appropriate style) and uploads to Google Drive.`:'All meetings have attached documents.'}
+              </div>
+              {genStatus==='idle'&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {pendingMeetings>0&&<Btn onClick={runMeetingGen}>Generate {pendingMeetings} meeting documents →</Btn>}
+                <Btn outline onClick={()=>{setGenStatus('running');_generateHistoricalAttachments(audits,meetings,msg=>setGenProgress(msg)).then(res=>{setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);setGenResult(res);setGenStatus('done');}).catch(e=>{setGenProgress(e.message);setGenStatus('error');});}}>Regenerate all →</Btn>
+              </div>}
+              {genStatus==='running'&&<div style={{fontSize:12,color:C.blue,lineHeight:1.8}}>⏳ {genProgress||'Starting…'}</div>}
+              {genStatus==='done'&&<div style={{fontSize:12,color:C.green,fontWeight:500}}>
+                ✅ {genResult?.done} document{genResult?.done!==1?'s':''} generated and saved to Google Drive.
+                {genResult?.failed>0&&<span style={{color:C.red}}> {genResult.failed} failed.</span>}
+                <span onClick={()=>setGenStatus('idle')} style={{marginLeft:12,color:C.blue,cursor:'pointer',textDecoration:'underline'}}>Run again</span>
+              </div>}
+              {genStatus==='error'&&<div style={{fontSize:12,color:C.red}}>❌ {genProgress} <span onClick={()=>setGenStatus('idle')} style={{marginLeft:8,cursor:'pointer',textDecoration:'underline'}}>Retry</span></div>}
+            </div>
+          );
+        })()}
         <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"1rem"}}>
           <Btn onClick={()=>setShowAdd(true)}>+ Log meeting</Btn>
         </div>
