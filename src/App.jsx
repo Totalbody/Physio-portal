@@ -866,89 +866,82 @@ function MigrationTool({portalConnected,onDone}){
   );
 }
 
-// file viewer
+// file viewer — no iframes (they freeze mobile). Images load inline; PDFs open in Drive.
 function FileViewer({file,onClose}){
   if(!file)return null;
   const isImg=file.fileType?.startsWith("image/");
-  const isPdf=file.fileType==="application/pdf";
   const isDrive=!!file.driveId;
-  const[loading,setLoading]=useState(true);
-  const[error,setError]=useState(false);
+  const[imgLoaded,setImgLoaded]=useState(false);
+  const[imgError,setImgError]=useState(false);
 
-  // Drive-native URLs — much faster than uc?export=view
-  const imgSrc  = isDrive
-    ? `https://drive.google.com/thumbnail?id=${file.driveId}&sz=w1600`
+  // Drive thumbnail is fast and reliable for images (no iframe needed)
+  const imgSrc = isDrive
+    ? `https://drive.google.com/thumbnail?id=${file.driveId}&sz=w1200`
     : (file.blobUrl||file.dataUrl);
-  const pdfSrc  = isDrive
-    ? `https://drive.google.com/file/d/${file.driveId}/preview`
-    : (file.blobUrl
-        ? "https://docs.google.com/gview?embedded=true&url="+encodeURIComponent(file.blobUrl)
-        : file.dataUrl);
+
+  // Open link — Drive webViewLink for Drive files, otherwise blobUrl
   const openUrl = file.driveUrl||file.blobUrl||file.dataUrl;
 
   return(
-    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.85)",zIndex:600,display:"flex",flexDirection:"column"}}>
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.88)",zIndex:600,display:"flex",flexDirection:"column"}}>
 
-      {/* ── Header bar ── */}
-      <div style={{background:C.teal,padding:"0.75rem 1rem",display:"flex",alignItems:"center",gap:10,flexShrink:0,minHeight:52}}>
+      {/* Header */}
+      <div style={{background:C.teal,padding:"0.75rem 1rem",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         <div style={{flex:1,color:"white",fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.fileName}</div>
-        {openUrl&&<a href={openUrl} target="_blank" rel="noreferrer" style={{color:"white",fontSize:12,padding:"4px 12px",background:"rgba(255,255,255,0.25)",borderRadius:20,textDecoration:"none",fontWeight:500,flexShrink:0}}>↗ Open in Drive</a>}
-        <button
-          onClick={onClose}
-          style={{background:"rgba(255,255,255,0.25)",border:"none",color:"white",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:20,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:300}}
-        >✕</button>
+        <button onClick={onClose} style={{background:"rgba(255,255,255,0.25)",border:"none",color:"white",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:20,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
       </div>
 
-      {/* ── Content area ── */}
-      <div style={{flex:1,overflow:"auto",background:"#1a1a1a",position:"relative",display:"flex",flexDirection:"column"}}>
-        {/* Loading overlay */}
-        {loading&&(isImg||isPdf)&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#1a1a1a",zIndex:2}}>
-          <div style={{textAlign:"center",color:"white"}}>
-            <div style={{fontSize:40,marginBottom:8}}>{isPdf?"📄":"🖼️"}</div>
-            <div style={{fontSize:14,marginBottom:4}}>Loading{isDrive?" from Google Drive":""}…</div>
-            <div style={{fontSize:11,color:"#aaa"}}>This may take a few seconds</div>
+      {/* Content */}
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem",overflow:"auto"}}>
+
+        {/* ── Image viewer ── */}
+        {isImg&&!imgError&&(
+          <div style={{textAlign:"center",width:"100%"}}>
+            {!imgLoaded&&<div style={{color:"white",marginBottom:"1rem"}}>
+              <div style={{fontSize:36,marginBottom:8}}>🖼️</div>
+              <div style={{fontSize:14}}>Loading image…</div>
+            </div>}
+            <img
+              src={imgSrc}
+              alt={file.fileName}
+              style={{maxWidth:"100%",maxHeight:"70vh",objectFit:"contain",borderRadius:8,display:imgLoaded?"block":"none",margin:"0 auto"}}
+              onLoad={()=>setImgLoaded(true)}
+              onError={()=>setImgError(true)}
+            />
+            {imgLoaded&&openUrl&&<div style={{marginTop:"1rem"}}>
+              <a href={openUrl} target="_blank" rel="noreferrer" style={{color:"rgba(255,255,255,0.7)",fontSize:12,textDecoration:"none"}}>↗ Open full size in Google Drive</a>
+            </div>}
           </div>
-        </div>}
+        )}
 
-        {/* Image */}
-        {isImg&&!error&&<img
-          src={imgSrc} alt={file.fileName}
-          style={{maxWidth:"100%",maxHeight:"100%",margin:"auto",objectFit:"contain",display:"block",opacity:loading?0:1,transition:"opacity 0.3s"}}
-          onLoad={()=>setLoading(false)}
-          onError={()=>{setLoading(false);setError(true);}}
-        />}
-
-        {/* PDF — Drive native preview */}
-        {isPdf&&!error&&<iframe
-          src={pdfSrc}
-          style={{width:"100%",flex:1,border:"none",opacity:loading?0:1,transition:"opacity 0.4s",display:"block",minHeight:"70vh"}}
-          title={file.fileName}
-          onLoad={()=>setLoading(false)}
-          onError={()=>{setLoading(false);setError(true);}}
-        />}
-
-        {/* Error state */}
-        {error&&<div style={{textAlign:"center",padding:"3rem",color:"white",margin:"auto"}}>
-          <div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div>
-          <div style={{fontSize:14,marginBottom:"0.5rem"}}>{file.fileName}</div>
-          <div style={{fontSize:12,color:"#aaa",marginBottom:"1.25rem"}}>Preview unavailable</div>
-          {openUrl&&<a href={openUrl} target="_blank" rel="noreferrer" style={{color:C.tealL,fontSize:14,fontWeight:600}}>↗ Open in Google Drive</a>}
-        </div>}
-
-        {/* Non-image, non-PDF */}
-        {!isImg&&!isPdf&&<div style={{textAlign:"center",padding:"3rem",color:"white",margin:"auto"}}>
-          <div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div>
-          <div style={{fontSize:14,fontWeight:500,marginBottom:"1rem"}}>{file.fileName}</div>
-          {openUrl&&<a href={openUrl} target="_blank" rel="noreferrer" style={{color:C.tealL,fontSize:13,fontWeight:600}}>↗ Open in Google Drive</a>}
-        </div>}
+        {/* ── PDF / other / image error — open-in-Drive card ── */}
+        {(!isImg||imgError)&&(
+          <div style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:16,padding:"2.5rem 2rem",textAlign:"center",maxWidth:360,width:"100%"}}>
+            <div style={{fontSize:56,marginBottom:"1rem"}}>{file.fileType==="application/pdf"?"📄":"📎"}</div>
+            <div style={{color:"white",fontWeight:600,fontSize:16,marginBottom:6,wordBreak:"break-word"}}>{file.fileName}</div>
+            {file.uploadedDate&&<div style={{color:"rgba(255,255,255,0.5)",fontSize:12,marginBottom:"2rem"}}>Uploaded {file.uploadedDate}</div>}
+            {openUrl
+              ?<a
+                href={openUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{display:"inline-block",background:C.teal,color:"white",padding:"12px 28px",borderRadius:10,fontWeight:600,fontSize:15,textDecoration:"none"}}
+              >↗ Open in Google Drive</a>
+              :<div style={{color:"rgba(255,255,255,0.4)",fontSize:13}}>No preview available</div>
+            }
+            <div style={{color:"rgba(255,255,255,0.35)",fontSize:11,marginTop:"1rem"}}>
+              {file.fileType==="application/pdf"?"Google Drive opens PDFs with full zoom, search, and all pages.":"Opens in Google Drive."}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ── Always-visible close bar at bottom — works even when iframe captures taps ── */}
+      {/* Always-visible close bar — works even when content is unresponsive */}
       <div
         onClick={onClose}
-        style={{background:"rgba(0,0,0,0.7)",borderTop:"1px solid rgba(255,255,255,0.15)",padding:"14px",textAlign:"center",cursor:"pointer",flexShrink:0,userSelect:"none"}}
+        style={{background:"rgba(0,0,0,0.6)",borderTop:"1px solid rgba(255,255,255,0.12)",padding:"16px",textAlign:"center",cursor:"pointer",flexShrink:0}}
       >
-        <span style={{color:"rgba(255,255,255,0.7)",fontSize:13,fontWeight:500}}>✕ Tap here to close</span>
+        <span style={{color:"rgba(255,255,255,0.6)",fontSize:13,fontWeight:500}}>✕  Tap to close</span>
       </div>
     </div>
   );
