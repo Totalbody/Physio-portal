@@ -3025,22 +3025,6 @@ export default function App(){
         saveGen("audits",   newAudits);
         saveGen("meetings", newMeetings);
 
-        // Also pull any user-created audits from Vercel (submitted from KPI on iOS
-        // where Drive auth was unavailable) and merge them into Drive
-        fetch(PORTAL_API+"/store",{headers:{"X-Portal-Secret":PORTAL_SECRET}})
-          .then(r=>r.ok?r.json():{}).then(vs=>{
-            const vercelAudits=(Array.isArray(vs.data?.audits)?vs.data.audits:[])
-              .filter(a=>typeof a.id==='string'||a.id>=100000); // user-created only
-            const existingIds=new Set(newAudits.map(a=>String(a.id)));
-            const toAdd=vercelAudits.filter(a=>!existingIds.has(String(a.id)));
-            if(toAdd.length>0){
-              const merged=[...newAudits,...toAdd].sort((a,b)=>b.date.localeCompare(a.date));
-              setAudits(merged);
-              saveGen("audits",merged);
-              _log('[Portal] Pulled',toAdd.length,'audit(s) from Vercel into Drive');
-            }
-          }).catch(()=>{});
-
         if(d["inservices"]&&d["inservices"].length)setInservices(d["inservices"]);
         if(d["extAudits"]&&d["extAudits"].length)setExtAudits(d["extAudits"]);
         if(d["ppDocs"])setPpDocs(d["ppDocs"]||[]);
@@ -3055,6 +3039,27 @@ export default function App(){
         setAudits(INIT_AUDITS);
         setMeetings(INIT_MEETINGS);
       }
+
+      // ── Always pull user-created audits from Vercel too ──────────────────
+      // KPI on iOS saves audits to Vercel when Drive auth unavailable.
+      // Pull them here so the portal always shows them regardless of Drive status.
+      fetch(PORTAL_API+"/store",{headers:{"X-Portal-Secret":PORTAL_SECRET}})
+        .then(r=>r.ok?r.json():{}).then(vs=>{
+          const vercelAudits=(Array.isArray(vs.data?.audits)?vs.data.audits:[])
+            .filter(a=>typeof a.id==='string'||Number(a.id)>=100000);
+          if(vercelAudits.length===0)return;
+          setAudits(prev=>{
+            const existingIds=new Set(prev.map(a=>String(a.id)));
+            const toAdd=vercelAudits.filter(a=>!existingIds.has(String(a.id)));
+            if(toAdd.length===0)return prev;
+            const merged=[...prev,...toAdd].sort((a,b)=>b.date.localeCompare(a.date));
+            // If Drive is connected, also persist these into Drive
+            saveGen("audits",merged);
+            _log('[Portal] Pulled',toAdd.length,'audit(s) from Vercel');
+            return merged;
+          });
+        }).catch(()=>{});
+
       setPortalLoading(false);
     });
   },[]);
