@@ -2711,32 +2711,25 @@ const INIT_AUDITS=[
   _mk(3001,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2023-03-15",23,0,0,23,"Passed","All H&S items checked. First aid kit fully stocked. Emergency contact list current. No hazards identified."),
   _mk(3002,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2023-03-17",22,1,0,23,"1 issue found","Treatment room 2 overhead light flickering — reported to building management for repair. Sharps bin 3/4 full — disposed at Chemist Warehouse same day. All other items passed."),
   _mk(3003,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2023-03-19",23,0,0,23,"Passed","All items checked. Evacuation plan visible. No issues."),
-  _mk(3004,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2023-03-21",23,0,0,23,"Passed","All H&S requirements met. First aid kit checked and complete."),
   _mk(3005,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2023-06-15",23,0,0,23,"Passed","Q2 audit complete. All items passed. No hazards."),
   _mk(3006,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2023-06-17",23,0,0,23,"Passed","All items passed."),
   _mk(3007,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2023-06-19",23,0,0,23,"Passed","All items passed."),
-  _mk(3008,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2023-06-21",22,1,0,23,"1 issue found","Fire extinguisher tag expired — annual service booked with supplier for following week. Temporary extinguisher in place. All other items passed."),
   _mk(3009,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2023-09-15",23,0,0,23,"Passed","Q3 audit complete. All passed."),
   _mk(3010,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2023-09-17",23,0,0,23,"Passed","All items passed."),
   _mk(3011,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2023-09-19",23,0,0,23,"Passed","All items passed."),
-  _mk(3012,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2023-09-21",23,0,0,23,"Passed","All items passed."),
   _mk(3013,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2023-11-15",23,0,0,23,"Passed","Q4 audit complete. All passed."),
   _mk(3014,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2023-11-17",23,0,0,23,"Passed","All items passed."),
   _mk(3015,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2023-11-19",23,0,0,23,"Passed","All items passed."),
-  _mk(3016,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2023-11-21",23,0,0,23,"Passed","All items passed."),
   // ── H&S AUDITS 2024 ───────────────────────────────────────────────────────
   _mk(3017,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2024-03-15",23,0,0,23,"Passed","Q1 2024. All items passed."),
   _mk(3018,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2024-03-17",22,1,0,23,"1 issue found","Evacuation map out of date following room reconfiguration — updated and reprinted on site. Back exit signage also refreshed. All other items passed."),
   _mk(3019,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2024-03-19",23,0,0,23,"Passed","All items passed."),
-  _mk(3020,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2024-03-21",23,0,0,23,"Passed","All items passed."),
   _mk(3021,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2024-06-15",23,0,0,23,"Passed","Q2 2024. All passed."),
   _mk(3022,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2024-06-17",23,0,0,23,"Passed","All items passed."),
   _mk(3023,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2024-06-19",23,0,0,23,"Passed","All items passed."),
-  _mk(3024,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2024-06-21",23,0,0,23,"Passed","All items passed."),
   _mk(3025,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2024-09-15",23,0,0,23,"Passed","Q3 2024. All passed."),
   _mk(3026,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2024-09-17",23,0,0,23,"Passed","All items passed."),
   _mk(3027,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2024-09-19",23,0,0,23,"Passed","All items passed."),
-  _mk(3028,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2024-09-21",23,0,0,23,"Passed","All items passed."),
   _mk(3029,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2024-11-15",23,0,0,23,"Passed","Q4 2024. All passed."),
   _mk(3030,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2024-11-17",23,0,0,23,"Passed","All items passed."),
   _mk(3031,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2024-11-19",23,0,0,23,"Passed","All items passed."),
@@ -2768,32 +2761,25 @@ const INIT_AUDITS=[
   _mk(4001,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2023-03-16",19,0,0,19,"Passed","All hygiene items passed. Plinth covers, alcohol wipes, hand sanitiser all stocked."),
   _mk(4002,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2023-03-18",19,0,0,19,"Passed","All items passed."),
   _mk(4003,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2023-03-20",19,0,0,19,"Passed","All items passed."),
-  _mk(4004,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2023-03-22",17,2,0,19,"2 issues found","Hand soap dispenser empty in treatment room — restocked immediately. Plinth roll nearly empty with no spare roll available — new stock ordered same day and kept in storage going forward."),
   _mk(4005,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2023-06-16",19,0,0,19,"Passed","Q2 audit passed."),
   _mk(4006,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2023-06-18",19,0,0,19,"Passed","All items passed."),
   _mk(4007,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2023-06-20",19,0,0,19,"Passed","All items passed."),
-  _mk(4008,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2023-06-22",19,0,0,19,"Passed","All items passed."),
   _mk(4009,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2023-09-16",19,0,0,19,"Passed","Q3 audit passed."),
   _mk(4010,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2023-09-18",19,0,0,19,"Passed","All items passed."),
   _mk(4011,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2023-09-20",19,0,0,19,"Passed","All items passed."),
-  _mk(4012,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2023-09-22",19,0,0,19,"Passed","All items passed."),
   _mk(4013,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2023-11-16",19,0,0,19,"Passed","Q4 audit passed."),
   _mk(4014,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2023-11-18",19,0,0,19,"Passed","All items passed."),
   _mk(4015,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2023-11-20",19,0,0,19,"Passed","All items passed."),
-  _mk(4016,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2023-11-22",19,0,0,19,"Passed","All items passed."),
   // ── HYGIENE 2024 ──────────────────────────────────────────────────────────
   _mk(4017,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2024-03-16",19,0,0,19,"Passed","Q1 2024. All passed."),
   _mk(4018,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2024-03-18",19,0,0,19,"Passed","All passed."),
   _mk(4019,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2024-03-20",19,0,0,19,"Passed","All passed."),
-  _mk(4020,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2024-03-22",19,0,0,19,"Passed","All passed."),
   _mk(4021,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2024-06-16",19,0,0,19,"Passed","Q2 2024. All passed."),
   _mk(4022,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2024-06-18",18,1,0,19,"1 issue found","Plinth paper roll down to last few sheets with no spare in room — replaced immediately. Minimum stock level of 2 spare rolls per room now in place. All other hygiene items passed."),
   _mk(4023,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2024-06-20",19,0,0,19,"Passed","All passed."),
-  _mk(4024,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2024-06-22",19,0,0,19,"Passed","All passed."),
   _mk(4025,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2024-09-16",19,0,0,19,"Passed","Q3 2024. All passed."),
   _mk(4026,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2024-09-18",19,0,0,19,"Passed","All passed."),
   _mk(4027,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2024-09-20",19,0,0,19,"Passed","All passed."),
-  _mk(4028,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2024-09-22",19,0,0,19,"Passed","All passed."),
   _mk(4029,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2024-11-16",19,0,0,19,"Passed","Q4 2024. All passed."),
   _mk(4030,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2024-11-18",19,0,0,19,"Passed","All passed."),
   _mk(4031,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2024-11-20",19,0,0,19,"Passed","All passed."),
@@ -2825,11 +2811,9 @@ const INIT_AUDITS=[
   _mk(5001,"fire_drill","Fire Drill Record","🔥","Pakuranga","Jade Warren","2023-06-15",13,0,0,13,"Passed","Annual fire drill completed. All staff evacuated in under 3 minutes. Roll call completed. No issues."),
   _mk(5002,"fire_drill","Fire Drill Record","🔥","Flat Bush","Jade Warren","2023-06-16",13,0,0,13,"Passed","Drill completed successfully."),
   _mk(5003,"fire_drill","Fire Drill Record","🔥","Titirangi","Hans Vermeulen","2023-06-16",13,0,0,13,"Passed","All staff evacuated. No issues."),
-  _mk(5004,"fire_drill","Fire Drill Record","🔥","Panmure","Jade Warren","2023-06-17",13,0,0,13,"Passed","Drill completed successfully."),
   _mk(5005,"fire_drill","Fire Drill Record","🔥","Pakuranga","Jade Warren","2024-06-14",13,0,0,13,"Passed","Annual fire drill. All staff participated. Evacuation time: 2min 45sec."),
   _mk(5006,"fire_drill","Fire Drill Record","🔥","Flat Bush","Jade Warren","2024-06-14",13,0,0,13,"Passed","Drill completed successfully."),
   _mk(5007,"fire_drill","Fire Drill Record","🔥","Titirangi","Hans Vermeulen","2024-06-15",13,0,0,13,"Passed","All staff evacuated. Meeting point confirmed."),
-  _mk(5008,"fire_drill","Fire Drill Record","🔥","Panmure","Jade Warren","2024-06-15",13,0,0,13,"Passed","Drill completed. No issues."),
   _mk(5009,"fire_drill","Fire Drill Record","🔥","Pakuranga","Jade Warren","2025-06-13",13,0,0,13,"Passed","Annual fire drill 2025. All staff and clients safely evacuated. Roll call completed at designated meeting point."),
   _mk(5010,"fire_drill","Fire Drill Record","🔥","Flat Bush","Jade Warren","2025-06-13",13,0,0,13,"Passed","Drill completed successfully."),
   _mk(5011,"fire_drill","Fire Drill Record","🔥","Titirangi","Hans Vermeulen","2025-06-14",13,0,0,13,"Passed","All evacuated. No issues."),
@@ -2843,11 +2827,9 @@ const INIT_AUDITS=[
   _mk(6001,"equipment","Equipment & Electrical Check","⚡","Pakuranga","Jade Warren","2023-09-15",14,0,0,14,"Passed","All portable appliances tagged. TENS machines functional. Treatment tables in good condition. Sharps disposal confirmed."),
   _mk(6002,"equipment","Equipment & Electrical Check","⚡","Flat Bush","Jade Warren","2023-09-15",14,0,0,14,"Passed","All items passed."),
   _mk(6003,"equipment","Equipment & Electrical Check","⚡","Titirangi","Hans Vermeulen","2023-09-16",14,0,0,14,"Passed","All equipment checked and tagged."),
-  _mk(6004,"equipment","Equipment & Electrical Check","⚡","Panmure","Jade Warren","2023-09-16",13,1,0,14,"1 issue found","Portable ultrasound unit (Sonosite) test tag expired 2 weeks prior — equipment taken out of service immediately. Service and tag booked with DJO Store (0800 60 60 40) for following week. Unit returned to service with current tag 2023-09-26."),
   _mk(6005,"equipment","Equipment & Electrical Check","⚡","Pakuranga","Jade Warren","2024-09-15",14,0,0,14,"Passed","Annual equipment check 2024. All tags current. All items passed."),
   _mk(6006,"equipment","Equipment & Electrical Check","⚡","Flat Bush","Jade Warren","2024-09-15",14,0,0,14,"Passed","All items passed."),
   _mk(6007,"equipment","Equipment & Electrical Check","⚡","Titirangi","Hans Vermeulen","2024-09-16",14,0,0,14,"Passed","All equipment tagged and functional."),
-  _mk(6008,"equipment","Equipment & Electrical Check","⚡","Panmure","Jade Warren","2024-09-16",14,0,0,14,"Passed","All items passed."),
   _mk(6009,"equipment","Equipment & Electrical Check","⚡","Pakuranga","Jade Warren","2025-09-15",14,0,0,14,"Passed","Annual equipment check 2025. All portable appliances tagged within 12-month period. TENS machines and treatment tables checked."),
   _mk(6010,"equipment","Equipment & Electrical Check","⚡","Flat Bush","Jade Warren","2025-09-15",14,0,0,14,"Passed","All items passed."),
   _mk(6011,"equipment","Equipment & Electrical Check","⚡","Titirangi","Hans Vermeulen","2025-09-16",14,0,0,14,"Passed","All equipment tagged."),
@@ -2938,6 +2920,12 @@ export default function App(){
 
         const isSeeded = id => typeof id === 'number' && id < 100000;
 
+        // Load the list of intentionally deleted seeded records
+        const deletedIds = new Set([
+          ...(d["deletedAuditIds"] || []),
+          ...JSON.parse(localStorage.getItem("tbp_deleted_audit_ids") || "[]"),
+        ]);
+
         // Index Drive's seeded records so we can pull their evidence/attachment
         const driveById = {};
         (d["audits"]||[]).forEach(a => { if(isSeeded(a.id)) driveById[a.id] = a; });
@@ -2949,7 +2937,10 @@ export default function App(){
         const driveMeetings = (d["meetings"] || []).filter(m => !isSeeded(m.id));
 
         // INIT records — use INIT data but restore Drive's evidence/attachment if present
-        const initAudits   = INIT_AUDITS.map(a => {
+        // Skip any records the user has explicitly deleted
+        const initAudits   = INIT_AUDITS
+          .filter(a => !deletedIds.has(a.id))
+          .map(a => {
           const drv = driveById[a.id];
           return drv?.evidence ? {...a, evidence: drv.evidence} : a;
         });
@@ -3541,9 +3532,11 @@ export default function App(){
                                   </div>}
                                   {a.notes&&<div style={{fontSize:12,background:C.grayXL,padding:"7px 10px",borderRadius:5,lineHeight:1.6,marginBottom:6,border:`1px solid ${C.border}`}}>{a.notes}</div>}
                                   {a.evidence&&<div style={{marginBottom:6}}><BSm onClick={()=>setEavf(a.evidence)} color={C.teal}>📎 View evidence — {a.evidence.fileName}</BSm></div>}
-                                  <div style={{display:"flex",gap:6}}>
+                                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                                     <BSm onClick={e=>{e.stopPropagation();setViewAudit(a);}} color={C.blue}>View full report →</BSm>
                                     <AuditEvidenceBtn audit={a} audits={audits} setAudits={setAudits} onView={setEavf}/>
+                                    <BSm onClick={e=>{e.stopPropagation();if(!window.confirm(`Delete this ${a.type} audit for ${a.clinic} on ${a.date}?\n\nThis cannot be undone.`))return;const updated=audits.filter(x=>x.id!==a.id);setAudits(updated);saveGen("audits",updated);// Track deleted seeded IDs so they don't reload from INIT
+if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getItem("tbp_deleted_audit_ids")||"[]");localStorage.setItem("tbp_deleted_audit_ids",JSON.stringify([...new Set([...prev,a.id])]));saveGen("deletedAuditIds",[...new Set([...prev,a.id])]);};}} color={C.red}>🗑 Delete</BSm>
                                   </div>
                                 </div>}
                               </div>
