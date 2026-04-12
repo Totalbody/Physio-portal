@@ -1087,18 +1087,39 @@ async function _loadStore() {
     _warn('[Drive] Client ID not configured — using localStorage only');
     return false;
   }
-  try {
-    await _loadGoogleScripts();
-    await _initGapi();
-    await _requestToken('none'); // silent — works if user already consented
-    _portalReady = true;
-    await _loadDriveData();
-    return true;
-  } catch(e) {
-    _warn('[Drive] Silent sign-in failed — click Connect in sidebar:', e);
+  // iOS Safari blocks third-party cookies so silent OAuth never fires.
+  // On mobile we skip silent auth entirely — user taps "Connect Google Drive"
+  // in the sidebar when they want to link Drive. This makes the app load
+  // instantly on iPhone/iPad without hanging.
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS) {
+    _warn('[Drive] iOS detected — skipping silent auth, use Connect button');
+    return false;
+  }
+  // Desktop: try silent auth with a 6-second safety timeout
+  const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), 6000));
+  const attempt = (async () => {
+    try {
+      await _loadGoogleScripts();
+      await _initGapi();
+      await _requestToken('none');
+      _portalReady = true;
+      await _loadDriveData();
+      return true;
+    } catch(e) {
+      _warn('[Drive] Silent sign-in failed:', e);
+      _portalReady = false;
+      return false;
+    }
+  })();
+  const result = await Promise.race([attempt, timeout]);
+  if (result === 'timeout') {
+    _warn('[Drive] Auth timed out — showing app without Drive');
     _portalReady = false;
     return false;
   }
+  return result;
 }
 
 // ── ONE-TIME MIGRATION: Vercel Blob → Google Drive ────────────
@@ -2995,7 +3016,6 @@ export default function App(){
       <div>
         <PH title="Good morning, Jade 👋" sub={"Total Body Physio — Compliance & HR Portal · April 2026" + (portalConnected ? " · 📁 Google Drive connected" : " · ⚠️ Connect Google Drive in sidebar")}/>
         <MigrationTool portalConnected={portalConnected} onDone={()=>fu(n=>n+1)}/>
-        <GenerateDocsTool portalConnected={portalConnected} audits={audits} meetings={meetings} setAudits={setAudits} setMeetings={setMeetings}/>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.75rem",marginBottom:"1rem"}}>
           {[[String(Object.keys(STAFF).length),"Staff",C.teal],[`${pct}%`,"Compliance",pct>=80?C.teal:pct>50?C.amber:C.red],[String(urgentCount),"Due/overdue",urgentCount>0?C.red:C.teal],[String(audits.length),"Audit records",C.blue]].map(([n,l,c])=>(
             <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",textAlign:"center"}}>
@@ -3672,43 +3692,6 @@ export default function App(){
     {mgmtTab==="accreditation"&&<div>
       <Alert type="green" title="DAA Group — ACC Allied Health Standards">All sections of this portal support your DAA audit readiness. P&P manual underpins all requirements below.</Alert>
 
-      {/* ── Generate historical documents ── */}
-      {(()=>{
-        const[genStatus,setGenStatus]=useState('idle');
-        const[genProgress,setGenProgress]=useState('');
-        const[genResult,setGenResult]=useState(null);
-        const pendingAudits=audits.filter(a=>!a.evidence&&a.id<100000).length;
-        const pendingMeetings=meetings.filter(m=>!getMeetingFile(m)&&m.id<100000).length;
-        const pending=pendingAudits+pendingMeetings;
-        async function runGen(){
-          setGenStatus('running');
-          try{
-            const res=await _generateHistoricalAttachments(audits,meetings,msg=>setGenProgress(msg));
-            setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);
-            setGenResult(res);setGenStatus('done');
-          }catch(e){setGenProgress(e.message);setGenStatus('error');}
-        }
-        return(
-          <div style={{background:C.blueL,border:`1px solid ${C.blue}`,borderRadius:8,padding:"1rem",marginBottom:"1rem"}}>
-            <div style={{fontSize:13,fontWeight:600,color:C.blue,marginBottom:4}}>📄 Historical document attachments</div>
-            <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem",lineHeight:1.5}}>
-              {pending>0?`${pending} records (${pendingAudits} audits, ${pendingMeetings} meetings) are missing attached documents. Generate realistic era-appropriate forms for each — styled to match 2023, 2024 and 2025.`:'All seeded records have document attachments.'}
-            </div>
-            {genStatus==='idle'&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {pending>0&&<Btn onClick={runGen}>Generate {pending} documents →</Btn>}
-              <Btn outline onClick={()=>{setGenStatus('running');_generateHistoricalAttachments(audits,meetings,msg=>setGenProgress(msg)).then(res=>{setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);setGenResult(res);setGenStatus('done');}).catch(e=>{setGenProgress(e.message);setGenStatus('error');});}}>Regenerate all →</Btn>
-            </div>}
-            {genStatus==='running'&&<div style={{fontSize:12,color:C.blue,lineHeight:1.8}}>⏳ {genProgress||'Starting…'}</div>}
-            {genStatus==='done'&&<div style={{fontSize:12,color:C.green,fontWeight:500}}>
-              ✅ {genResult?.done} document{genResult?.done!==1?'s':''} generated and saved to Google Drive.
-              {genResult?.failed>0&&<span style={{color:C.red}}> {genResult.failed} failed.</span>}
-              <span onClick={()=>setGenStatus('idle')} style={{marginLeft:12,color:C.blue,cursor:'pointer',textDecoration:'underline'}}>Run again</span>
-            </div>}
-            {genStatus==='error'&&<div style={{fontSize:12,color:C.red}}>❌ {genProgress} <span onClick={()=>setGenStatus('idle')} style={{marginLeft:8,cursor:'pointer',textDecoration:'underline'}}>Retry</span></div>}
-          </div>
-        );
-      })()}
-
       {[
         {t:"Staff credentials — APC, First Aid, Cultural",s:Object.entries(STAFF).every(([id])=>["apc","firstaid","cultural"].every(k=>loadFile(id,k)))?"ok":"pending",d:"All staff hold current APC, First Aid and Cultural Competency — P&P §7",action:()=>{setPage("compliance");setCompTab("overview");}},
         {t:"Police vetting — all staff",s:Object.entries(STAFF).every(([id])=>loadFile(id,"policevetting"))?"ok":"pending",d:"Every 3 years — NZ Police email confirmation — P&P §4.2",action:()=>{setPage("compliance");setCompTab("vetting");}},
@@ -3735,7 +3718,7 @@ export default function App(){
     </div>
   );};
 
-  if(portalLoading)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:C.bg,fontFamily:"-apple-system,'Segoe UI',sans-serif"}}><div style={{textAlign:"center"}}><div style={{width:48,height:48,borderRadius:"50%",background:C.teal,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 1rem"}}><svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm-1-5h2v2h-2zm0-8h2v6h-2z"/></svg></div><div style={{fontSize:16,fontWeight:600,color:C.text,marginBottom:4}}>Total Body Physio</div><div style={{fontSize:13,color:C.muted}}>Loading portal...</div></div></div>);
+  if(portalLoading)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:C.bg,fontFamily:"-apple-system,'Segoe UI',sans-serif"}}><div style={{textAlign:"center",padding:"0 2rem"}}><div style={{width:48,height:48,borderRadius:"50%",background:C.teal,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 1rem"}}><svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm-1-5h2v2h-2zm0-8h2v6h-2z"/></svg></div><div style={{fontSize:16,fontWeight:600,color:C.text,marginBottom:4}}>Total Body Physio</div><div style={{fontSize:13,color:C.muted,marginBottom:"1.5rem"}}>Connecting to Google Drive…</div><button onClick={()=>setPortalLoading(false)} style={{fontSize:12,color:C.muted,background:"none",border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 16px",cursor:"pointer"}}>Skip — open without Drive</button></div></div>);
 
   return(
     <div style={{display:"flex",minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"-apple-system,'Segoe UI',sans-serif"}}>
