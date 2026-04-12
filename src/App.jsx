@@ -1910,9 +1910,10 @@ function AuditEvidenceBtn({audit,audits,setAudits,onView}){
 // Finds a viewable file from a meeting regardless of which portal saved it
 // KPI portal may store URL directly on meeting; PhysioPortal uses meeting.attachment
 function getMeetingFile(m){
-  // PhysioPortal nested attachment object
-  if(m.attachment&&typeof m.attachment==="object"&&(m.attachment.blobUrl||m.attachment.dataUrl)){
-    return m.attachment;
+  // PhysioPortal attachment — has driveId (generated docs) or blobUrl (uploaded)
+  if(m.attachment&&typeof m.attachment==="object"){
+    const att=m.attachment;
+    if(att.driveId||att.driveUrl||att.blobUrl||att.dataUrl) return att;
   }
   // KPI portal may store as a direct URL field on the meeting
   const url=m.blobUrl||m.pdfUrl||m.fileUrl||m.minutesUrl||m.minutesBlobUrl||m.pdf||
