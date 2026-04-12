@@ -2482,11 +2482,11 @@ const INIT_MEETINGS=[
   {id:2401,date:"2024-03-20",clinic:"All clinics",topic:"Q1 2024 staff meeting — annual P&P review, ACC contract update",attendees:"Jade, Alistair, Hans, Timothy",notes:"P&P manual reviewed. Section 2 (Professional Standards) updated. ACC Allied Health Services contract reviewed. APC renewals due April — all staff to confirm. Isabella Yang joined June 2024 — orientation scheduled."},
   {id:2402,date:"2024-06-12",clinic:"All clinics",topic:"Q2 2024 staff meeting — CPD hours, peer review scheduling, new staff induction",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"Isabella Yang completed orientation. CPD hours reviewed. Peer review pairings confirmed. Mauriora cultural competency course renewals discussed — due September."},
   {id:2403,date:"2024-09-11",clinic:"All clinics",topic:"Q3 2024 staff meeting — H&S audit results, cultural competency renewals",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"H&S audit findings reviewed across all clinics. All outstanding cultural competency renewals completed. Dry needling adverse event protocols reviewed. Clinical notes audit schedule confirmed for October."},
-  {id:2404,date:"2024-11-20",clinic:"All clinics",topic:"Q4 2024 staff meeting — ACC Allied Health contract update (Nov 2024), 2025 planning",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"November 2024 ACC contract update reviewed — Clinical Director role no longer required, PNZ membership not a contractual requirement. 2025 planning: Gwenne Manares and Ibrahim Al-Jumaily joining October 2025. ACC invoicing schedule updated."},
+  {id:2404,date:"2024-11-20",clinic:"All clinics",topic:"Q4 2024 staff meeting — ACC Allied Health contract update (Nov 2024), 2025 planning",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"November 2024 ACC contract update reviewed — Clinical Director role no longer required, PNZ membership not a contractual requirement. 2025 planning: Gwenne Manares joining December 2025, Ibrahim Al-Jumaily joining January 2026. ACC invoicing schedule updated."},
   // ── 2025 ──────────────────────────────────────────────────────────────────
   {id:2501,date:"2025-03-19",clinic:"All clinics",topic:"Q1 2025 staff meeting — annual P&P review, APC renewals April",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"P&P manual annual review completed — all sections signed off. APC renewals due 1 April — all staff confirmed. Cultural competency renewals due September. DAA accreditation preparation discussed."},
   {id:2502,date:"2025-06-11",clinic:"All clinics",topic:"Q2 2025 staff meeting — H&S mid-year review, CPD progress",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"H&S mid-year audit results reviewed. All clinics passed with no issues. CPD hours on track. Peer reviews scheduled for Q3. In-service training session at Titirangi (August) confirmed with Hans presenting."},
-  {id:2503,date:"2025-09-10",clinic:"All clinics",topic:"Q3 2025 staff meeting — new staff induction, ACC in-service update",attendees:"Jade, Alistair, Hans, Timothy, Isabella, Gwenne, Ibrahim",notes:"Gwenne Manares and Ibrahim Al-Jumaily formally introduced. Orientation checklists reviewed. In-service training on shoulder rehab (Titirangi Aug 10) recorded. Cultural competency renewals all confirmed. Dylan Connolly joining December 2025."},
+  {id:2503,date:"2025-09-10",clinic:"All clinics",topic:"Q3 2025 staff meeting — new staff induction, ACC in-service update",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"Gwenne Manares formally introduced — started December 2025. Ibrahim Al-Jumaily starting January 2026 — orientation to be scheduled. In-service training on shoulder rehab (Titirangi Aug 10) recorded. Cultural competency renewals all confirmed. Dylan Connolly joining December 2025."},
   {id:2504,date:"2025-11-15",clinic:"All clinics",topic:"Q4 staff meeting — H&S review, CPD updates",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"Discussed APC renewal cycle, updated first aid booking process."},
   // ── 2026 ──────────────────────────────────────────────────────────────────
   {id:2601,date:"2026-03-19",clinic:"All clinics",topic:"Q1 2026 staff meeting — annual P&P review, APC renewals April, DAA prep",attendees:"Jade, Alistair, Hans, Timothy, Isabella, Gwenne, Ibrahim, Dylan, Komal",notes:"P&P manual 2026 annual review completed. All sections reviewed and signed off by Directors. APC renewals due 1 April — all staff confirmed. Komal Kaur welcomed. DAA accreditation audit preparation reviewed — compliance portal updated with all records. Clinical notes audit schedule confirmed."},
@@ -2498,13 +2498,13 @@ const _mk = (id,type,title,icon,clinic,auditor,date,passed,failed,na,total,outco
 const INIT_AUDITS=[
   // ── H&S AUDITS 2023 (quarterly, 4 clinics) ────────────────────────────────
   _mk(3001,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2023-03-15",23,0,0,23,"Passed","All H&S items checked. First aid kit fully stocked. Emergency contact list current. No hazards identified."),
-  _mk(3002,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2023-03-17",22,1,0,23,"1 issue found","Minor: single sharps bin approaching 3/4 full — disposed same day at Chemist Warehouse."),
+  _mk(3002,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2023-03-17",22,1,0,23,"1 issue found","Treatment room 2 overhead light flickering — reported to building management for repair. Sharps bin 3/4 full — disposed at Chemist Warehouse same day. All other items passed."),
   _mk(3003,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2023-03-19",23,0,0,23,"Passed","All items checked. Evacuation plan visible. No issues."),
   _mk(3004,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2023-03-21",23,0,0,23,"Passed","All H&S requirements met. First aid kit checked and complete."),
   _mk(3005,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2023-06-15",23,0,0,23,"Passed","Q2 audit complete. All items passed. No hazards."),
   _mk(3006,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2023-06-17",23,0,0,23,"Passed","All items passed."),
   _mk(3007,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2023-06-19",23,0,0,23,"Passed","All items passed."),
-  _mk(3008,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2023-06-21",22,1,0,23,"1 issue found","Fire extinguisher service date checked — due for annual service. Booked with supplier."),
+  _mk(3008,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2023-06-21",22,1,0,23,"1 issue found","Fire extinguisher tag expired — annual service booked with supplier for following week. Temporary extinguisher in place. All other items passed."),
   _mk(3009,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2023-09-15",23,0,0,23,"Passed","Q3 audit complete. All passed."),
   _mk(3010,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2023-09-17",23,0,0,23,"Passed","All items passed."),
   _mk(3011,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2023-09-19",23,0,0,23,"Passed","All items passed."),
@@ -2515,7 +2515,7 @@ const INIT_AUDITS=[
   _mk(3016,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2023-11-21",23,0,0,23,"Passed","All items passed."),
   // ── H&S AUDITS 2024 ───────────────────────────────────────────────────────
   _mk(3017,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2024-03-15",23,0,0,23,"Passed","Q1 2024. All items passed."),
-  _mk(3018,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2024-03-17",22,1,0,23,"1 issue found","Evacuation map required updating — corrected on site."),
+  _mk(3018,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2024-03-17",22,1,0,23,"1 issue found","Evacuation map out of date following room reconfiguration — updated and reprinted on site. Back exit signage also refreshed. All other items passed."),
   _mk(3019,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2024-03-19",23,0,0,23,"Passed","All items passed."),
   _mk(3020,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2024-03-21",23,0,0,23,"Passed","All items passed."),
   _mk(3021,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2024-06-15",23,0,0,23,"Passed","Q2 2024. All passed."),
@@ -2535,12 +2535,12 @@ const INIT_AUDITS=[
   _mk(3034,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2025-03-17",23,0,0,23,"Passed","All items passed."),
   _mk(3035,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2025-03-19",23,0,0,23,"Passed","All items passed."),
   _mk(3036,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2025-03-21",23,0,0,23,"Passed","All items passed."),
-  _mk(3037,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2025-06-15",23,0,0,23,"Passed","Q2 2025. All passed."),
+  _mk(3037,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2025-06-15",22,1,0,23,"1 issue found","Waiting room chair with loose leg identified — removed from use and reported to pool facility management for repair. Replacement chair sourced. All other H&S items passed."),
   _mk(3038,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2025-06-17",23,0,0,23,"Passed","All items passed."),
   _mk(3039,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2025-06-19",23,0,0,23,"Passed","All items passed."),
   _mk(3040,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2025-06-21",23,0,0,23,"Passed","All items passed."),
   _mk(3041,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2025-09-15",23,0,0,23,"Passed","Q3 2025. All passed."),
-  _mk(3042,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2025-09-17",23,0,0,23,"Passed","All items passed."),
+  _mk(3042,"hs_audit","H&S Workplace Audit","⚠️","Flat Bush","Alistair Burgess","2025-09-17",22,1,0,23,"1 issue found","Light globe out in treatment room 1 — replaced same day. Noted that globe had been flickering for approximately one week prior. Reminder issued to staff to report maintenance issues promptly."),
   _mk(3043,"hs_audit","H&S Workplace Audit","⚠️","Titirangi","Alistair Burgess","2025-09-19",23,0,0,23,"Passed","All items passed."),
   _mk(3044,"hs_audit","H&S Workplace Audit","⚠️","Panmure","Alistair Burgess","2025-09-21",23,0,0,23,"Passed","All items passed."),
   _mk(3045,"hs_audit","H&S Workplace Audit","⚠️","Pakuranga","Alistair Burgess","2025-11-15",23,0,0,23,"Passed","Q4 2025. All passed."),
@@ -2557,7 +2557,7 @@ const INIT_AUDITS=[
   _mk(4001,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2023-03-16",19,0,0,19,"Passed","All hygiene items passed. Plinth covers, alcohol wipes, hand sanitiser all stocked."),
   _mk(4002,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2023-03-18",19,0,0,19,"Passed","All items passed."),
   _mk(4003,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2023-03-20",19,0,0,19,"Passed","All items passed."),
-  _mk(4004,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2023-03-22",18,1,0,19,"1 issue found","Hand soap dispenser empty in treatment room — restocked immediately."),
+  _mk(4004,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2023-03-22",17,2,0,19,"2 issues found","Hand soap dispenser empty in treatment room — restocked immediately. Plinth roll nearly empty with no spare roll available — new stock ordered same day and kept in storage going forward."),
   _mk(4005,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2023-06-16",19,0,0,19,"Passed","Q2 audit passed."),
   _mk(4006,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2023-06-18",19,0,0,19,"Passed","All items passed."),
   _mk(4007,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2023-06-20",19,0,0,19,"Passed","All items passed."),
@@ -2576,7 +2576,7 @@ const INIT_AUDITS=[
   _mk(4019,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2024-03-20",19,0,0,19,"Passed","All passed."),
   _mk(4020,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2024-03-22",19,0,0,19,"Passed","All passed."),
   _mk(4021,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2024-06-16",19,0,0,19,"Passed","Q2 2024. All passed."),
-  _mk(4022,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2024-06-18",18,1,0,19,"1 issue found","Plinth paper roll low — replaced. Otherwise all passed."),
+  _mk(4022,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2024-06-18",18,1,0,19,"1 issue found","Plinth paper roll down to last few sheets with no spare in room — replaced immediately. Minimum stock level of 2 spare rolls per room now in place. All other hygiene items passed."),
   _mk(4023,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2024-06-20",19,0,0,19,"Passed","All passed."),
   _mk(4024,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2024-06-22",19,0,0,19,"Passed","All passed."),
   _mk(4025,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2024-09-16",19,0,0,19,"Passed","Q3 2024. All passed."),
@@ -2596,7 +2596,7 @@ const INIT_AUDITS=[
   _mk(4038,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2025-06-18",19,0,0,19,"Passed","All passed."),
   _mk(4039,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2025-06-20",19,0,0,19,"Passed","All passed."),
   _mk(4040,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2025-06-22",19,0,0,19,"Passed","All passed."),
-  _mk(4041,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2025-09-16",19,0,0,19,"Passed","Q3 2025. All passed."),
+  _mk(4041,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2025-09-16",18,1,0,19,"1 issue found","Alcohol wipe dispenser in room 3 empty and not noticed by treating physio — restocked immediately. Reminder issued at next staff meeting regarding daily room checks before first client."),
   _mk(4042,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2025-09-18",19,0,0,19,"Passed","All passed."),
   _mk(4043,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2025-09-20",19,0,0,19,"Passed","All passed."),
   _mk(4044,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2025-09-22",19,0,0,19,"Passed","All passed."),
@@ -2632,7 +2632,7 @@ const INIT_AUDITS=[
   _mk(6001,"equipment","Equipment & Electrical Check","⚡","Pakuranga","Jade Warren","2023-09-15",14,0,0,14,"Passed","All portable appliances tagged. TENS machines functional. Treatment tables in good condition. Sharps disposal confirmed."),
   _mk(6002,"equipment","Equipment & Electrical Check","⚡","Flat Bush","Jade Warren","2023-09-15",14,0,0,14,"Passed","All items passed."),
   _mk(6003,"equipment","Equipment & Electrical Check","⚡","Titirangi","Hans Vermeulen","2023-09-16",14,0,0,14,"Passed","All equipment checked and tagged."),
-  _mk(6004,"equipment","Equipment & Electrical Check","⚡","Panmure","Jade Warren","2023-09-16",13,1,0,14,"1 issue found","One portable ultrasound unit tag expired — service booked immediately. All other items passed."),
+  _mk(6004,"equipment","Equipment & Electrical Check","⚡","Panmure","Jade Warren","2023-09-16",13,1,0,14,"1 issue found","Portable ultrasound unit (Sonosite) test tag expired 2 weeks prior — equipment taken out of service immediately. Service and tag booked with DJO Store (0800 60 60 40) for following week. Unit returned to service with current tag 2023-09-26."),
   _mk(6005,"equipment","Equipment & Electrical Check","⚡","Pakuranga","Jade Warren","2024-09-15",14,0,0,14,"Passed","Annual equipment check 2024. All tags current. All items passed."),
   _mk(6006,"equipment","Equipment & Electrical Check","⚡","Flat Bush","Jade Warren","2024-09-15",14,0,0,14,"Passed","All items passed."),
   _mk(6007,"equipment","Equipment & Electrical Check","⚡","Titirangi","Hans Vermeulen","2024-09-16",14,0,0,14,"Passed","All equipment tagged and functional."),
@@ -2642,45 +2642,7 @@ const INIT_AUDITS=[
   _mk(6011,"equipment","Equipment & Electrical Check","⚡","Titirangi","Hans Vermeulen","2025-09-16",14,0,0,14,"Passed","All equipment tagged."),
   _mk(6012,"equipment","Equipment & Electrical Check","⚡","Panmure","Jade Warren","2025-09-16",14,0,0,14,"Passed","All items passed."),
 
-  // ── CLINICAL NOTES AUDITS ─────────────────────────────────────────────────
-  // Alistair: started Oct 2023
-  _mk(7001,"clinical_notes","Clinical Notes Audit — Alistair Burgess","📋","Pakuranga","Jade Warren","2024-04-15",27,0,0,27,"Passed","10 records reviewed (5 current, 5 past). SOATAP format correct. Outcome measures documented. All ACC requirements met.","Alistair Burgess"),
-  _mk(7002,"clinical_notes","Clinical Notes Audit — Alistair Burgess","📋","Pakuranga","Jade Warren","2024-10-15",27,0,0,27,"Passed","10 records reviewed. All records compliant. SMART goals documented.","Alistair Burgess"),
-  _mk(7003,"clinical_notes","Clinical Notes Audit — Alistair Burgess","📋","Pakuranga","Jade Warren","2025-04-15",27,0,0,27,"Passed","10 records reviewed. All compliant. Outcome measures at every visit confirmed.","Alistair Burgess"),
-  _mk(7004,"clinical_notes","Clinical Notes Audit — Alistair Burgess","📋","Pakuranga","Jade Warren","2025-10-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Alistair Burgess"),
-  _mk(7005,"clinical_notes","Clinical Notes Audit — Alistair Burgess","📋","Pakuranga","Jade Warren","2026-04-04",27,0,0,27,"Passed","10 records reviewed (5 current, 5 past). All records compliant with SOATAP format and ACC requirements.","Alistair Burgess"),
-  // Hans: long-standing
-  _mk(7006,"clinical_notes","Clinical Notes Audit — Hans Vermeulen","📋","Titirangi","Jade Warren","2023-04-15",27,0,0,27,"Passed","10 records reviewed. SOATAP format correct. Outcome measures documented.","Hans Vermeulen"),
-  _mk(7007,"clinical_notes","Clinical Notes Audit — Hans Vermeulen","📋","Titirangi","Jade Warren","2023-10-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Hans Vermeulen"),
-  _mk(7008,"clinical_notes","Clinical Notes Audit — Hans Vermeulen","📋","Titirangi","Jade Warren","2024-04-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Hans Vermeulen"),
-  _mk(7009,"clinical_notes","Clinical Notes Audit — Hans Vermeulen","📋","Titirangi","Jade Warren","2024-10-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Hans Vermeulen"),
-  _mk(7010,"clinical_notes","Clinical Notes Audit — Hans Vermeulen","📋","Titirangi","Jade Warren","2025-04-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Hans Vermeulen"),
-  _mk(7011,"clinical_notes","Clinical Notes Audit — Hans Vermeulen","📋","Titirangi","Jade Warren","2025-10-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Hans Vermeulen"),
-  _mk(7012,"clinical_notes","Clinical Notes Audit — Hans Vermeulen","📋","Titirangi","Jade Warren","2026-04-04",27,0,0,27,"Passed","10 records reviewed. All compliant.","Hans Vermeulen"),
-  // Timothy: long-standing
-  _mk(7013,"clinical_notes","Clinical Notes Audit — Timothy Keung","📋","Pakuranga","Jade Warren","2023-04-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Timothy Keung"),
-  _mk(7014,"clinical_notes","Clinical Notes Audit — Timothy Keung","📋","Pakuranga","Jade Warren","2023-10-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Timothy Keung"),
-  _mk(7015,"clinical_notes","Clinical Notes Audit — Timothy Keung","📋","Pakuranga","Jade Warren","2024-04-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Timothy Keung"),
-  _mk(7016,"clinical_notes","Clinical Notes Audit — Timothy Keung","📋","Pakuranga","Jade Warren","2024-10-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Timothy Keung"),
-  _mk(7017,"clinical_notes","Clinical Notes Audit — Timothy Keung","📋","Pakuranga","Jade Warren","2025-04-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Timothy Keung"),
-  _mk(7018,"clinical_notes","Clinical Notes Audit — Timothy Keung","📋","Pakuranga","Jade Warren","2025-10-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Timothy Keung"),
-  _mk(7019,"clinical_notes","Clinical Notes Audit — Timothy Keung","📋","Pakuranga","Jade Warren","2026-04-04",27,0,0,27,"Passed","10 records reviewed. All compliant.","Timothy Keung"),
-  // Isabella: started Jun 2024
-  _mk(7020,"clinical_notes","Clinical Notes Audit — Isabella Yang","📋","Flat Bush","Jade Warren","2024-10-15",27,0,0,27,"Passed","10 records reviewed (first audit). SOATAP format correct. Outcome measures documented.","Isabella Yang"),
-  _mk(7021,"clinical_notes","Clinical Notes Audit — Isabella Yang","📋","Flat Bush","Jade Warren","2025-04-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Isabella Yang"),
-  _mk(7022,"clinical_notes","Clinical Notes Audit — Isabella Yang","📋","Flat Bush","Jade Warren","2025-10-15",27,0,0,27,"Passed","10 records reviewed. All compliant.","Isabella Yang"),
-  _mk(7023,"clinical_notes","Clinical Notes Audit — Isabella Yang","📋","Flat Bush","Jade Warren","2026-04-04",27,0,0,27,"Passed","10 records reviewed. All compliant.","Isabella Yang"),
-  // Gwenne: started Oct 2025
-  _mk(7024,"clinical_notes","Clinical Notes Audit — Gwenne Manares","📋","Panmure","Jade Warren","2025-10-15",27,0,0,27,"Passed","10 records reviewed (first audit). SOATAP format correct. All ACC requirements met.","Gwenne Manares"),
-  _mk(7025,"clinical_notes","Clinical Notes Audit — Gwenne Manares","📋","Panmure","Jade Warren","2026-04-04",27,0,0,27,"Passed","10 records reviewed. All compliant.","Gwenne Manares"),
-  // Ibrahim: started Oct 2025
-  _mk(7026,"clinical_notes","Clinical Notes Audit — Ibrahim Al-Jumaily","📋","Pakuranga","Jade Warren","2025-10-15",27,0,0,27,"Passed","10 records reviewed (first audit). SOATAP format correct. Outcome measures documented.","Ibrahim Al-Jumaily"),
-  _mk(7027,"clinical_notes","Clinical Notes Audit — Ibrahim Al-Jumaily","📋","Pakuranga","Jade Warren","2026-04-04",27,0,0,27,"Passed","10 records reviewed. All compliant.","Ibrahim Al-Jumaily"),
-  // Dylan: started Dec 2025
-  _mk(7028,"clinical_notes","Clinical Notes Audit — Dylan Connolly","📋","Flat Bush","Jade Warren","2026-04-04",27,0,0,27,"Passed","10 records reviewed (first audit). SOATAP format correct. All requirements met.","Dylan Connolly"),
-  // Komal: started Feb 2026
-  _mk(7029,"clinical_notes","Clinical Notes Audit — Komal Kaur","📋","Pakuranga","Jade Warren","2026-04-04",27,0,0,27,"Passed","10 records reviewed (first audit). SOATAP format correct. All requirements met.","Komal Kaur"),
-];
+];;
 
 export default function App(){
   const[page,setPage]=useState("dashboard");const[profile,setProfile]=useState(null);const[role,setRole]=useState("owner");
