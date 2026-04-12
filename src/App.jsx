@@ -511,7 +511,56 @@ async function _loadDriveData() {
     } else {
       _log('[Drive] No portal-state.json found — starting fresh');
     }
+    // After loading Drive data, sync any cert records that exist in THIS device's
+    // localStorage but are missing from Drive (catches the "4% on one device" problem)
+    await _syncLocalToDrive();
   } catch(e) { _err('[Drive load]', e.message); }
+}
+
+// Push any localStorage cert records not yet in Drive up to the shared state
+async function _syncLocalToDrive() {
+  const toSync = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key?.startsWith('cert_')) continue;
+    if (_portalStore.files[key]?.driveId) continue; // already in Drive
+    try {
+      const rec = JSON.parse(localStorage.getItem(key));
+      if (rec?.fileName) toSync.push({ key, rec });
+    } catch {}
+  }
+  if (toSync.length === 0) return;
+  _log('[Drive] Syncing', toSync.length, 'local-only cert record(s) to Drive');
+  let changed = false;
+  for (const { key, rec } of toSync) {
+    if (rec.blobUrl && !rec.driveId) {
+      // File is still in Vercel Blob — fetch and re-upload to Drive
+      try {
+        const fileResp = await fetch(rec.blobUrl);
+        if (fileResp.ok) {
+          const blob = await fileResp.blob();
+          const dataUrl = await new Promise((res, rej) => {
+            const r = new FileReader(); r.onload = ()=>res(r.result); r.onerror = rej;
+            r.readAsDataURL(blob);
+          });
+          const driveFile = await _uploadFileToDrive(key, rec.fileName, rec.fileType||blob.type, dataUrl);
+          if (driveFile) {
+            _portalStore.files[key] = { ...rec, ...driveFile, dataUrl:undefined };
+            try { localStorage.setItem(key, JSON.stringify(_portalStore.files[key])); } catch {}
+            changed = true;
+          }
+        }
+      } catch(e) { _err('[Sync local]', key, e.message); }
+    } else {
+      // Metadata only (no blobUrl) — still add to Drive state so all devices see it
+      _portalStore.files[key] = rec;
+      changed = true;
+    }
+  }
+  if (changed) {
+    await _saveDriveState();
+    _log('[Drive] Local sync complete');
+  }
 }
 
 // Entry point called on App startup — tries silent token first
@@ -826,7 +875,7 @@ function FileViewer({file,onClose}){
   const[loading,setLoading]=useState(true);
   const[error,setError]=useState(false);
 
-  // Use Drive-native URLs when available — much faster and more reliable than uc?export=view
+  // Drive-native URLs — much faster than uc?export=view
   const imgSrc  = isDrive
     ? `https://drive.google.com/thumbnail?id=${file.driveId}&sz=w1600`
     : (file.blobUrl||file.dataUrl);
@@ -835,19 +884,23 @@ function FileViewer({file,onClose}){
     : (file.blobUrl
         ? "https://docs.google.com/gview?embedded=true&url="+encodeURIComponent(file.blobUrl)
         : file.dataUrl);
-  // Link for "open full document" button
   const openUrl = file.driveUrl||file.blobUrl||file.dataUrl;
 
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:600,display:"flex",flexDirection:"column"}}>
-      <div style={{background:C.teal,padding:"0.875rem 1.25rem",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-        <div style={{color:"white",fontWeight:600,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:12}}>{file.fileName}</div>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-          {openUrl&&<a href={openUrl} target="_blank" rel="noreferrer" style={{color:"white",fontSize:12,padding:"4px 12px",background:"rgba(255,255,255,0.25)",borderRadius:20,textDecoration:"none",fontWeight:500}}>↗ Open in Drive</a>}
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:17,flexShrink:0}}>✕</button>
-        </div>
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.85)",zIndex:600,display:"flex",flexDirection:"column"}}>
+
+      {/* ── Header bar ── */}
+      <div style={{background:C.teal,padding:"0.75rem 1rem",display:"flex",alignItems:"center",gap:10,flexShrink:0,minHeight:52}}>
+        <div style={{flex:1,color:"white",fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.fileName}</div>
+        {openUrl&&<a href={openUrl} target="_blank" rel="noreferrer" style={{color:"white",fontSize:12,padding:"4px 12px",background:"rgba(255,255,255,0.25)",borderRadius:20,textDecoration:"none",fontWeight:500,flexShrink:0}}>↗ Open in Drive</a>}
+        <button
+          onClick={onClose}
+          style={{background:"rgba(255,255,255,0.25)",border:"none",color:"white",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:20,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:300}}
+        >✕</button>
       </div>
-      <div onClick={e=>e.stopPropagation()} style={{flex:1,overflow:"auto",display:"flex",alignItems:"stretch",justifyContent:"stretch",background:"#1a1a1a",position:"relative"}}>
+
+      {/* ── Content area ── */}
+      <div style={{flex:1,overflow:"auto",background:"#1a1a1a",position:"relative",display:"flex",flexDirection:"column"}}>
         {/* Loading overlay */}
         {loading&&(isImg||isPdf)&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#1a1a1a",zIndex:2}}>
           <div style={{textAlign:"center",color:"white"}}>
@@ -857,25 +910,24 @@ function FileViewer({file,onClose}){
           </div>
         </div>}
 
-        {/* Image viewer */}
+        {/* Image */}
         {isImg&&!error&&<img
-          src={imgSrc}
-          alt={file.fileName}
+          src={imgSrc} alt={file.fileName}
           style={{maxWidth:"100%",maxHeight:"100%",margin:"auto",objectFit:"contain",display:"block",opacity:loading?0:1,transition:"opacity 0.3s"}}
           onLoad={()=>setLoading(false)}
           onError={()=>{setLoading(false);setError(true);}}
         />}
 
-        {/* PDF viewer — Drive native preview iframe */}
+        {/* PDF — Drive native preview */}
         {isPdf&&!error&&<iframe
           src={pdfSrc}
-          style={{width:"100%",height:"100%",border:"none",opacity:loading?0:1,transition:"opacity 0.4s",display:"block"}}
+          style={{width:"100%",flex:1,border:"none",opacity:loading?0:1,transition:"opacity 0.4s",display:"block",minHeight:"70vh"}}
           title={file.fileName}
           onLoad={()=>setLoading(false)}
           onError={()=>{setLoading(false);setError(true);}}
         />}
 
-        {/* Error fallback */}
+        {/* Error state */}
         {error&&<div style={{textAlign:"center",padding:"3rem",color:"white",margin:"auto"}}>
           <div style={{fontSize:52,marginBottom:"0.75rem"}}>📄</div>
           <div style={{fontSize:14,marginBottom:"0.5rem"}}>{file.fileName}</div>
@@ -889,6 +941,14 @@ function FileViewer({file,onClose}){
           <div style={{fontSize:14,fontWeight:500,marginBottom:"1rem"}}>{file.fileName}</div>
           {openUrl&&<a href={openUrl} target="_blank" rel="noreferrer" style={{color:C.tealL,fontSize:13,fontWeight:600}}>↗ Open in Google Drive</a>}
         </div>}
+      </div>
+
+      {/* ── Always-visible close bar at bottom — works even when iframe captures taps ── */}
+      <div
+        onClick={onClose}
+        style={{background:"rgba(0,0,0,0.7)",borderTop:"1px solid rgba(255,255,255,0.15)",padding:"14px",textAlign:"center",cursor:"pointer",flexShrink:0,userSelect:"none"}}
+      >
+        <span style={{color:"rgba(255,255,255,0.7)",fontSize:13,fontWeight:500}}>✕ Tap here to close</span>
       </div>
     </div>
   );
