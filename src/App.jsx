@@ -534,6 +534,89 @@ async function _loadStore() {
   }
 }
 
+// ── ONE-TIME MIGRATION: Vercel Blob → Google Drive ────────────
+// Fetches every file from the old Vercel store and re-uploads to Drive.
+// Safe to run multiple times — skips files already in Drive.
+async function _migrateFromVercel(onProgress) {
+  onProgress('Connecting to Vercel...');
+  const resp = await fetch(PORTAL_API + "/store", {
+    headers: { "X-Portal-Secret": PORTAL_SECRET },
+  });
+  if (!resp.ok) throw new Error("Vercel API returned " + resp.status);
+  const state = await resp.json();
+
+  // Collect all file records from Vercel (files + data with blobUrl)
+  const vercelFiles = { ...(state.files || {}) };
+  if (state.data) {
+    Object.entries(state.data).forEach(([k, v]) => {
+      if (v && v.blobUrl) vercelFiles[k] = v;
+    });
+  }
+
+  // Also copy any data records (audits, meetings etc.) not yet in Drive
+  if (state.data) {
+    Object.entries(state.data).forEach(([k, v]) => {
+      if (!v?.blobUrl && !_portalStore.data[k]) {
+        _portalStore.data[k] = v;
+      }
+    });
+  }
+
+  const keys = Object.keys(vercelFiles);
+  if (keys.length === 0) {
+    onProgress('No files found in Vercel.');
+    await _saveDriveState();
+    return { migrated: 0, failed: 0, skipped: 0, total: 0 };
+  }
+
+  let migrated = 0, failed = 0, skipped = 0;
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const rec = vercelFiles[key];
+
+    // Skip if already in Drive
+    if (_portalStore.files[key]?.driveId) {
+      onProgress(`Skipping ${rec.fileName || key} — already in Drive`);
+      skipped++; continue;
+    }
+
+    onProgress(`${i + 1} / ${keys.length} — ${rec.fileName || key}`);
+
+    try {
+      // Fetch the file content from Vercel Blob URL
+      const fileResp = await fetch(rec.blobUrl);
+      if (!fileResp.ok) throw new Error("Fetch " + fileResp.status);
+      const blob = await fileResp.blob();
+      const fileType = rec.fileType || blob.type || 'application/octet-stream';
+
+      // Convert blob to dataUrl
+      const dataUrl = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result); r.onerror = rej;
+        r.readAsDataURL(blob);
+      });
+
+      // Upload to the correct Drive folder
+      const driveFile = await _uploadFileToDrive(key, rec.fileName, fileType, dataUrl);
+      if (driveFile) {
+        _portalStore.files[key] = { ...rec, ...driveFile, dataUrl: undefined };
+        try { localStorage.setItem(key, JSON.stringify(_portalStore.files[key])); } catch {}
+        migrated++;
+      } else {
+        failed++;
+      }
+    } catch(e) {
+      _err('[Migration]', key, e.message);
+      failed++;
+    }
+  }
+
+  onProgress('Saving everything to Google Drive...');
+  await _saveDriveState();
+  return { migrated, failed, skipped, total: keys.length };
+}
+
 const sKey = (id, k) => `cert_${id}_${k}`;
 
 function _archiveFile(key, oldFile) {
@@ -695,6 +778,43 @@ function TabBar({items,current,setter}){return <div style={{display:"flex",borde
 async function _uploadToBlob(fileKey, fileName, fileType, dataUrl) {
   if (_portalReady && _driveToken) return _uploadFileToDrive(fileKey, fileName, fileType, dataUrl);
   return null; // localStorage-only mode: callers handle null gracefully
+}
+
+// ── Migration tool — Vercel Blob → Google Drive ──────────────
+function MigrationTool({portalConnected,onDone}){
+  const[status,setStatus]=useState('idle'); // idle | running | done | error
+  const[progress,setProgress]=useState('');
+  const[result,setResult]=useState(null);
+  const[dismissed,setDismissed]=useState(()=>!!localStorage.getItem('tbp_migration_done'));
+  if(dismissed||!portalConnected)return null;
+  async function run(){
+    setStatus('running');
+    try{
+      const res=await _migrateFromVercel(msg=>setProgress(msg));
+      setResult(res);setStatus('done');
+      if(res.failed===0)localStorage.setItem('tbp_migration_done','1');
+      if(onDone)onDone();
+    }catch(e){setProgress(e.message);setStatus('error');}
+  }
+  return(
+    <div style={{background:"#E6F1FB",border:"1px solid #185FA5",borderRadius:8,padding:"1rem",marginBottom:"1rem"}}>
+      <div style={{fontSize:13,fontWeight:600,color:"#185FA5",marginBottom:4}}>📦 Migrate files from Vercel → Google Drive</div>
+      <div style={{fontSize:12,color:"#5F5E5A",marginBottom:"0.75rem",lineHeight:1.5}}>Your previous certs and files are still in Vercel. Click below to copy them all into Google Drive automatically — takes about 1 minute.</div>
+      {status==='idle'&&<div style={{display:"flex",gap:8}}>
+        <button onClick={run} style={{background:"#185FA5",color:"white",border:"none",borderRadius:6,padding:"7px 14px",fontSize:13,fontWeight:500,cursor:"pointer"}}>Migrate now →</button>
+        <button onClick={()=>{setDismissed(true);localStorage.setItem('tbp_migration_done','skip');}} style={{background:"none",border:"1px solid #185FA5",borderRadius:6,padding:"7px 14px",fontSize:13,color:"#185FA5",cursor:"pointer"}}>Skip</button>
+      </div>}
+      {status==='running'&&<div style={{fontSize:12,color:"#185FA5",lineHeight:1.7}}>⏳ {progress}</div>}
+      {status==='done'&&<div>
+        <div style={{fontSize:13,fontWeight:600,color:"#3B6D11",marginBottom:8}}>
+          ✅ Done! {result.migrated} file{result.migrated!==1?'s':''} moved to Google Drive{result.skipped>0?` · ${result.skipped} already there`:''}
+          {result.failed>0&&<span style={{color:"#E24B4A"}}> · {result.failed} failed (try again)</span>}
+        </div>
+        <button onClick={()=>setDismissed(true)} style={{background:"none",border:"1px solid #3B6D11",borderRadius:6,padding:"5px 12px",fontSize:12,color:"#3B6D11",cursor:"pointer"}}>Dismiss</button>
+      </div>}
+      {status==='error'&&<div style={{fontSize:12,color:"#E24B4A"}}>❌ {progress} — check your connection and try again.</div>}
+    </div>
+  );
 }
 
 // file viewer
@@ -2002,6 +2122,7 @@ export default function App(){
     return(
       <div>
         <PH title="Good morning, Jade 👋" sub={"Total Body Physio — Compliance & HR Portal · April 2026" + (portalConnected ? " · 📁 Google Drive connected" : " · ⚠️ Connect Google Drive in sidebar")}/>
+        <MigrationTool portalConnected={portalConnected} onDone={()=>fu(n=>n+1)}/>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.75rem",marginBottom:"1rem"}}>
           {[[String(Object.keys(STAFF).length),"Staff",C.teal],[`${pct}%`,"Compliance",pct>=80?C.teal:pct>50?C.amber:C.red],[String(urgentCount),"Due/overdue",urgentCount>0?C.red:C.teal],[String(audits.length),"Audit records",C.blue]].map(([n,l,c])=>(
             <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",textAlign:"center"}}>
