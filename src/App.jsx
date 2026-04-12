@@ -342,16 +342,19 @@ function saveFile(id, k, d) {
     // Archive old file before overwriting
     _archiveFile(key, _portalStore.files[key]);
     _portalStore.files[key] = d;
-    // Save a lightweight backup to localStorage immediately (dataUrl may be large but is the only
-    // viewable copy until the blob upload finishes — replaced with blobUrl version below)
-    try { localStorage.setItem(key, JSON.stringify(d)); } catch {}
+    // Save lightweight metadata to localStorage immediately (NO dataUrl — too large, fills up quota)
+    // This lets loadFile fall back to localStorage on refresh even before the blob upload finishes
+    try {
+      const meta = { fileName:d.fileName, fileType:d.fileType, uploadedDate:d.uploadedDate, certKey:d.certKey, expiry:d.expiry||null, issued:d.issued||null };
+      localStorage.setItem(key, JSON.stringify(meta));
+    } catch {}
     fetch(PORTAL_API + "/upload", {
       method: "POST", headers: _apiHeaders,
       body: JSON.stringify({ fileKey: key, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl, meta: d.expiry ? { expiry: d.expiry } : d.issued ? { issued: d.issued } : undefined }),
     }).then(r => r.json()).then(result => {
       if (result.ok && result.file) {
         _portalStore.files[key] = result.file;
-        // Update localStorage backup with the blobUrl version (much smaller than dataUrl)
+        // Replace the metadata-only backup with the full blobUrl record (still small — no dataUrl)
         try { localStorage.setItem(key, JSON.stringify(result.file)); } catch {}
         fetch(PORTAL_API + "/store", {
           method: "POST", headers: _apiHeaders,
@@ -387,6 +390,7 @@ function removeFile(id, k) {
   const key = sKey(id, k);
   if (_portalReady) {
     delete _portalStore.files[key];
+    try { localStorage.removeItem(key); } catch {} // clean up backup too
     fetch(PORTAL_API + "/upload?fileKey=" + encodeURIComponent(key), {
       method: "DELETE", headers: { "X-Portal-Secret": PORTAL_SECRET },
     }).catch(e => _err("[Portal] Delete error:", e));
