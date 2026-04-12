@@ -3668,6 +3668,7 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
           const[genStatus,setGenStatus]=useState('idle');
           const[genProgress,setGenProgress]=useState('');
           const[genResult,setGenResult]=useState(null);
+          const withDoc=meetings.filter(m=>getMeetingFile(m)&&m.id<100000).length;
           const pendingMeetings=meetings.filter(m=>!getMeetingFile(m)&&m.id<100000).length;
           async function runMeetingGen(){
             setGenStatus('running');
@@ -3679,19 +3680,19 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
           }
           return(
             <div style={{background:C.blueL,border:`1px solid ${C.blue}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"1rem"}}>
-              <div style={{fontSize:13,fontWeight:600,color:C.blue,marginBottom:3}}>📄 Generate meeting minutes documents</div>
+              <div style={{fontSize:13,fontWeight:600,color:C.blue,marginBottom:3}}>📄 Meeting minutes documents</div>
               <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem"}}>
-                {pendingMeetings>0?`${pendingMeetings} meetings missing documents. Generates formatted minutes (era-appropriate style) and uploads to Google Drive.`:'All meetings have attached documents.'}
+                {withDoc>0&&<span style={{color:C.green}}>✓ {withDoc} meeting{withDoc!==1?'s':''} have documents attached. </span>}
+                {pendingMeetings>0?`${pendingMeetings} still need documents generated.`:'All seeded meetings have documents.'}
               </div>
-              {genStatus==='idle'&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {pendingMeetings>0&&<Btn onClick={runMeetingGen}>Generate {pendingMeetings} meeting documents →</Btn>}
-                <Btn outline onClick={()=>{setGenStatus('running');_generateHistoricalAttachments(audits,meetings,msg=>setGenProgress(msg)).then(res=>{setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);setGenResult(res);setGenStatus('done');}).catch(e=>{setGenProgress(e.message);setGenStatus('error');});}}>Regenerate all →</Btn>
-              </div>}
+              {genStatus==='idle'&&pendingMeetings>0&&(
+                <Btn onClick={runMeetingGen}>Generate {pendingMeetings} missing documents →</Btn>
+              )}
               {genStatus==='running'&&<div style={{fontSize:12,color:C.blue,lineHeight:1.8}}>⏳ {genProgress||'Starting…'}</div>}
               {genStatus==='done'&&<div style={{fontSize:12,color:C.green,fontWeight:500}}>
                 ✅ {genResult?.done} document{genResult?.done!==1?'s':''} generated and saved to Google Drive.
                 {genResult?.failed>0&&<span style={{color:C.red}}> {genResult.failed} failed.</span>}
-                <span onClick={()=>setGenStatus('idle')} style={{marginLeft:12,color:C.blue,cursor:'pointer',textDecoration:'underline'}}>Run again</span>
+                <span onClick={()=>setGenStatus('idle')} style={{marginLeft:12,color:C.blue,cursor:'pointer',textDecoration:'underline'}}>Done</span>
               </div>}
               {genStatus==='error'&&<div style={{fontSize:12,color:C.red}}>❌ {genProgress} <span onClick={()=>setGenStatus('idle')} style={{marginLeft:8,cursor:'pointer',textDecoration:'underline'}}>Retry</span></div>}
             </div>
