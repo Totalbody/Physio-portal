@@ -288,37 +288,247 @@ const AUDIT_FORMS = {
   ]},
 };
 
-// ── CLOUD STORAGE — Vercel Blob via proxy API ────────────
-let _portalStore = { files: {}, data: {} };
-let _portalReady = false;
+// ── GOOGLE DRIVE STORAGE ─────────────────────────────────────
+//
+// Folder IDs are pre-created by the setup script — no dynamic folder
+// searching needed. Uploads route instantly to the right place.
+//
+// Only thing needed: paste your OAuth Client ID below ↓
+// (console.cloud.google.com → Credentials → OAuth 2.0 Client ID → Web app)
+// Authorized JS origins: https://physio-portal-mu.vercel.app
+//
+const GDRIVE_CLIENT_ID = "PASTE_YOUR_CLIENT_ID_HERE.apps.googleusercontent.com";
+const GDRIVE_SCOPE     = "https://www.googleapis.com/auth/drive.file";
+
+// ── Pre-created folder IDs (from Apps Script setup) ──────────
+const DRIVE_FOLDERS = {
+  root: "1BzF79-2IdYupW0kdrneAHwwFGacrmdi7",
+  staff: {
+    jade:     { certs:"1uwygA5J3yChbxxC-wJUxkEOiwWCucg3Q", contract:"1hXwJ2Zuizg5fnxznx1eRCYk_vDQUgXG7", reviews:"1WWcqDhrj3zqMC0ALsUT2TQ0L7JactxSp" },
+    alistair: { certs:"1x-2EfAKVSyNAbqTOBDOO08L4oxf46dZk", contract:"1IGUrwjbe1Odrm9haI1kS8onKJQ3SnBvC", reviews:"11GBKJbVQgVRpTSo8N5c_oAS-wHhevLnc" },
+    hans:     { certs:"1fYS-Sz-fnGXkDvLSL3FmZp1hbTolSw42", contract:"1l3srln7NHvbfRqbqhlWjZxr0BafWmYmV", reviews:"1pQccBGAX8_PQIqRpgeZYyWVZk9_vkiY-" },
+    timothy:  { certs:"1XxYKJvTwK9sCaIVMMJhDUAWn00szo3EW", contract:"1cx7BaIWUicPzF9G_3YxlnHk_GxwmJUZN", reviews:"1doEiRz3wgPqT64PBGS_cLkr1RBwiiAWr" },
+    dylan:    { certs:"1mPK4ORYHZSaWwQi242DRloBeM0HknsTl", contract:"1thjmuj70f2B1WgA1QdTZMAxIXQTS26Tj", reviews:"1acQfuIg3FVthBL7MNwPzsMDWIetaTZ_u" },
+    isabella: { certs:"1QnoHUR92Y1-oirQIcp4PYD8HCGdhEtgj", contract:"1HtsWwRWfy6_W7AYceOUZ7dbe5ZX94sVL", reviews:"1c_fVGix1Op6icgZs75nWN8XmrglNJYxB" },
+    gwenne:   { certs:"1Z5h6rzRcSef_ZMhhIC_V7FLYsRHxXS_E", contract:"1b014uDngzaamKJ5KpfQ7C8194J9ZCGTF", reviews:"13KhKDC1OvnhfhNYG94ubVZq8sGbGfKGT" },
+    komal:    { certs:"1iV54aOelbiNUjIZgrzorukpA015dpySL", contract:"1QXdJ56VWCe0lm77wIJdiAiHY3W5P1vl5", reviews:"1QRvXozYOtuR-Qmd1KEbISpEzB06dnWh2" },
+    ibrahim:  { certs:"10titi35tyg1g9LLsF6-rdpbC1Mlu5UzL", contract:"1vZ7CpIk0CF8N7-TTRuvulPgJwY16LX5t", reviews:"1oyY8q1jt83oZq_9-hslGhLiQlYglUa2T" },
+  },
+  audits: {
+    root:"1Y_J-fabeIWZ2Kax_ikntaYCPGXj5Q1z8",
+    "2023":"1hKO_G_e0Glu_y2r0p5JpBNUQ_iH5z2K4","2024":"1a6KZMPnfm3yGYY1yV1wTbCTJMdhH-lJn",
+    "2025":"1iwCQfKjTeKWW3DQ32YSOAs5iTDbm_ps_", "2026":"12Gm9qZjLsWLsAW9ju8zl9B6GNQFli6i5",
+  },
+  meetings: {
+    root:"1AKqF0X7EZi7LHaDu09agO3BXd2M72ETA",
+    "2023":"1yihVWh9DmpX0lDzJeyM2tGlvwjf08cDJ","2024":"1bwL9Guln0GAfDWlIByCYXhW7qLhBI9BK",
+    "2025":"1qWzOjnClV4T4xHxjvQhhknYlm-SHdU66","2026":"19fw6RkDHtVhkRksiOfQE5G0bKJG6UY43",
+  },
+  inservice: "1tVKp8yaNiWqIFD8GkXq5uIC31hvhwKrq",
+  policies:  "1YnNeeECzW2MnfBUg8C8tXZouHY7nc1wc",
+  clinics: {
+    pakuranga:"1rPqGOlOG9Nav9yBYZZwdlUD70tA0ZmCS",
+    titirangi:"1HS2g_UhYEdh3-xmZ9XxJVr52QVoYjFo2",
+    flatbush: "15rbVq7hAkbUvCl38R9KPnjeinm8BsxKb",
+    panmure:  "1XmxRvdddhUWqsPnaUWH8vGFSaLtdgcuM",
+  },
+};
+
+// Cert keys that go to Reviews subfolder
+const _REVIEW_CERTS  = new Set(["peerreview","appraisal"]);
+// Cert keys that go to Contract & JD subfolder
+const _CONTRACT_CERTS = new Set(["contract","jd","orientation"]);
+
+// Instant folder lookup — no API calls, uses pre-created IDs
+function _folderForKey(key) {
+  const yr = String(new Date().getFullYear());
+  if (key.startsWith('cert_')) {
+    const rest    = key.replace('cert_','');
+    const staffId = rest.split('_')[0];
+    const certKey = rest.slice(staffId.length + 1);
+    const sf = DRIVE_FOLDERS.staff[staffId];
+    if (!sf) return DRIVE_FOLDERS.root;
+    if (_REVIEW_CERTS.has(certKey))   return sf.reviews;
+    if (_CONTRACT_CERTS.has(certKey)) return sf.contract;
+    return sf.certs;
+  }
+  if (key.startsWith('jd_'))         return DRIVE_FOLDERS.staff[key.replace('jd_','')]?.contract   || DRIVE_FOLDERS.root;
+  if (key.startsWith('extra_'))      return DRIVE_FOLDERS.staff[key.replace('extra_','')]?.certs    || DRIVE_FOLDERS.root;
+  if (key.startsWith('equip_'))      return DRIVE_FOLDERS.clinics[key.replace('equip_','')]         || DRIVE_FOLDERS.root;
+  if (key.startsWith('ppdoc_'))      return DRIVE_FOLDERS.policies;
+  if (key.startsWith('isrv_'))       return DRIVE_FOLDERS.inservice;
+  if (key.startsWith('mtgatt_'))     return DRIVE_FOLDERS.meetings[yr]  || DRIVE_FOLDERS.meetings.root;
+  if (key.startsWith('auditevid_') || key.startsWith('logauditevid_'))
+                                     return DRIVE_FOLDERS.audits[yr]    || DRIVE_FOLDERS.audits.root;
+  return DRIVE_FOLDERS.root;
+}
+
+let _portalStore       = { files: {}, data: {} };
+let _portalReady       = false;
 let _portalForceUpdate = null;
-let _fuTimer = null;
+let _fuTimer           = null;
+let _saveTimer         = null;
+let _driveToken        = null;
+let _driveStateFileId  = null;
+
 function _scheduleForceUpdate() {
   clearTimeout(_fuTimer);
   _fuTimer = setTimeout(() => { if (_portalForceUpdate) _portalForceUpdate(n => n + 1); }, 400);
 }
+function _debouncedSave() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => _saveDriveState().catch(() => {}), 2000);
+}
 
-async function _loadStore() {
+// Load Google scripts (gapi + GIS) — injected once
+function _loadGoogleScripts() {
+  const load = (src) => new Promise(res => {
+    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; document.head.appendChild(s);
+  });
+  return Promise.all([
+    load('https://apis.google.com/js/api.js'),
+    load('https://accounts.google.com/gsi/client').then(() => new Promise(r => setTimeout(r, 150))),
+  ]);
+}
+
+async function _initGapi() {
+  await new Promise((res, rej) => window.gapi.load('client', { callback: res, onerror: rej }));
+  await window.gapi.client.init({
+    discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
+  });
+}
+
+function _requestToken(prompt = 'none') {
+  return new Promise((resolve, reject) => {
+    if (!window.google?.accounts?.oauth2) { reject('GIS not loaded'); return; }
+    window.google.accounts.oauth2.initTokenClient({
+      client_id: GDRIVE_CLIENT_ID,
+      scope: GDRIVE_SCOPE,
+      callback: (resp) => {
+        if (resp.error) { reject(resp.error); return; }
+        _driveToken = resp.access_token;
+        window.gapi.client.setToken({ access_token: _driveToken });
+        resolve(resp.access_token);
+      },
+    }).requestAccessToken({ prompt });
+  });
+}
+
+// Called from the UI "Connect Google Drive" button
+async function _signInToDrive() {
   try {
-    const resp = await fetch(PORTAL_API + "/store", {
-      headers: { "X-Portal-Secret": PORTAL_SECRET },
-    });
-    if (!resp.ok) throw new Error("API " + resp.status);
-    const state = await resp.json();
-    // Merge file records: the store may return files in state.files and/or state.data
-    const files = { ...(state.files || {}) };
-    // Also pull any file records saved under the "files" store namespace
-    if (state.data) {
-      Object.entries(state.data).forEach(([k, v]) => {
-        if (v && v.blobUrl) files[k] = v; // any data record with a blobUrl is a file record
-      });
-    }
-    _portalStore = { files, data: state.data || {} };
+    await _loadGoogleScripts();
+    await _initGapi();
+    await _requestToken(''); // '' = show consent screen if needed
     _portalReady = true;
-    _log("[Portal] Loaded:", Object.keys(_portalStore.files).length, "files,", Object.keys(_portalStore.data).length, "data keys");
+    await _loadDriveData();
+    _scheduleForceUpdate();
     return true;
-  } catch (e) {
-    _warn("[Portal] API unavailable, using localStorage:", e.message);
+  } catch(e) { _warn('[Drive sign-in]', e); return false; }
+}
+
+// Upload a file directly to Drive; returns { driveId, blobUrl, driveUrl, fileName, fileType }
+async function _uploadFileToDrive(fileKey, fileName, fileType, dataUrl) {
+  try {
+    const folderId = _folderForKey(fileKey); // instant — no API call
+    const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), c => c.charCodeAt(0));
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify({ name: fileName, parents: [folderId] })], { type:'application/json' }));
+    form.append('file', new Blob([bytes], { type: fileType }));
+    const resp = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',
+      { method:'POST', headers:{ Authorization:`Bearer ${_driveToken}` }, body: form }
+    );
+    const r = await resp.json();
+    if (!r.id) throw new Error(JSON.stringify(r));
+    // Link-share (anyone with link can view — needed for inline display in portal)
+    await fetch(`https://www.googleapis.com/drive/v3/files/${r.id}/permissions`, {
+      method:'POST',
+      headers:{ Authorization:`Bearer ${_driveToken}`, 'Content-Type':'application/json' },
+      body: JSON.stringify({ role:'reader', type:'anyone' }),
+    });
+    return {
+      driveId: r.id,
+      driveUrl: r.webViewLink,
+      blobUrl: `https://drive.google.com/uc?export=view&id=${r.id}`,
+      fileName, fileType,
+    };
+  } catch(e) { _err('[Drive upload]', e.message); return null; }
+}
+
+async function _deleteFromDrive(driveId) {
+  if (!driveId || !_driveToken) return;
+  try {
+    await fetch(`https://www.googleapis.com/drive/v3/files/${driveId}`,
+      { method:'DELETE', headers:{ Authorization:`Bearer ${_driveToken}` } });
+  } catch(e) { _err('[Drive delete]', e.message); }
+}
+
+// Save portal-state.json into the root portal folder (debounced)
+async function _saveDriveState() {
+  if (!_portalReady || !_driveToken) return;
+  try {
+    const payload = JSON.stringify({ ..._portalStore.data, _files: _portalStore.files });
+    if (_driveStateFileId) {
+      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${_driveStateFileId}?uploadType=media`, {
+        method:'PATCH',
+        headers:{ Authorization:`Bearer ${_driveToken}`, 'Content-Type':'application/json' },
+        body: payload,
+      });
+    } else {
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify({ name:'portal-state.json', parents:[DRIVE_FOLDERS.root] })], { type:'application/json' }));
+      form.append('file', new Blob([payload], { type:'application/json' }));
+      const resp = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+        { method:'POST', headers:{ Authorization:`Bearer ${_driveToken}` }, body: form }
+      );
+      const r = await resp.json();
+      if (r.id) _driveStateFileId = r.id;
+    }
+    _log('[Drive] State saved');
+  } catch(e) { _err('[Drive state save]', e.message); }
+}
+
+// Load portal-state.json from the root folder into _portalStore
+async function _loadDriveData() {
+  try {
+    const q = `name='portal-state.json' and '${DRIVE_FOLDERS.root}' in parents and trashed=false`;
+    const list = await window.gapi.client.drive.files.list({ q, fields:'files(id)', spaces:'drive' });
+    if (list.result.files.length > 0) {
+      _driveStateFileId = list.result.files[0].id;
+      const resp = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${_driveStateFileId}?alt=media`,
+        { headers:{ Authorization:`Bearer ${_driveToken}` } }
+      );
+      const data = await resp.json();
+      const files = data._files || {};
+      delete data._files;
+      _portalStore = { files, data };
+      _log('[Drive] Loaded', Object.keys(files).length, 'files,', Object.keys(data).length, 'data keys');
+    } else {
+      _log('[Drive] No portal-state.json found — starting fresh');
+    }
+  } catch(e) { _err('[Drive load]', e.message); }
+}
+
+// Entry point called on App startup — tries silent token first
+async function _loadStore() {
+  if (!GDRIVE_CLIENT_ID || GDRIVE_CLIENT_ID.includes('PASTE')) {
+    _warn('[Drive] Client ID not configured — using localStorage only');
+    return false;
+  }
+  try {
+    await _loadGoogleScripts();
+    await _initGapi();
+    await _requestToken('none'); // silent — works if user already consented
+    _portalReady = true;
+    await _loadDriveData();
+    return true;
+  } catch(e) {
+    _warn('[Drive] Silent sign-in failed — click Connect in sidebar:', e);
     _portalReady = false;
     return false;
   }
@@ -330,39 +540,32 @@ function _archiveFile(key, oldFile) {
   if (!oldFile || !oldFile.fileName) return;
   const histKey = key + "_hist";
   const hist = (_portalStore.data[histKey] || []).slice(0, 9);
-  const archived = { fileName:oldFile.fileName, fileType:oldFile.fileType, uploadedDate:oldFile.uploadedDate, blobUrl:oldFile.blobUrl, dataUrl:oldFile.dataUrl, expiry:oldFile.expiry, issued:oldFile.issued, archivedDate:new Date().toLocaleDateString("en-NZ") };
+  const archived = { fileName:oldFile.fileName, fileType:oldFile.fileType, uploadedDate:oldFile.uploadedDate, blobUrl:oldFile.blobUrl, driveId:oldFile.driveId, driveUrl:oldFile.driveUrl, expiry:oldFile.expiry, issued:oldFile.issued, archivedDate:new Date().toLocaleDateString("en-NZ") };
   const newHist = [archived, ...hist];
   _portalStore.data[histKey] = newHist;
-  fetch(PORTAL_API + "/store", { method:"POST", headers:_apiHeaders, body:JSON.stringify({ key:histKey, value:newHist }) }).catch(()=>{});
+  if (_portalReady) _debouncedSave();
+  else try { localStorage.setItem(histKey, JSON.stringify(newHist)); } catch {}
 }
 
 function saveFile(id, k, d) {
   const key = sKey(id, k);
   if (_portalReady) {
-    // Archive old file before overwriting
     _archiveFile(key, _portalStore.files[key]);
     _portalStore.files[key] = d;
-    // Save lightweight metadata to localStorage immediately (NO dataUrl — too large, fills up quota)
-    // This lets loadFile fall back to localStorage on refresh even before the blob upload finishes
+    // Tiny localStorage backup (metadata only — no dataUrl, avoids quota issues)
     try {
-      const meta = { fileName:d.fileName, fileType:d.fileType, uploadedDate:d.uploadedDate, certKey:d.certKey, expiry:d.expiry||null, issued:d.issued||null };
-      localStorage.setItem(key, JSON.stringify(meta));
+      localStorage.setItem(key, JSON.stringify({ fileName:d.fileName, fileType:d.fileType, uploadedDate:d.uploadedDate, certKey:d.certKey, expiry:d.expiry||null, issued:d.issued||null }));
     } catch {}
-    fetch(PORTAL_API + "/upload", {
-      method: "POST", headers: _apiHeaders,
-      body: JSON.stringify({ fileKey: key, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl, meta: d.expiry ? { expiry: d.expiry } : d.issued ? { issued: d.issued } : undefined }),
-    }).then(r => r.json()).then(result => {
-      if (result.ok && result.file) {
-        _portalStore.files[key] = result.file;
-        // Replace the metadata-only backup with the full blobUrl record (still small — no dataUrl)
-        try { localStorage.setItem(key, JSON.stringify(result.file)); } catch {}
-        fetch(PORTAL_API + "/store", {
-          method: "POST", headers: _apiHeaders,
-          body: JSON.stringify({ key, value: result.file, store: "files" }),
-        }).catch(e => _err("[Portal] Sync error:", e));
+    // Upload to Drive and replace the record with driveId/blobUrl
+    _uploadFileToDrive(key, d.fileName, d.fileType, d.dataUrl).then(driveFile => {
+      if (driveFile) {
+        const updated = { ...d, ...driveFile, dataUrl: undefined };
+        _portalStore.files[key] = updated;
+        try { localStorage.setItem(key, JSON.stringify(updated)); } catch {}
+        _debouncedSave();
         _scheduleForceUpdate();
       }
-    }).catch(e => _err("[Upload] Failed:", e.message));
+    }).catch(e => _err('[saveFile]', e.message));
     return true;
   }
   try { localStorage.setItem(key, JSON.stringify(d)); return true; } catch { return false; }
@@ -371,11 +574,8 @@ function saveFile(id, k, d) {
 function loadFile(id, k) {
   const key = sKey(id, k);
   if (_portalReady) {
-    const cloudFile = _portalStore.files[key] || null;
-    if (cloudFile) return cloudFile;
-    // Cloud doesn't have it — fall back to localStorage backup so certs survive
-    // even if the /store sync failed after upload
-    try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : null; } catch { return null; }
+    const f = _portalStore.files[key] || null;
+    if (f) return f;
   }
   try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : null; } catch { return null; }
 }
@@ -389,11 +589,11 @@ function loadFileHistory(id, k) {
 function removeFile(id, k) {
   const key = sKey(id, k);
   if (_portalReady) {
+    const existing = _portalStore.files[key];
     delete _portalStore.files[key];
-    try { localStorage.removeItem(key); } catch {} // clean up backup too
-    fetch(PORTAL_API + "/upload?fileKey=" + encodeURIComponent(key), {
-      method: "DELETE", headers: { "X-Portal-Secret": PORTAL_SECRET },
-    }).catch(e => _err("[Portal] Delete error:", e));
+    try { localStorage.removeItem(key); } catch {}
+    if (existing?.driveId) _deleteFromDrive(existing.driveId).catch(() => {});
+    _debouncedSave();
     return;
   }
   try { localStorage.removeItem(key); } catch {}
@@ -401,46 +601,24 @@ function removeFile(id, k) {
 
 function saveGen(k, d) {
   if (_portalReady) {
-    if (d && d.dataUrl) {
-      _portalStore.files[k] = d;
-      fetch(PORTAL_API + "/upload", {
-        method: "POST", headers: _apiHeaders,
-        body: JSON.stringify({ fileKey: k, fileName: d.fileName, fileType: d.fileType, fileData: d.dataUrl }),
-      }).then(r => r.json()).then(result => {
-        if (result.ok && result.file) {
-          _portalStore.files[k] = result.file;
-          _portalStore.data[k] = result.file;
-          fetch(PORTAL_API + "/store", {
-            method: "POST", headers: _apiHeaders,
-            body: JSON.stringify({ key: k, value: result.file }),
-          }).catch(()=>{});
-          _scheduleForceUpdate();
-        }
-      }).catch(e => _err("[Portal] Upload error:", e));
-    } else {
-      _portalStore.data[k] = d;
-      fetch(PORTAL_API + "/store", {
-        method: "POST", headers: _apiHeaders,
-        body: JSON.stringify({ key: k, value: d }),
-      }).catch(e => _err("[Portal] Save error:", e));
-    }
+    _portalStore.data[k] = d;
+    _debouncedSave();
     return true;
   }
   try { localStorage.setItem(k, JSON.stringify(d)); return true; } catch { return false; }
 }
 
 function loadGen(k) {
-  if (_portalReady) return _portalStore.files[k] || _portalStore.data[k] || null;
+  if (_portalReady) return _portalStore.data[k] || null;
   try { const d = localStorage.getItem(k); return d ? JSON.parse(d) : null; } catch { return null; }
 }
 
 function removeGen(k) {
   if (_portalReady) {
-    delete _portalStore.files[k];
+    const existing = _portalStore.data[k];
     delete _portalStore.data[k];
-    fetch(PORTAL_API + "/upload?fileKey=" + encodeURIComponent(k), {
-      method: "DELETE", headers: { "X-Portal-Secret": PORTAL_SECRET },
-    }).catch(e => _err("[Portal] Delete error:", e));
+    if (existing?.driveId) _deleteFromDrive(existing.driveId).catch(() => {});
+    _debouncedSave();
     return;
   }
   try { localStorage.removeItem(k); } catch {}
@@ -512,17 +690,11 @@ function PH({title,sub}){return <><div style={{fontSize:20,fontWeight:600,margin
 function TabBar({items,current,setter}){return <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,marginBottom:"1rem",overflowX:"auto"}}>{items.map(([id,label])=><div key={id} onClick={()=>setter(id)} style={{padding:"7px 14px",fontSize:13,color:current===id?C.teal:C.muted,cursor:"pointer",borderBottom:current===id?`2px solid ${C.teal}`:"2px solid transparent",fontWeight:current===id?500:400,whiteSpace:"nowrap"}}>{label}</div>)}</div>;}
 
 
-// Upload a file to Vercel Blob and return the file record with blobUrl
+// Upload helper used by audit evidence, meeting attachments, P&P docs, etc.
+// Returns { blobUrl, driveId, driveUrl, fileName, fileType } or null
 async function _uploadToBlob(fileKey, fileName, fileType, dataUrl) {
-  try {
-    const resp = await fetch(PORTAL_API + "/upload", {
-      method: "POST", headers: _apiHeaders,
-      body: JSON.stringify({ fileKey, fileName, fileType, fileData: dataUrl }),
-    });
-    const result = await resp.json();
-    if (result.ok && result.file) return result.file;
-  } catch(e) { _err("[Blob upload]", e.message); }
-  return null;
+  if (_portalReady && _driveToken) return _uploadFileToDrive(fileKey, fileName, fileType, dataUrl);
+  return null; // localStorage-only mode: callers handle null gracefully
 }
 
 // file viewer
@@ -634,11 +806,8 @@ function CertCard({staffId,cert,role,onView}){
     const r=new FileReader();
     r.onload=ev=>{
       const key=sKey(staffId,cert.key);
-      // Clear old expiry immediately so stale data doesn't linger
-      if(_portalReady){
-        delete _portalStore.data["expiry_"+key];
-        fetch(PORTAL_API+"/store?key="+encodeURIComponent("expiry_"+key),{method:"DELETE",headers:{"X-Portal-Secret":PORTAL_SECRET}}).catch(()=>{});
-      }
+      // Clear old expiry so stale data doesn't linger
+      if(_portalReady){ delete _portalStore.data["expiry_"+key]; _debouncedSave(); }
       const d={fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),certKey:cert.key,expiry:null,issued:null};
       if(saveFile(staffId,cert.key,d)){
         setFile(d);
@@ -650,10 +819,8 @@ function CertCard({staffId,cert,role,onView}){
           setFile(updated);
           if(_portalReady){
             if(_portalStore.files[key]){_portalStore.files[key].expiry=expiry;_portalStore.files[key].issued=issued;}
-            if(expiry||issued){
-              _portalStore.data["expiry_"+key]={expiry,issued};
-              fetch(PORTAL_API+"/store",{method:"POST",headers:_apiHeaders,body:JSON.stringify({key:"expiry_"+key,value:{expiry,issued}})}).catch(()=>{});
-            }
+            if(expiry||issued){ _portalStore.data["expiry_"+key]={expiry,issued}; }
+            _debouncedSave();
             _scheduleForceUpdate();
           }
           setScanning(false);
@@ -692,8 +859,8 @@ function CertCard({staffId,cert,role,onView}){
         <BSm onClick={()=>ref.current.click()} color={cert.required?C.teal:C.gray}>📷 {file?"Upload new":"Upload"}</BSm>
         {file&&isExpired&&<BSm onClick={()=>{
           const key=sKey(staffId,cert.key);
-          if(_portalReady){delete _portalStore.data["expiry_"+key];fetch(PORTAL_API+"/store?key="+encodeURIComponent("expiry_"+key),{method:"DELETE",headers:{"X-Portal-Secret":PORTAL_SECRET}}).catch(()=>{});}
-          if(_portalStore.files[key]){_portalStore.files[key].expiry=null;_portalStore.files[key].issued=null;}
+          if(_portalReady&&_portalStore.files[key]){_portalStore.files[key].expiry=null;_portalStore.files[key].issued=null;_debouncedSave();}
+          if(_portalStore.data["expiry_"+key]){delete _portalStore.data["expiry_"+key];_debouncedSave();}
           setFile(f=>({...f,expiry:null,issued:null}));
           _scheduleForceUpdate();
         }} color={C.amber}>Clear expiry</BSm>}
@@ -720,15 +887,15 @@ function MultiFileRow({label,gkey,onView,accent=C.teal}){
     const r=new FileReader();
     r.onload=ev=>{
       const d={id:Date.now(),fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
-      // Upload to cloud
+      const updated=[...files,d];setFiles(updated);saveGen(gkey,updated);
+      // Upload to Drive and replace record with driveId/blobUrl
       if(_portalReady){
-        fetch(PORTAL_API+"/upload",{method:"POST",headers:_apiHeaders,body:JSON.stringify({fileKey:gkey+"_"+d.id,fileName:d.fileName,fileType:d.fileType,fileData:d.dataUrl})}).then(r=>r.json()).then(result=>{
-          if(result.ok&&result.file){
-            setFiles(prev=>{const updated=prev.map(x=>x.id===d.id?{...x,...result.file}:x);saveGen(gkey,updated);return updated;});
+        _uploadFileToDrive(gkey+"_"+d.id,d.fileName,d.fileType,d.dataUrl).then(driveFile=>{
+          if(driveFile){
+            setFiles(prev=>{const up=prev.map(x=>x.id===d.id?{...x,...driveFile,dataUrl:undefined}:x);saveGen(gkey,up);return up;});
           }
         }).catch(()=>{});
       }
-      const updated=[...files,d];setFiles(updated);saveGen(gkey,updated);
     };
     r.readAsDataURL(f);e.target.value="";
   }
@@ -777,15 +944,15 @@ function ExtraDocsSection({staffId,onView}){
     const r=new FileReader();
     r.onload=ev=>{
       const d={id:Date.now(),label:pendingLabel,fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+      const updated=[...docs,d];setDocs(updated);saveGen(key,updated);
+      setPendingLabel(null);
       if(_portalReady){
-        fetch(PORTAL_API+"/upload",{method:"POST",headers:_apiHeaders,body:JSON.stringify({fileKey:key+"_"+d.id,fileName:d.fileName,fileType:d.fileType,fileData:d.dataUrl})}).then(r=>r.json()).then(result=>{
-          if(result.ok&&result.file){
-            setDocs(prev=>{const updated=prev.map(x=>x.id===d.id?{...x,...result.file,label:x.label}:x);saveGen(key,updated);return updated;});
+        _uploadFileToDrive(key+"_"+d.id,d.fileName,d.fileType,d.dataUrl).then(driveFile=>{
+          if(driveFile){
+            setDocs(prev=>{const up=prev.map(x=>x.id===d.id?{...x,...driveFile,label:x.label,dataUrl:undefined}:x);saveGen(key,up);return up;});
           }
         }).catch(()=>{});
       }
-      const updated=[...docs,d];setDocs(updated);saveGen(key,updated);
-      setPendingLabel(null);
     };
     r.readAsDataURL(f);e.target.value="";
   }
@@ -1036,7 +1203,7 @@ function MeetingAttachBtn({meeting,meetings,setMeetings,onView}){
       </div>
       {showPaste&&(
         <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center"}}>
-          <input value={pasteUrl} onChange={e=>setPasteUrl(e.target.value)} placeholder="Paste Vercel Blob URL…" style={{flex:1,padding:"6px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,background:"white"}}/>
+          <input value={pasteUrl} onChange={e=>setPasteUrl(e.target.value)} placeholder="Paste Google Drive share link…" style={{flex:1,padding:"6px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,background:"white"}}/>
           <BSm onClick={handlePasteUrl} color={C.teal}>Link →</BSm>
           <BSm onClick={()=>{setShowPaste(false);setPasteUrl("");}} color={C.gray}>Cancel</BSm>
         </div>
@@ -1834,7 +2001,7 @@ export default function App(){
     const sa=Object.entries(STAFF);const tr=sa.reduce((acc,[id])=>acc+staffComp(id).total,0);const td=sa.reduce((a,[id])=>a+staffComp(id).done,0);const pct=tr>0?Math.round((td/tr)*100):0;
     return(
       <div>
-        <PH title="Good morning, Jade 👋" sub={"Total Body Physio — Compliance & HR Portal · April 2026" + (portalConnected ? " · ☁️ Cloud connected" : " · ⚠️ Local storage only")}/>
+        <PH title="Good morning, Jade 👋" sub={"Total Body Physio — Compliance & HR Portal · April 2026" + (portalConnected ? " · 📁 Google Drive connected" : " · ⚠️ Connect Google Drive in sidebar")}/>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.75rem",marginBottom:"1rem"}}>
           {[[String(Object.keys(STAFF).length),"Staff",C.teal],[`${pct}%`,"Compliance",pct>=80?C.teal:pct>50?C.amber:C.red],[String(urgentCount),"Due/overdue",urgentCount>0?C.red:C.teal],[String(audits.length),"Audit records",C.blue]].map(([n,l,c])=>(
             <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",textAlign:"center"}}>
@@ -2550,6 +2717,16 @@ export default function App(){
           <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>Total Body Physio</div><div style={{fontSize:11,color:C.muted}}>PhysioPortal</div></div>
           {isMobile&&<button onClick={()=>setNavOpen(false)} style={{background:"none",border:"none",fontSize:20,color:C.muted,cursor:"pointer",padding:"2px 6px",lineHeight:1}}>✕</button>}
         </div>
+        {/* Google Drive connect banner */}
+        {!portalConnected&&<div style={{padding:"0.625rem 1rem",borderBottom:`1px solid ${C.border}`,background:"#FFF9E6"}}>
+          <div style={{fontSize:11,color:"#7a5c00",marginBottom:4,fontWeight:500}}>📁 Not connected to Google Drive</div>
+          <button onClick={()=>_signInToDrive().then(ok=>{if(ok){setPortalConnected(true);_scheduleForceUpdate();}}).catch(()=>{})} style={{width:"100%",background:"#185FA5",color:"white",border:"none",borderRadius:5,padding:"5px 0",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+            Connect Google Drive →
+          </button>
+        </div>}
+        {portalConnected&&<div style={{padding:"5px 1rem",borderBottom:`1px solid ${C.border}`,background:"#EAF3DE",display:"flex",alignItems:"center",gap:5}}>
+          <span style={{fontSize:10}}>📁</span><span style={{fontSize:11,color:C.green,fontWeight:500}}>Google Drive connected</span>
+        </div>}
         <div style={{padding:"0.75rem 1rem",borderBottom:`1px solid ${C.border}`}}>
           <label style={{fontSize:10,color:C.hint,textTransform:"uppercase",letterSpacing:"0.05em",display:"block",marginBottom:5}}>Viewing as</label>
           <select value={role} onChange={e=>setRole(e.target.value)} style={{width:"100%",padding:"5px 8px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,background:C.grayXL}}>
