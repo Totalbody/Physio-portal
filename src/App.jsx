@@ -297,7 +297,7 @@ const AUDIT_FORMS = {
 // (console.cloud.google.com → Credentials → OAuth 2.0 Client ID → Web app)
 // Authorized JS origins: https://physio-portal-mu.vercel.app
 //
-const GDRIVE_CLIENT_ID = "PASTE_YOUR_CLIENT_ID_HERE.apps.googleusercontent.com";
+const GDRIVE_CLIENT_ID = "836747661612-in0ejcm3vru2fdpb2e95m6tbfnne6pr3.apps.googleusercontent.com";
 const GDRIVE_SCOPE     = "https://www.googleapis.com/auth/drive.file";
 
 // ── Pre-created folder IDs (from Apps Script setup) ──────────
