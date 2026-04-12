@@ -196,12 +196,13 @@ const CLINICS = [
   {id:"flatbush", name:"Flat Bush",               short:"Flat Bush", icon:"🏥",note:"Flat Bush clinic"},
   {id:"titirangi",name:"Titirangi Village",        short:"Titirangi", icon:"🌿",note:"Below Titirangi Medical Centre · Since 2004 · On-site gym"},
   {id:"panmure",  name:"Panmure — Lagoon Pools",   short:"Panmure",  icon:"🏊",note:"Inside Lagoon Pools complex · Hydrotherapy access"},
-  {id:"schools",  name:"Howick & Edgewater College",short:"Schools", icon:"🏫",note:"School term only · Hakinakina Hauora Health Services"},
+  {id:"howick_school",    name:"Howick School",    short:"Howick School",    icon:"🏫",isSchool:true,note:"School term only · Hakinakina Hauora Health Services"},
+  {id:"edgewater_school", name:"Edgewater School", short:"Edgewater School", icon:"🏫",isSchool:true,note:"School term only · Hakinakina Hauora Health Services"},
 ];
 
 const STAFF = {
   jade:     {name:"Jade Warren",        ini:"JW",color:"#0a3d2e",title:"Owner / Director · Physiotherapist",             clinics:["pakuranga","flatbush","titirangi","panmure"],type:"Owner"},
-  alistair: {name:"Alistair Burgess",   ini:"AB",color:"#0F6E56",title:"Senior Physiotherapist · H&S Officer", clinics:["pakuranga","schools"],                       type:"Employee",info:[["Role","Senior Physiotherapist"],["Additional","H&S Officer"],["Qualification","M.Phty, B.App.Sc, NZRP"],["Registration","70-14433 / HPI: 29CMBK"],["Started","24 October 2023"]]},
+  alistair: {name:"Alistair Burgess",   ini:"AB",color:"#0F6E56",title:"Senior Physiotherapist · H&S Officer", clinics:["pakuranga","howick_school","edgewater_school"],                       type:"Employee",info:[["Role","Senior Physiotherapist"],["Additional","H&S Officer"],["Qualification","M.Phty, B.App.Sc, NZRP"],["Registration","70-14433 / HPI: 29CMBK"],["Started","24 October 2023"]]},
   timothy:  {name:"Timothy Keung",      ini:"TK",color:"#185FA5",title:"Physiotherapist",                                clinics:["pakuranga","titirangi","panmure"],             type:"Contractor",info:[["Role","Physiotherapist"],["Type","Contractor"],["Languages","Mandarin, Cantonese, English"]]},
   hans:     {name:"Hans Vermeulen",     ini:"HV",color:"#533AB7",title:"Physiotherapist · Clinic Lead",                  clinics:["titirangi"],                                  type:"Contractor",info:[["Role","Physiotherapist · Clinic Lead"],["Type","Contractor"],["Tenure","~20 years"]]},
   dylan:    {name:"Dylan Connolly",     ini:"DC",color:"#D85A30",title:"Physiotherapist",                                clinics:["pakuranga"],                                  type:"Employee",  info:[["Role","Physiotherapist"],["Started","December 2025"]]},
@@ -1314,7 +1315,7 @@ function getReminders() {
     if (next < today) next.setFullYear(today.getFullYear() + 1);
     const days = Math.ceil((next - today) / (1000 * 60 * 60 * 24));
     const status = days < 0 ? "overdue" : days <= 30 ? "due" : "ok";
-    const targets = r.applies === "Per clinic" ? CLINICS.filter(c => c.id !== "schools").map(c => c.short) : ["All staff"];
+    const targets = r.applies === "Per clinic" ? CLINICS.filter(c => !c.isSchool).map(c => c.short) : ["All staff"];
     targets.forEach(t => items.push({ ...r, nextDate: next.toLocaleDateString("en-NZ"), days, status, target: t }));
   });
   return items.sort((a, b) => a.days - b.days);
@@ -2847,20 +2848,20 @@ const INIT_AUDITS=[
   _mk(8013,"hs_audit","H&S Workplace Audit","⚠️","Howick School","Alistair Burgess","2026-03-16",23,0,0,23,"Passed","Term 1 2026 H&S — Howick School. All passed."),
   _mk(8014,"hs_audit","H&S Workplace Audit","⚠️","Edgewater School","Alistair Burgess","2026-03-18",23,0,0,23,"Passed","Term 1 2026 H&S — Edgewater School. All passed."),
   // Hygiene — once per term
-  _mk(8015,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2023-03-21",19,0,0,19,"Passed","Term 1 hygiene — Howick School. All items passed."),
-  _mk(8016,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2023-03-23",19,0,0,19,"Passed","Term 1 hygiene — Edgewater School. All items passed."),
-  _mk(8017,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2023-08-08",19,0,0,19,"Passed","Term 3 hygiene — Howick School. All passed."),
-  _mk(8018,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2023-08-10",19,0,0,19,"Passed","Term 3 hygiene — Edgewater School. All passed."),
-  _mk(8019,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2024-03-19",19,0,0,19,"Passed","Term 1 hygiene — Howick School. All passed."),
-  _mk(8020,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2024-03-21",19,0,0,19,"Passed","Term 1 hygiene — Edgewater School. All passed."),
-  _mk(8021,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2024-08-06",18,1,0,19,"1 issue found","Plinth paper roll empty with no spare — restocked immediately. All other items passed."),
-  _mk(8022,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2024-08-08",19,0,0,19,"Passed","Term 3 hygiene — Edgewater School. All passed."),
-  _mk(8023,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2025-03-18",19,0,0,19,"Passed","Term 1 hygiene — Howick School. All passed."),
-  _mk(8024,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2025-03-20",19,0,0,19,"Passed","Term 1 hygiene — Edgewater School. All passed."),
-  _mk(8025,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2025-08-05",19,0,0,19,"Passed","Term 3 hygiene — Howick School. All passed."),
-  _mk(8026,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2025-08-07",19,0,0,19,"Passed","Term 3 hygiene — Edgewater School. All passed."),
-  _mk(8027,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Jade Warren","2026-03-17",19,0,0,19,"Passed","Term 1 2026 hygiene — Howick School. All passed."),
-  _mk(8028,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Jade Warren","2026-03-19",19,0,0,19,"Passed","Term 1 2026 hygiene — Edgewater School. All passed."),
+  _mk(8015,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Alistair Burgess","2023-03-21",19,0,0,19,"Passed","Term 1 hygiene — Howick School. All items passed."),
+  _mk(8016,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2023-03-23",19,0,0,19,"Passed","Term 1 hygiene — Edgewater School. All items passed."),
+  _mk(8017,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Alistair Burgess","2023-08-08",19,0,0,19,"Passed","Term 3 hygiene — Howick School. All passed."),
+  _mk(8018,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2023-08-10",19,0,0,19,"Passed","Term 3 hygiene — Edgewater School. All passed."),
+  _mk(8019,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Alistair Burgess","2024-03-19",19,0,0,19,"Passed","Term 1 hygiene — Howick School. All passed."),
+  _mk(8020,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2024-03-21",19,0,0,19,"Passed","Term 1 hygiene — Edgewater School. All passed."),
+  _mk(8021,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Alistair Burgess","2024-08-06",18,1,0,19,"1 issue found","Plinth paper roll empty with no spare — restocked immediately. All other items passed."),
+  _mk(8022,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2024-08-08",19,0,0,19,"Passed","Term 3 hygiene — Edgewater School. All passed."),
+  _mk(8023,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Alistair Burgess","2025-03-18",19,0,0,19,"Passed","Term 1 hygiene — Howick School. All passed."),
+  _mk(8024,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2025-03-20",19,0,0,19,"Passed","Term 1 hygiene — Edgewater School. All passed."),
+  _mk(8025,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Alistair Burgess","2025-08-05",19,0,0,19,"Passed","Term 3 hygiene — Howick School. All passed."),
+  _mk(8026,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2025-08-07",19,0,0,19,"Passed","Term 3 hygiene — Edgewater School. All passed."),
+  _mk(8027,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Alistair Burgess","2026-03-17",19,0,0,19,"Passed","Term 1 2026 hygiene — Howick School. All passed."),
+  _mk(8028,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2026-03-19",19,0,0,19,"Passed","Term 1 2026 hygiene — Edgewater School. All passed."),
 ];
 
 export default function App(){
@@ -3246,7 +3247,7 @@ export default function App(){
     const[ni,setNi]=useState({date:"",clinic:"All clinics",topic:"",presenter:"",attendees:"",notes:""});
     const years=[...new Set(inservices.map(i=>String(i.year||i.date?.slice(0,4)||"2025")))].sort((a,b)=>b-a);
     if(!years.includes(filterYear))years.unshift(filterYear);
-    const clinicOptions=["all",...CLINICS.filter(c=>c.id!=="schools").map(c=>c.short)];
+    const clinicOptions=["all",...CLINICS.filter(c=>!c.isSchool).map(c=>c.short)];
     const visible=inservices.filter(i=>{
       const yr=String(i.year||i.date?.slice(0,4)||"");
       const cl=i.clinic||"";
@@ -3262,7 +3263,7 @@ export default function App(){
     }
     // Per-clinic status for current year
     const thisYear=String(new Date().getFullYear());
-    const clinicStatus=CLINICS.filter(c=>c.id!=="schools").map(cl=>{
+    const clinicStatus=CLINICS.filter(c=>!c.isSchool).map(cl=>{
       const done=inservices.filter(i=>String(i.year||i.date?.slice(0,4)||"")===thisYear&&(i.clinic===cl.short||i.clinic===cl.name||(i.clinic||"").includes(cl.short)));
       return{...cl,count:done.length,done:done.length>0};
     });
@@ -3302,7 +3303,7 @@ export default function App(){
               <Input label="Date" value={ni.date} onChange={e=>setNi({...ni,date:e.target.value})} type="date"/>
               <div style={{marginBottom:"0.625rem"}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Clinic</label>
                 <select value={ni.clinic} onChange={e=>setNi({...ni,clinic:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}>
-                  <option>All clinics</option>{CLINICS.filter(c=>c.id!=="schools").map(c=><option key={c.id}>{c.short}</option>)}
+                  <option>All clinics</option>{CLINICS.filter(c=>!c.isSchool).map(c=><option key={c.id}>{c.short}</option>)}
                 </select>
               </div>
             </div>
@@ -3442,7 +3443,7 @@ export default function App(){
       {(()=>{
         const thisYearA=String(new Date().getFullYear());
         const allYears=[...new Set([thisYearA,...audits.map(a=>a.date?.slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
-        const filtered=audits.filter(a=>(auditTypeFilter==="all"||a.type===auditTypeFilter)&&(auditClinicFilter==="all"||a.clinic===auditClinicFilter));
+        const filtered=audits.filter(a=>(auditTypeFilter==="all"||a.type===auditTypeFilter)&&(auditClinicFilter==="all"||(a.clinic||"").toLowerCase()===(auditClinicFilter||"").toLowerCase()));
 
         function isAyrOpen(yr){const k="ayr_"+yr;return k in collapsedYears?collapsedYears[k]:yr===thisYearA;}
         function isAOpen(id){return!!collapsedYears["ao_"+id];}
@@ -3545,7 +3546,7 @@ export default function App(){
       const currentQ=nowMonth<3?0:nowMonth<6?1:nowMonth<9?2:3;
       const qDefs=[{n:"Q1",label:"Jan – Mar",months:[0,1,2]},{n:"Q2",label:"Apr – Jun",months:[3,4,5]},{n:"Q3",label:"Jul – Sep",months:[6,7,8]},{n:"Q4",label:"Oct – Dec",months:[9,10,11]}];
       const allMeetingYears=[...new Set([thisYear,...meetings.map(m=>m.date.slice(0,4))])].sort((a,b)=>b-a);
-      const mainClinics=CLINICS.filter(c=>c.id!=="schools");
+      const mainClinics=CLINICS.filter(c=>!c.isSchool);
 
       // Year open by default for all years (collapse only on explicit click)
       function isYrOpen(yr){const k="myr_"+yr;return k in collapsedYears?collapsedYears[k]:true;}
@@ -3664,7 +3665,7 @@ export default function App(){
     })()}
     {mgmtTab==="equipment"&&<div>
       <Alert type="amber" title="P&P Section 3.1.15 — Equipment">Annual service and test/tag. Upload service certs below. Instruction manuals on manufacturer websites. Equipment maintenance register on shared drive.</Alert>
-      <Card>{CLINICS.filter(c=>c.id!=="schools").map(cl=><FileRow key={cl.id} label={`${cl.icon} ${cl.short} — service certificate`} gkey={`equip_${cl.id}`} onView={f=>setMvf(f)} accent={C.amber}/>)}</Card>
+      <Card>{CLINICS.filter(c=>!c.isSchool).map(cl=><FileRow key={cl.id} label={`${cl.icon} ${cl.short} — service certificate`} gkey={`equip_${cl.id}`} onView={f=>setMvf(f)} accent={C.amber}/>)}</Card>
       <Btn outline onClick={()=>setActiveAudit("equipment")}>Run equipment audit →</Btn>
       {mvf&&<FileViewer file={mvf} onClose={()=>setMvf(null)}/>}
     </div>}
