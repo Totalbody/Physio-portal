@@ -1735,6 +1735,10 @@ function CertHistory({staffId,certKey,onView}){
 // cert card
 function CertCard({staffId,cert,role,onView}){
   const ref=useRef();const[file,setFile]=useState(()=>loadFile(staffId,cert.key));
+  // For JD: also check the Documents tab storage as a fallback
+  const docJdFiles = cert.key === "jd" ? (loadGen("jd_" + staffId) || []) : [];
+  const docJdFile = Array.isArray(docJdFiles) && docJdFiles.length > 0 ? docJdFiles[docJdFiles.length - 1] : null;
+  const effectiveFile = file || docJdFile;
   const canSee=!cert.ownerOnly||(role==="owner"||role===staffId);
   const[scanning,setScanning]=useState(false);const[showHist,setShowHist]=useState(false);
   function handle(e){
@@ -1766,38 +1770,39 @@ function CertCard({staffId,cert,role,onView}){
     };
     r.readAsDataURL(f);e.target.value="";
   }
-  if(!canSee)return <div style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:6,display:"flex",alignItems:"center",justifyContent:"space-between"}}><div style={{fontWeight:500,fontSize:13,color:C.muted}}>🔒 {cert.label}</div><Pill s={file?"ok":"pending"} label={file?"On file":"Needed"}/></div>;
+  if(!canSee)return <div style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:6,display:"flex",alignItems:"center",justifyContent:"space-between"}}><div style={{fontWeight:500,fontSize:13,color:C.muted}}>🔒 {cert.label}</div><Pill s={effectiveFile?"ok":"pending"} label={effectiveFile?"On file":"Needed"}/></div>;
   const expiryData=_portalReady?(_portalStore.data["expiry_"+sKey(staffId,cert.key)]||null):null;
-  const certExpiry=file?.expiry||expiryData?.expiry||null;
+  const certExpiry=effectiveFile?.expiry||expiryData?.expiry||null;
   const expInfo=certExpiry?getExpiryStatus(certExpiry):null;
   const isExpired=expInfo?.status==="expired";
   const isExpiring=expInfo?.status==="expiring";
-  const status=file?(isExpired?"expired":"ok"):cert.required?"pending":"na";
+  const status=effectiveFile?(isExpired?"expired":"ok"):cert.required?"pending":"na";
   const bg={ok:"#EAF3DE",expired:"#FCEBEB",pending:cert.required?"#FAEEDA":"#F1EFE8",na:"#F1EFE8"}[status];
   const bd={ok:"#c0dd97",expired:"#f5a0a0",pending:cert.required?"#fac775":C.border,na:C.border}[status];
-  const isImg=file?.fileType?.startsWith("image/");const isPdf=file?.fileType==="application/pdf";
+  const isImg=effectiveFile?.fileType?.startsWith("image/");const isPdf=effectiveFile?.fileType==="application/pdf";
   // Use Drive thumbnail API for Drive-hosted images — fast CDN, no rate limits
-  const thumbSrc=file?.driveId
-    ? `https://drive.google.com/thumbnail?id=${file.driveId}&sz=w200`
-    : (file?.blobUrl||file?.dataUrl);
+  const thumbSrc=effectiveFile?.driveId
+    ? `https://drive.google.com/thumbnail?id=${effectiveFile.driveId}&sz=w200`
+    : (effectiveFile?.blobUrl||effectiveFile?.dataUrl);
+  const isDocsFallback=!file&&!!docJdFile;
   return(
     <div style={{background:bg,border:`1px solid ${bd}`,borderRadius:8,padding:"10px 12px",marginBottom:6}}>
       <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-        {isImg&&<div onClick={()=>onView(file)} style={{width:44,height:44,borderRadius:6,overflow:"hidden",flexShrink:0,cursor:"pointer",border:`1px solid ${C.border}`}}><img src={thumbSrc} alt="cert" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>}
-        {isPdf&&<div onClick={()=>onView(file)} style={{width:44,height:44,borderRadius:6,background:C.redL,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",border:`1px solid ${C.border}`,fontSize:22}}>📄</div>}
+        {isImg&&<div onClick={()=>onView(effectiveFile)} style={{width:44,height:44,borderRadius:6,overflow:"hidden",flexShrink:0,cursor:"pointer",border:`1px solid ${C.border}`}}><img src={thumbSrc} alt="cert" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>}
+        {isPdf&&<div onClick={()=>onView(effectiveFile)} style={{width:44,height:44,borderRadius:6,background:C.redL,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",border:`1px solid ${C.border}`,fontSize:22}}>📄</div>}
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
             <div style={{fontWeight:500,fontSize:13}}>{cert.label}{cert.ownerOnly?" 🔒":""}</div>
-            {scanning?<span style={{fontSize:11,color:C.blue,fontWeight:500}}>🔍 Reading cert...</span>:<Pill s={isExpired?"expired":isExpiring?"due":status} label={expInfo?expInfo.label:file?"On file ✓":cert.required?"Required":"Optional"}/>}
+            {scanning?<span style={{fontSize:11,color:C.blue,fontWeight:500}}>🔍 Reading cert...</span>:<Pill s={isExpired?"expired":isExpiring?"due":status} label={expInfo?expInfo.label:effectiveFile?"On file ✓":cert.required?"Required":"Optional"}/>}
           </div>
           <div style={{fontSize:11,color:C.muted,marginTop:2}}>{cert.renews}</div>
-          {file&&<div style={{fontSize:11,color:C.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.fileName} · {file.uploadedDate}</div>}
+          {effectiveFile&&<div style={{fontSize:11,color:C.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{effectiveFile.fileName} · {effectiveFile.uploadedDate}{isDocsFallback?" · via Documents tab":""}</div>}
           {certExpiry&&<div style={{fontSize:11,color:expInfo?.color||C.muted,marginTop:1,fontWeight:600}}>{isExpired?"⚠ ":isExpiring?"⏰ ":"✓ "}{expInfo?.label}</div>}
         </div>
       </div>
       <div style={{display:"flex",gap:5,marginTop:8,flexWrap:"wrap"}}>
-        {file&&<BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>}
-        <BSm onClick={()=>ref.current.click()} color={cert.required?C.teal:C.gray}>📷 {file?"Upload new":"Upload"}</BSm>
+        {effectiveFile&&<BSm onClick={()=>onView(effectiveFile)} color={C.teal}>👁 View</BSm>}
+        <BSm onClick={()=>ref.current.click()} color={cert.required?C.teal:C.gray}>📷 {effectiveFile?"Upload new":"Upload"}</BSm>
         {file&&isExpired&&<BSm onClick={()=>{
           const key=sKey(staffId,cert.key);
           if(_portalReady&&_portalStore.files[key]){_portalStore.files[key].expiry=null;_portalStore.files[key].issued=null;_debouncedSave();}
