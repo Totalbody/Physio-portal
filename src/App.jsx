@@ -287,6 +287,14 @@ const AUDIT_FORMS = {
     {title:"Treatment room equipment",items:["Treatment tables in good condition","Pillow frames and headrests secure","Wheeled stool / chair stable","Sharps disposal containers not over-filled — dispose at Chemist Warehouse at 3/4 full"]},
     {title:"Records",items:["Equipment register up to date","Service provider details recorded","Last service date recorded for each major item","Next service date scheduled"]},
   ]},
+  peer_review:{title:"Peer Review",icon:"🔍",freq:"Annual",hasPhysioSelect:true,sections:[
+    {title:"Review setup (PBNZ template p.1–2)",items:["Date of review recorded","Practitioner name confirmed (as per Board register)","Peer reviewer name confirmed (as per Board register)","Reviewer registration number recorded","Practice type identified — Clinical / Non-clinical / Academic / Research / Other","Method confirmed — Direct observation / Video / Performance review","Client selected — informed consent obtained and documented in Cliniko","Informed Consent Standard adhered to"]},
+    {title:"Subjective assessment observation",items:["Thorough subjective assessment conducted","Detailed questions asked about pain onset and aggravating factors","Daily activities affecting condition explored","Previous treatment experiences discussed","Active listening demonstrated — patient able to express concerns","Workplace ergonomics and contributing factors explored"]},
+    {title:"Objective assessment observation",items:["Comprehensive physical examination performed","Range of motion testing conducted where relevant","Palpation performed appropriately","Strength testing relevant to presentation completed","Assessment was methodical and adequately recorded","Baseline outcome measures established (NPS + PSFS)","Posture assessment included where relevant"]},
+    {title:"Professional practice & patient interaction",items:["Communication was clear, professional and respectful","Introduction of self and reviewer to patient was clear","Consent gained verbally before commencing session","Instructions for exercises and equipment use were clear and demonstrated","Patient reassured about prognosis appropriately","Patient involved in setting treatment goals","Empathetic and encouraging interaction throughout"]},
+    {title:"Clinical reasoning & treatment plan",items:["Strong clinical reasoning demonstrated linking subjective and objective findings","Diagnosis clearly articulated and evidence-based","Treatment options discussed with patient including rationale","Patient preferences considered in decision-making","Treatment plan includes functional goals","Discharge criteria and planning documented where appropriate"]},
+    {title:"Summaries & action plan (PBNZ template p.4)",items:["Reviewee summary completed — reflections on session recorded","Reviewer summary completed — strengths and areas for improvement documented","Specific feedback provided within 7 days","Action plan agreed with clear objectives and timeframes","Monitoring plan in place (e.g. monthly progress meetings)","Evaluation criteria defined (e.g. patient feedback, documentation review)","Peer review record signed by both reviewer and reviewee","Copy filed in personnel file and uploaded to compliance portal"]},
+  ]},
 };
 
 // ── GOOGLE DRIVE STORAGE ─────────────────────────────────────
@@ -831,6 +839,37 @@ function _generateAuditForm(audit) {
       ["Last service date recorded for each major item","pass"],
       ["Next service date scheduled","pass"],
     ],
+    peer_review:[
+      ["Date of review recorded","pass"],
+      ["Practitioner name confirmed (as per Board register)","pass"],
+      ["Peer reviewer name confirmed (as per Board register)","pass"],
+      ["Reviewer registration number recorded","pass"],
+      ["Practice type identified — Clinical / Non-clinical / Academic / Research","pass"],
+      ["Method confirmed — Direct observation / Video / Performance review","pass"],
+      ["Client selected — informed consent obtained and documented in Cliniko","pass"],
+      ["Informed Consent Standard adhered to","pass"],
+      ["Thorough subjective assessment conducted","pass"],
+      ["Detailed questions asked about pain onset and aggravating factors","pass"],
+      ["Daily activities and workplace ergonomics explored","pass"],
+      ["Active listening demonstrated — patient able to express concerns","pass"],
+      ["Comprehensive physical examination performed","pass"],
+      ["Range of motion, palpation and strength testing completed","pass"],
+      ["Assessment was methodical and adequately recorded","pass"],
+      ["Baseline outcome measures established (NPS + PSFS)","pass"],
+      ["Communication was clear, professional and respectful","pass"],
+      ["Introduction of self and reviewer to patient was clear","pass"],
+      ["Consent gained verbally before commencing session","pass"],
+      ["Instructions for exercises and equipment demonstrated clearly","pass"],
+      ["Patient involved in setting treatment goals","pass"],
+      ["Strong clinical reasoning linking subjective and objective findings","pass"],
+      ["Treatment options discussed with patient including rationale","pass"],
+      ["Treatment plan includes functional goals","pass"],
+      ["Reviewee summary completed — reflections recorded","pass"],
+      ["Reviewer summary completed — strengths and areas for improvement","pass"],
+      ["Action plan agreed with objectives and timeframes","pass"],
+      ["Peer review record signed by both reviewer and reviewee","pass"],
+      ["Copy filed in personnel file and uploaded to compliance portal","pass"],
+    ],
   };
 
   const items = checklists[audit.type] || checklists.hs_audit;
@@ -844,9 +883,10 @@ function _generateAuditForm(audit) {
     hs_audit:'Health & Safety Workplace Audit',
     fire_drill:'Fire Drill Record',
     equipment:'Equipment & Electrical Check',
+    peer_review:'Peer Review',
   };
   const title = auditTitles[audit.type] || audit.title || 'Audit Record';
-  const freq = {hygiene:'Quarterly',hs_audit:'Quarterly',fire_drill:'Annual',equipment:'Annual'}[audit.type]||'';
+  const freq = {hygiene:'Quarterly',hs_audit:'Quarterly',fire_drill:'Annual',equipment:'Annual',peer_review:'Annual'}[audit.type]||'';
   const ref = `TBP-${(audit.type||'').toUpperCase().slice(0,3)}-${audit.date.replace(/-/g,'')}-${audit.clinic.slice(0,3).toUpperCase()}`;
 
   if (era === '2023') {
@@ -1422,7 +1462,28 @@ function certStatus(id, key) {
     const auditList=_portalStore.data["audits"]||[];const found=auditList.some(a=>a.type==="clinical_notes"&&a.physioAudited===name);
     return found?"ok":"pending";
   }
+  // Check for peer review audit records as well as uploaded certs
+  if (key === "peerreview") {
+    const f = loadFile(id, key);
+    if (f) {
+      const expiryData = _portalReady ? (_portalStore.data["expiry_"+sKey(id,key)] || null) : null;
+      const expiry = f.expiry || expiryData?.expiry || null;
+      if (expiry && getExpiryStatus(expiry).status === "expired") return "expired";
+      return "ok";
+    }
+    // Also check if there's a peer_review audit record for this person
+    const name=STAFF[id]?.name||"";
+    const auditList=_portalStore.data["audits"]||[];
+    const found=auditList.some(a=>a.type==="peer_review"&&a.physioAudited===name);
+    if(found) return "ok";
+    return "pending";
+  }
   const f = loadFile(id, key);
+  // For JD: also check the Documents tab storage (jd_${id})
+  if (!f && key === "jd") {
+    const docJd = loadGen("jd_" + id);
+    if (docJd && (Array.isArray(docJd) ? docJd.length > 0 : true)) return "ok";
+  }
   if (!f) return "pending";
   const expiryData = _portalReady ? (_portalStore.data["expiry_"+sKey(id,key)] || null) : null;
   const expiry = f.expiry || expiryData?.expiry || null;
@@ -3358,14 +3419,19 @@ export default function App(){
       {compTab==="reviews"&&<div>
         <Alert type="blue" title="P&P §7 — Annual reviews & clinical notes audits">Peer review and performance appraisal annually for all staff. Clinical notes audit every 6 months (5 current + 5 past records per physio).</Alert>
         <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",marginTop:"0.75rem"}}>Peer Reviews & Appraisals</div>
-        <Tbl headers={["Staff","Peer Review","Expiry","Appraisal","Expiry","Notes"]}>{Object.entries(STAFF).map(([id,s])=>{
+        <Tbl headers={["Staff","Peer Review","Last date","Appraisal","Expiry","Notes"]}>{Object.entries(STAFF).map(([id,s])=>{
           const pr=loadFile(id,"peerreview");const ap=loadFile(id,"appraisal");
           const prExp=pr?.expiry?getExpiryStatus(pr.expiry):null;const apExp=ap?.expiry?getExpiryStatus(ap.expiry):null;
+          // Also check for peer_review audit records
+          const prAudit=[...audits].filter(x=>x.type==="peer_review"&&x.physioAudited===s.name).sort((a,b)=>b.date.localeCompare(a.date))[0]||null;
+          const hasPr=!!(pr||prAudit);
+          const prLabel=prAudit?prAudit.date:(pr?"On file ✓":"Needed");
+          const prStatus=hasPr?(prExp?.status==="expired"?"expired":"ok"):"pending";
           const n={alistair:"Clinical Director",hans:"20+ years",dylan:"New Dec 2025",ibrahim:"New grad",komal:"Contractor",gwenne:"First cycle"}[id]||"Annual cycle";
           return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
             <TD><strong>{s.name}</strong></TD>
-            <TD><Pill s={pr?(prExp?.status==="expired"?"expired":"ok"):"pending"} label={pr?"On file ✓":"Needed"}/></TD>
-            <TD style={{fontSize:11,color:prExp?prExp.color:C.hint}}>{prExp?prExp.label:"—"}</TD>
+            <TD><Pill s={prStatus} label={prLabel}/></TD>
+            <TD style={{fontSize:11,color:prExp?prExp.color:(prAudit?C.green:C.hint)}}>{prExp?prExp.label:(prAudit?prAudit.date:"—")}</TD>
             <TD><Pill s={ap?(apExp?.status==="expired"?"expired":"ok"):"pending"} label={ap?"On file ✓":"Needed"}/></TD>
             <TD style={{fontSize:11,color:apExp?apExp.color:C.hint}}>{apExp?apExp.label:"—"}</TD>
             <TD style={{fontSize:11,color:C.muted}}>{n}</TD>
@@ -3381,13 +3447,27 @@ export default function App(){
             <TD style={{fontSize:11,color:C.muted}}>{a?.notes||"—"}</TD>
           </tr>;})}
         </Tbl>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",marginTop:"1.25rem"}}>Peer Review Audits <span style={{fontSize:11,color:C.muted,fontWeight:400}}>— P&P §7.8 · Annual · Physio observes physio</span></div>
+        <Tbl headers={["Staff reviewed","Last review","Reviewer","Outcome","Evidence"]}>{Object.entries(STAFF).filter(([id,s])=>s.type!=="Owner"||id==="jade").map(([id,s])=>{
+          const a=[...audits].filter(x=>x.type==="peer_review"&&x.physioAudited===s.name).sort((a,b)=>b.date.localeCompare(a.date))[0]||null;
+          return <tr key={id} onClick={()=>{setPage("management");setMgmtTab("audits");}} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
+            <TD><strong>{s.name}</strong></TD>
+            <TD><Pill s={a?"ok":"pending"} label={a?a.date:"Not yet run"}/></TD>
+            <TD style={{fontSize:11,color:C.muted}}>{a?.auditor||"—"}</TD>
+            <TD>{a?<Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>:<span style={{fontSize:11,color:C.hint}}>—</span>}</TD>
+            <TD>{a?.evidence?<span style={{fontSize:11,color:C.teal}}>📎 On file</span>:<span style={{fontSize:11,color:C.hint}}>—</span>}</TD>
+          </tr>;})}
+        </Tbl>
+        <div style={{display:"flex",gap:8,marginTop:"0.75rem"}}>
+          <Btn onClick={()=>{setPage("management");setMgmtTab("audits");}}>Run peer review audit →</Btn>
+        </div>
       </div>}      {compTab==="clinicaudit"&&<div>
         <Alert type="amber" title="Clinic compliance audits">Log historical audits and upload evidence. Fire drills annual · H&S quarterly · Hygiene quarterly · Equipment annual. Run live audits from Management or Clinics page.</Alert>
         <div style={{display:"flex",gap:8,marginBottom:"1rem",flexWrap:"wrap"}}>
           <Btn onClick={()=>{setPage("management");setMgmtTab("audits");}}>Run new audit →</Btn>
           <Btn outline onClick={()=>{setPage("clinics");}}>View by clinic →</Btn>
         </div>
-        {Object.entries(AUDIT_FORMS).filter(([k])=>k!=="clinical_notes").map(([key,form])=>{
+        {Object.entries(AUDIT_FORMS).filter(([k])=>k!=="clinical_notes"&&k!=="peer_review").map(([key,form])=>{
           const typeAudits=[...audits].filter(a=>a.type===key).sort((a,b)=>b.date.localeCompare(a.date));
           const lastDate=typeAudits[0]?.date||null;
           const clinicsDone=[...new Set(typeAudits.map(a=>a.clinic))];
@@ -3982,6 +4062,7 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
         {t:"Staff credentials — APC, First Aid, Cultural",s:Object.entries(STAFF).every(([id])=>["apc","firstaid","cultural"].every(k=>loadFile(id,k)))?"ok":"pending",d:"All staff hold current APC, First Aid and Cultural Competency — P&P §7",action:()=>{setPage("compliance");setCompTab("overview");}},
         {t:"Police vetting — all staff",s:Object.entries(STAFF).every(([id])=>loadFile(id,"policevetting"))?"ok":"pending",d:"Every 3 years — NZ Police email confirmation — P&P §4.2",action:()=>{setPage("compliance");setCompTab("vetting");}},
         {t:"Clinical notes audits — 6-monthly",s:[...audits].filter(a=>a.type==="clinical_notes").length>0?"ok":"pending",d:"10 records per physio (5 current + 5 past) — P&P §1.5.1",action:()=>{setMgmtTab("audits");setActiveAudit("clinical_notes");}},
+        {t:"Peer reviews — annual",s:[...audits].filter(a=>a.type==="peer_review").length>0?"ok":"pending",d:"At least annually per physio — observation, notes review, feedback — P&P §7.8",action:()=>{setMgmtTab("audits");setActiveAudit("peer_review");}},
         {t:"Orientation — all staff",s:Object.keys(STAFF).every(id=>loadFile(id,"orientation"))?"ok":"pending",d:"Complete digital checklist for each staff member — P&P §7.1",action:()=>setPage("staff")},
         {t:"P&P annual review",s:Object.keys(ppReviews||{}).length>=(PP_SECTIONS?.length||8)?"ok":"pending",d:"Due April — P&P §1.1",action:()=>{setPage("pp");}},
         {t:"In-service training",s:inservices.some(i=>String(i.year||i.date?.slice(0,4)||"")===String(new Date().getFullYear()))?"ok":"pending",d:"At least one per clinic per year — P&P §7.7.3",action:()=>setPage("inservice")},
