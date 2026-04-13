@@ -1060,8 +1060,9 @@ async function _relinkExistingDocs(allAudits, allMeetings, onProgress) {
         const dateMatch = file.name.match(/(\d{4}-\d{2}-\d{2})/);
         if (!dateMatch) continue;
         const fileDate = dateMatch[1];
-        // Match to an audit record that doesn't already have evidence
-        const match = updatedAudits.find(a => a.date === fileDate && !a.evidence && file.name.includes(a.type));
+        // Match to an audit record — reconnect even if evidence exists but driveId is missing/stale
+        const match = updatedAudits.find(a => a.date === fileDate && file.name.includes(a.type) &&
+          (!a.evidence || !a.evidence.driveId || a.evidence.driveId !== file.id));
         if (match) {
           match.evidence = { driveId: file.id, driveUrl: file.webViewLink,
             blobUrl:`https://drive.google.com/uc?export=view&id=${file.id}`,
@@ -1084,7 +1085,8 @@ async function _relinkExistingDocs(allAudits, allMeetings, onProgress) {
         const dateMatch = file.name.match(/(\d{4}-\d{2}-\d{2})/);
         if (!dateMatch) continue;
         const fileDate = dateMatch[1];
-        const match = updatedMeetings.find(m => m.date === fileDate && !getMeetingFile(m));
+        const match = updatedMeetings.find(m => m.date === fileDate &&
+          (!getMeetingFile(m) || !m.attachment?.driveId || m.attachment.driveId !== file.id));
         if (match) {
           match.attachment = { driveId: file.id, driveUrl: file.webViewLink,
             blobUrl:`https://drive.google.com/uc?export=view&id=${file.id}`,
@@ -3642,7 +3644,52 @@ export default function App(){
         ))}
       </div></div>
       <Divider/>
-      {/* Audit history — Year → Type → expandable records */}
+      {/* ── Reconnect audit evidence from Google Drive ── */}
+      {(()=>{
+        const[relinkStatus,setRelinkStatus]=useState('idle');
+        const[relinkProgress,setRelinkProgress]=useState('');
+        const[relinkResult,setRelinkResult]=useState(null);
+        const withEvidence=audits.filter(a=>a.evidence&&a.id<100000).length;
+        const withoutEvidence=audits.filter(a=>!a.evidence&&a.id<100000).length;
+        const totalSeeded=audits.filter(a=>a.id<100000).length;
+        async function runAuditRelink(){
+          setRelinkStatus('running');setRelinkProgress('Scanning Google Drive audit folders…');
+          try{
+            const res=await _relinkExistingDocs(audits,meetings,msg=>setRelinkProgress(msg));
+            setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);
+            setRelinkResult({done:res.relinked,failed:0});setRelinkStatus('done');
+          }catch(e){setRelinkProgress(e.message);setRelinkStatus('error');}
+        }
+        async function runForceRelink(){
+          setRelinkStatus('running');setRelinkProgress('Force-reconnecting all audit evidence…');
+          try{
+            const cleared=audits.map(a=>a.id<100000?{...a,evidence:undefined}:a);
+            const res=await _relinkExistingDocs(cleared,meetings,msg=>setRelinkProgress(msg));
+            setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);
+            setRelinkResult({done:res.relinked,failed:0});setRelinkStatus('done');
+          }catch(e){setRelinkProgress(e.message);setRelinkStatus('error');}
+        }
+        return(
+          <div style={{background:C.amberL,border:`1px solid ${C.amber}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"1rem"}}>
+            <div style={{fontSize:13,fontWeight:600,color:C.amber,marginBottom:3}}>📎 Audit evidence documents</div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem"}}>
+              {withEvidence>0&&<span style={{color:C.green}}>✓ {withEvidence}/{totalSeeded} audits have evidence linked. </span>}
+              {withoutEvidence>0&&<span>{withoutEvidence} missing evidence links.</span>}
+              {withoutEvidence===0&&withEvidence>0&&<span>All audit evidence linked.</span>}
+            </div>
+            {relinkStatus==='idle'&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <Btn onClick={runAuditRelink}>🔗 Reconnect from Drive</Btn>
+              <Btn outline onClick={runForceRelink}>🔄 Force reconnect all</Btn>
+            </div>}
+            {relinkStatus==='running'&&<div style={{fontSize:12,color:C.amber,lineHeight:1.8}}>⏳ {relinkProgress||'Starting…'}</div>}
+            {relinkStatus==='done'&&<div style={{fontSize:12,color:C.green,fontWeight:500}}>
+              ✅ {relinkResult?.done||0} evidence link{relinkResult?.done===1?'':'s'} reconnected.
+              <span onClick={()=>setRelinkStatus('idle')} style={{marginLeft:12,color:C.blue,cursor:'pointer',textDecoration:'underline'}}>Done</span>
+            </div>}
+            {relinkStatus==='error'&&<div style={{fontSize:12,color:C.red}}>❌ {relinkProgress} <span onClick={()=>setRelinkStatus('idle')} style={{marginLeft:8,cursor:'pointer',textDecoration:'underline'}}>Retry</span></div>}
+          </div>
+        );
+      })()}
       {(()=>{
         const thisYearA=String(new Date().getFullYear());
         const allYears=[...new Set([thisYearA,...audits.map(a=>a.date?.slice(0,4)).filter(Boolean)])].sort((a,b)=>b-a);
