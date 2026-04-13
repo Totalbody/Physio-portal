@@ -1870,6 +1870,59 @@ function MultiFileRow({label,gkey,onView,accent=C.teal}){
   );
 }
 
+// JD row for Documents tab — merges files from profile cert storage AND documents storage
+function JdDocRow({staffId,label,allFiles,certFile,accent=C.teal,onView}){
+  const ref=useRef();
+  const[extraFiles,setExtraFiles]=useState(()=>{
+    const d=loadGen("jd_"+staffId);
+    if(!d)return[];
+    return Array.isArray(d)?d:[d];
+  });
+  // Merge: cert file first, then docs files
+  const merged=[...(certFile?[{...certFile,_src:"profile"}]:[]),...extraFiles.map(f=>({...f,_src:"docs"}))];
+  function handle(e){
+    const f=e.target.files[0];if(!f)return;
+    if(f.size>3*1024*1024){alert("File over 3MB.");return;}
+    const r=new FileReader();
+    r.onload=ev=>{
+      const d={id:Date.now(),fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+      const updated=[...extraFiles,d];setExtraFiles(updated);saveGen("jd_"+staffId,updated);
+      if(_portalReady){
+        _uploadFileToDrive("jd_"+staffId+"_"+d.id,d.fileName,d.fileType,d.dataUrl).then(driveFile=>{
+          if(driveFile){
+            setExtraFiles(prev=>{const up=prev.map(x=>x.id===d.id?{...x,...driveFile,dataUrl:undefined}:x);saveGen("jd_"+staffId,up);return up;});
+          }
+        }).catch(()=>{});
+      }
+    };
+    r.readAsDataURL(f);e.target.value="";
+  }
+  function remove(id){
+    const updated=extraFiles.filter(f=>f.id!==id);
+    setExtraFiles(updated);saveGen("jd_"+staffId,updated.length?updated:null);
+  }
+  return(
+    <div style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:merged.length?6:0}}>
+        <div style={{flex:1,fontSize:13,fontWeight:500}}>{label}</div>
+        <BSm onClick={()=>ref.current.click()} color={accent}>📄 {merged.length?"Add another":"Upload"}</BSm>
+      </div>
+      {merged.length===0&&<div style={{fontSize:11,color:C.hint,padding:"2px 0"}}>No job description uploaded yet</div>}
+      {merged.map((file,i)=>(
+        <div key={file.id||file.fileName||i} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 0 5px 4px",borderTop:i>0?`1px solid ${C.border}`:""}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:12,fontWeight:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.fileName}</div>
+            <div style={{fontSize:11,color:C.muted}}>Uploaded {file.uploadedDate}{file._src==="profile"?" · from staff profile":""}</div>
+          </div>
+          <BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>
+          {file._src==="docs"&&<BSm onClick={()=>{if(window.confirm("Remove?"))remove(file.id||i);}} color={C.red}>✕</BSm>}
+        </div>
+      ))}
+      <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
+    </div>
+  );
+}
+
 // extra documents — custom-named uploads per staff member
 function ExtraDocsSection({staffId,onView}){
   const key=`extra_${staffId}`;
@@ -3662,7 +3715,13 @@ export default function App(){
     <div><PH title="Documents" sub="Contracts, job descriptions & legislation"/>
     <TabBar items={[["contracts","Contracts"],["jd","Job descriptions"],["leg","Legislation"]]} current={docsTab} setter={setDocsTab}/>
     {docsTab==="contracts"&&<div><Alert type="blue" title="🔒 Contract privacy — P&P Section 7.2">Contracts visible to Jade (owner) and the individual staff member only. Others see a locked indicator. Two signed copies: one for employee, one in personnel file.</Alert><Card>{Object.entries(STAFF).map(([id,s])=>{const canSee=role==="owner"||role===id;return <ContractRow key={id} staffId={id} s={s} canSee={canSee} onView={f=>setDvf(f)}/>;})}</Card></div>}
-    {docsTab==="jd"&&<Card><div style={{fontSize:13,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Tap 👁 View to open the current job description. Use 📄 Add another to upload a new or updated version. All signed copies kept on file — P&P §7.3.</div>{Object.entries(STAFF).map(([id,s])=><MultiFileRow key={id} label={`${s.name} — Job Description`} gkey={`jd_${id}`} onView={f=>setDvf(f)} accent={s.color}/>)}</Card>}
+    {docsTab==="jd"&&<Card><div style={{fontSize:13,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Tap 👁 View to open the current job description. Use 📄 Add another to upload a new or updated version. All signed copies kept on file — P&P §7.3.</div>{Object.entries(STAFF).map(([id,s])=>{
+      const certFile=loadFile(id,"jd");
+      const docFiles=loadGen("jd_"+id)||[];
+      const docArr=Array.isArray(docFiles)?docFiles:[docFiles].filter(Boolean);
+      const allFiles=[...(certFile?[{...certFile,_src:"profile"}]:[]),...docArr.map(f=>({...f,_src:"docs"}))];
+      return <JdDocRow key={id} staffId={id} label={`${s.name} — Job Description`} allFiles={allFiles} certFile={certFile} accent={s.color} onView={f=>setDvf(f)}/>;
+    })}</Card>}
     {docsTab==="leg"&&<div><Alert type="blue" title="Key legislation — all staff read during orientation">Click any link to open the source document.</Alert>{LEGISLATION.map(leg=><Card key={leg.name} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}><div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}><div><a href={leg.url} target="_blank" rel="noreferrer" style={{fontSize:13,fontWeight:600,color:C.blue,textDecoration:"none"}}>{leg.name} ↗</a><div style={{fontSize:12,color:C.muted,marginTop:3,lineHeight:1.5}}>{leg.desc}</div></div><a href={leg.url} target="_blank" rel="noreferrer" style={{fontSize:11,padding:"4px 10px",borderRadius:20,background:C.blueL,color:C.blue,textDecoration:"none",fontWeight:500,whiteSpace:"nowrap",flexShrink:0}}>Open ↗</a></div></Card>)}</div>}
     {dvf&&<FileViewer file={dvf} onClose={()=>setDvf(null)}/>}
     </div>
