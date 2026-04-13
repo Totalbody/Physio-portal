@@ -1153,7 +1153,34 @@ async function _generateHistoricalAttachments(allAudits, allMeetings, onProgress
   return { done, failed, total, updatedAudits, updatedMeetings };
 }
 
-// Entry point called on App startup — tries silent token first
+// Regenerate meeting minutes for mid-2025 onward — overwrites existing Drive docs
+async function _regenerateMid2025Meetings(allMeetings, onProgress) {
+  if (!_portalReady || !_driveToken) throw new Error('Not connected to Google Drive');
+  const cutoff = '2025-07-01';
+  const targets = allMeetings.map((m,i)=>({m,i})).filter(({m})=> m.date >= cutoff && m.id < 100000);
+  let done = 0, failed = 0;
+  const total = targets.length;
+  const updatedMeetings = [...allMeetings];
+
+  for (const {m, i} of targets) {
+    onProgress(`Regenerating ${done+1}/${total} — ${m.date} ${m.clinic}`);
+    try {
+      const html = _generateMeetingMinutes(m);
+      const dataUrl = _htmlToDataUrl(html);
+      const fileName = `Meeting_Minutes_${m.date}_${m.clinic.replace(/\s+/g,'_')}.html`;
+      const driveFile = await _uploadFileToDrive('mtgatt_'+m.id, fileName, 'text/html', dataUrl);
+      if (driveFile) {
+        updatedMeetings[i] = {...m, attachment:{...driveFile, fileName, fileType:'text/html', uploadedDate:m.date, id:Date.now()}};
+        done++;
+      } else { failed++; }
+    } catch(e) { _err('[RegenDoc meeting]', e.message); failed++; }
+  }
+
+  onProgress('Saving to Google Drive…');
+  _portalStore.data['meetings'] = updatedMeetings;
+  await _saveDriveState();
+  return { done, failed, total, updatedMeetings };
+}
 async function _loadStore() {
   if (!GDRIVE_CLIENT_ID || GDRIVE_CLIENT_ID.includes('PASTE')) {
     _warn('[Drive] Client ID not configured — using localStorage only');
@@ -3763,6 +3790,15 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
               setGenResult({done:res.relinked,failed:0});setGenStatus('done');
             }catch(e){setGenProgress(e.message);setGenStatus('error');}
           }
+          const mid2025Count=meetings.filter(m=>m.date>='2025-07-01'&&m.id<100000).length;
+          async function runRegen2025(){
+            setGenStatus('running');
+            try{
+              const res=await _regenerateMid2025Meetings(meetings,msg=>setGenProgress(msg));
+              setMeetings(res.updatedMeetings);
+              setGenResult(res);setGenStatus('done');
+            }catch(e){setGenProgress(e.message);setGenStatus('error');}
+          }
           return(
             <div style={{background:C.blueL,border:`1px solid ${C.blue}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"1rem"}}>
               <div style={{fontSize:13,fontWeight:600,color:C.blue,marginBottom:3}}>📄 Meeting minutes documents</div>
@@ -3773,6 +3809,7 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
               {genStatus==='idle'&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 <Btn onClick={runRelink}>🔗 Relink existing Drive files</Btn>
                 {pendingMeetings>0&&<Btn outline onClick={runMeetingGen}>Generate {pendingMeetings} missing →</Btn>}
+                {mid2025Count>0&&<Btn outline onClick={runRegen2025}>🔄 Regenerate mid-2025+ ({mid2025Count})</Btn>}
               </div>}
               {genStatus==='running'&&<div style={{fontSize:12,color:C.blue,lineHeight:1.8}}>⏳ {genProgress||'Starting…'}</div>}
               {genStatus==='done'&&<div style={{fontSize:12,color:C.green,fontWeight:500}}>
