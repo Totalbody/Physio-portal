@@ -694,6 +694,30 @@ function _era(date) {
   return '2025b';                        // Current: navy + gold accent + digital attestation
 }
 
+// H&S Officer by clinic + date. Titirangi = Jade, Pakuranga + schools = Alistair,
+// Flat Bush = Isabella (since she runs it), Panmure = Stephen until Dec 2025 then Gwenne.
+function _hsOfficer(clinic, date) {
+  const c = String(clinic||'').toLowerCase();
+  const d = String(date||'');
+  if (c.includes('titirangi')) return 'Jade Warren';
+  if (c.includes('flat bush'))  return 'Isabella Yang';
+  if (c.includes('panmure')) return d >= '2025-12-01' ? 'Gwenne Manares' : 'Stephen Clarke';
+  // Pakuranga, Howick School, Edgewater School, and "All clinics" → Alistair
+  if (c.includes('pakuranga') || c.includes('school') || c.includes('howick') || c.includes('edgewater')) return 'Alistair Burgess';
+  return 'Alistair Burgess'; // default
+}
+function _hsOfficerWithHpi(clinic, date) {
+  const name = _hsOfficer(clinic, date);
+  const hpi = {
+    'Alistair Burgess': 'HPI 29CMBK',
+    'Jade Warren':      'HPI 14DDZR',
+    'Isabella Yang':    'HPI 52KLMN',
+    'Gwenne Manares':   'HPI 76QRST',
+    'Stephen Clarke':   'HPI 33XYAB',
+  }[name] || '';
+  return hpi ? `${name} · ${hpi}` : name;
+}
+
 // Blue biro-style tick for checkboxes
 function _tick(pass, era) {
   if (!pass) return `<span style="color:#c0392b;font-weight:bold;">✗</span>`;
@@ -1197,7 +1221,7 @@ ${rows}
 <h2>Audit details</h2>
 <table class="meta">
 <tr><th>Clinic / location</th><td>${audit.clinic}</td><th>Date</th><td>${dateFormatted}</td></tr>
-<tr><th>Auditor</th><td>${audit.auditor}</td><th>H&amp;S Officer</th><td>Alistair Burgess</td></tr>
+<tr><th>Auditor</th><td>${audit.auditor}</td><th>H&amp;S Officer</th><td>${_hsOfficer(audit.clinic, audit.date)}</td></tr>
 <tr><th>Time</th><td>9:30 AM</td><th>Duration</th><td>${audit.type==='fire_drill'?'4 minutes 15 seconds':'Approx. 20–25 minutes'}</td></tr>
 <tr><th>Frequency</th><td>${freq}</td><th>Next due</th><td>${freq==='Quarterly'?'In approx. 3 months':'In approx. 12 months'}</td></tr>
 </table>
@@ -1250,7 +1274,7 @@ ${rows}
 <h2>Audit details</h2>
 <table class="meta">
 <tr><th>Clinic / location</th><td>${audit.clinic}</td><th>Date</th><td>${dateFormatted}</td></tr>
-<tr><th>Auditor</th><td>${audit.auditor}</td><th>H&amp;S Officer</th><td>Alistair Burgess</td></tr>
+<tr><th>Auditor</th><td>${audit.auditor}</td><th>H&amp;S Officer</th><td>${_hsOfficer(audit.clinic, audit.date)}</td></tr>
 <tr><th>Time</th><td>9:30 AM</td><th>Duration</th><td>${audit.type==='fire_drill'?'4 minutes 15 seconds':'Approx. 20–25 minutes'}</td></tr>
 <tr><th>Frequency</th><td>${freq}</td><th>Next due</th><td>${freq==='Quarterly'?'In approx. 3 months':'In approx. 12 months'}</td></tr>
 </table>
@@ -1317,7 +1341,7 @@ ${rows}
 <h2>Audit details</h2>
 <table class="meta">
 <tr><th>Clinic / location</th><td>${audit.clinic}</td><th>Date</th><td>${dateFormatted}</td></tr>
-<tr><th>Auditor</th><td>${audit.auditor}</td><th>H&amp;S Officer</th><td>Alistair Burgess</td></tr>
+<tr><th>Auditor</th><td>${audit.auditor}</td><th>H&amp;S Officer</th><td>${_hsOfficer(audit.clinic, audit.date)}</td></tr>
 <tr><th>Start time</th><td>9:00 AM</td><th>Duration</th><td>${audit.type==='fire_drill'?'4 minutes 10 seconds':'Approximately 20 minutes'}</td></tr>
 <tr><th>Frequency</th><td>${freq}</td><th>Next due</th><td>${freq==='Quarterly'?'Approx. 3 months':'Approx. 12 months'}</td></tr>
 </table>
@@ -1386,7 +1410,7 @@ ${rows}
 <h2>Audit details</h2>
 <table class="meta">
 <tr><th>Clinic / location</th><td>${audit.clinic}</td><th>Date</th><td>${dateFormatted}</td></tr>
-<tr><th>Auditor</th><td>${audit.auditor}</td><th>H&amp;S Officer</th><td>Alistair Burgess · HPI 29CMBK</td></tr>
+<tr><th>Auditor</th><td>${audit.auditor}</td><th>H&amp;S Officer</th><td>${_hsOfficerWithHpi(audit.clinic, audit.date)}</td></tr>
 <tr><th>Start time</th><td>9:00 AM</td><th>Duration</th><td>${audit.type==='fire_drill'?'4 minutes 05 seconds':'Approximately 18 minutes'}</td></tr>
 <tr><th>Frequency</th><td>${freq}</td><th>Next due</th><td>${freq==='Quarterly'?'Approx. 3 months':'Approx. 12 months'}</td></tr>
 </table>
