@@ -231,12 +231,12 @@ const CLINICS = [
 
 const STAFF = {
   jade:     {name:"Jade Warren",        ini:"JW",color:"#0a3d2e",title:"Owner / Director · Physiotherapist",             clinics:["pakuranga","flatbush","titirangi","panmure"],type:"Owner"},
-  alistair: {name:"Alistair Burgess",   ini:"AB",color:"#0F6E56",title:"Senior Physiotherapist · H&S Officer", clinics:["pakuranga","howick_school","edgewater_school"],                       type:"Employee",info:[["Role","Senior Physiotherapist"],["Additional","H&S Officer"],["Qualification","M.Phty, B.App.Sc, NZRP"],["Registration","70-14433 / HPI: 29CMBK"],["Started","24 October 2023"]]},
+  alistair: {name:"Alistair Burgess",   ini:"AB",color:"#0F6E56",title:"Senior Physiotherapist · H&S Officer", clinics:["pakuranga","howick_school","edgewater_school"],                       type:"Employee",info:[["Role","Senior Physiotherapist"],["Additional","H&S Officer"],["Qualification","M.Phty, B.App.Sc, NZRP"],["Registration","70-17605 / HPI: PAJ826"],["Started","24 October 2023"]]},
   timothy:  {name:"Timothy Keung",      ini:"TK",color:"#185FA5",title:"Physiotherapist",                                clinics:["pakuranga","titirangi","panmure"],             type:"Contractor",info:[["Role","Physiotherapist"],["Type","Contractor"],["Languages","Mandarin, Cantonese, English"]]},
   hans:     {name:"Hans Vermeulen",     ini:"HV",color:"#533AB7",title:"Physiotherapist · Clinic Lead",                  clinics:["titirangi"],                                  type:"Contractor",info:[["Role","Physiotherapist · Clinic Lead"],["Type","Contractor"],["Tenure","~20 years"]]},
   dylan:    {name:"Dylan Connolly",     ini:"DC",color:"#D85A30",title:"Physiotherapist",                                clinics:["pakuranga","howick_school","edgewater_school"],type:"Contractor",info:[["Role","Physiotherapist"],["Clinics","Pakuranga · Howick School · Edgewater School"],["Started","2023 (Employee)"],["Status","Contractor from 2025"]]},
   ibrahim:  {name:"Ibrahim Al-Jumaily", ini:"IA",color:"#1D9E75",title:"Physiotherapist · New graduate",                 clinics:["pakuranga","flatbush"],                        type:"Employee",  info:[["Role","Physiotherapist"],["Level","New graduate"]]},
-  isabella: {name:"Isabella Yang",      ini:"IY",color:"#D4537E",title:"Physiotherapist",                                clinics:["flatbush"],                                   type:"Employee",  info:[["Role","Physiotherapist"],["Qualification","BPhty — University of Otago"],["Started","17 June 2024"]]},
+  isabella: {name:"Isabella Yang",      ini:"IY",color:"#D4537E",title:"Physiotherapist",                                clinics:["flatbush"],                                   type:"Employee",  info:[["Role","Physiotherapist"],["Qualification","BPhty — University of Otago"],["Registration","70-18193 / HPI: 20HYCM"],["Started","17 June 2024"]]},
   gwenne:   {name:"Gwenne Manares",     ini:"GM",color:"#639922",title:"Physiotherapist",                                clinics:["panmure"],                                    type:"Employee",  info:[["Role","Physiotherapist"],["Clinic","Panmure"]]},
   komal:    {name:"Komal Kaur",         ini:"KK",color:"#9C27B0",title:"Physiotherapist",                                clinics:["pakuranga","panmure"],                         type:"Contractor",info:[["Role","Physiotherapist"],["Type","Contractor"]]},
 };
@@ -708,13 +708,15 @@ function _hsOfficer(clinic, date) {
 }
 function _hsOfficerWithHpi(clinic, date) {
   const name = _hsOfficer(clinic, date);
+  // Only use verified HPI-CPN numbers from actual APCs. If we don't have one,
+  // return just the name — don't invent identifiers.
   const hpi = {
-    'Alistair Burgess': 'HPI 29CMBK',
-    'Jade Warren':      'HPI 14DDZR',
-    'Isabella Yang':    'HPI 52KLMN',
-    'Gwenne Manares':   'HPI 76QRST',
-    'Stephen Clarke':   'HPI 33XYAB',
-  }[name] || '';
+    'Alistair Burgess': 'HPI PAJ826',
+    'Jade Warren':      'HPI 13CFJM',
+    'Hans Vermeulen':   'HPI 15CFJX',
+    'Isabella Yang':    'HPI 20HYCM',
+    // Gwenne Manares / Stephen Clarke — HPI unknown, intentionally omitted
+  }[name];
   return hpi ? `${name} · ${hpi}` : name;
 }
 
@@ -883,7 +885,7 @@ ${agendaItems.map((item,i)=>`<h3>${i+1}. ${item.charAt(0).toUpperCase()+item.sli
   : `<tr><th>Confirmed correct</th><td>
         <div style="display:inline-block;border:1.5px solid #1F3A5F;border-radius:6px;padding:6px 14px;background:#EEF2F8;font-size:9.5pt;">
           <span style="color:#1F3A5F;font-weight:700;letter-spacing:0.04em;">✓ DIGITALLY CONFIRMED</span><br>
-          <span style="color:#444;">Alistair Burgess · HPI 29CMBK</span><br>
+          <span style="color:#444;">Alistair Burgess · HPI PAJ826</span><br>
           <span style="color:#888;font-size:8.5pt;">${fmtNZ(meeting.date)} · Ref M-${meeting.id}</span>
         </div>
       </td></tr>`;
