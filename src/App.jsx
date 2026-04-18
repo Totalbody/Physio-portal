@@ -3349,6 +3349,15 @@ export default function App(){
         .filter(s => !deletedInserviceIds.has(s.id))
         .map(s => driveById[s.id] || s);
       const combined = [...seedRecords, ...userRecords];
+      // If any seed records aren't yet in Drive, push the merged array so KPI
+      // (and other clients) can read them. Idempotent after first run — once
+      // seeds are in Drive they'll be in `raw` and this condition is false.
+      const rawIds = new Set(raw.map(e => String(e?.id)));
+      const missingSeeds = seedRecords.filter(s => !rawIds.has(String(s.id)));
+      if (missingSeeds.length > 0) {
+        _log('[Portal] Pushing', missingSeeds.length, 'seed inservice(s) to Drive so KPI can see them');
+        saveGen("inservices", combined);
+      }
       const cleaned=combined
         .map(e=>{
           const isInservice = !e.type || e.type==="inservice";
