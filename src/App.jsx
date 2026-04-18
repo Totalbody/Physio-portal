@@ -2015,69 +2015,86 @@ function GenerateDocsTool({portalConnected,audits,meetings,setAudits,setMeetings
 }
 
 function FileViewer({file,onClose}){
-  if(!file)return null;
-  const isImg=file.fileType?.startsWith("image/");
-  const isHtml=file.fileType==="text/html"||/\.html?$/i.test(file.fileName||"");
-  const isDrive=!!file.driveId;
+  const isImg=file?.fileType?.startsWith("image/");
+  const isHtml=file?.fileType==="text/html"||/\.html?$/i.test(file?.fileName||"");
+  const isDrive=!!file?.driveId;
   const[imgLoaded,setImgLoaded]=useState(false);
   const[imgError,setImgError]=useState(false);
   const[iframeError,setIframeError]=useState(false);
   const[htmlBlobUrl,setHtmlBlobUrl]=useState(null);
   const[htmlLoading,setHtmlLoading]=useState(false);
+  const iframeRef=useRef(null);
 
-  // Drive's /preview renders HTML as source text instead of rendering it.
-  // Workaround: fetch the raw HTML via Drive API, create a text/html blob URL,
-  // and iframe that — the browser renders it properly.
+  // Fetch HTML files from Drive and render as blob URL (Drive's preview shows source).
+  // Aborts in-flight fetches + revokes blob URLs on cleanup to prevent iPad Safari leaks.
   useEffect(()=>{
-    if(!isHtml||!file.driveId)return;
-    let cancelled=false; let createdUrl=null;
+    if(!isHtml||!file?.driveId)return;
+    const abort=new AbortController();
+    let createdUrl=null;
     (async()=>{
       setHtmlLoading(true);
       try{
-        // Prefer authenticated API fetch if we have a token
         let text=null;
         if(_driveToken){
           const resp=await fetch(`https://www.googleapis.com/drive/v3/files/${file.driveId}?alt=media`,
-            {headers:{Authorization:`Bearer ${_driveToken}`}});
+            {headers:{Authorization:`Bearer ${_driveToken}`},signal:abort.signal});
           if(resp.ok) text=await resp.text();
         }
-        // Fallback: public URL (works if file is shared) for staff without Drive token
-        if(!text){
-          const resp=await fetch(`https://drive.google.com/uc?export=download&id=${file.driveId}`);
+        if(!text&&!abort.signal.aborted){
+          const resp=await fetch(`https://drive.google.com/uc?export=download&id=${file.driveId}`,
+            {signal:abort.signal});
           if(resp.ok) text=await resp.text();
         }
-        if(cancelled||!text)return;
+        if(abort.signal.aborted||!text)return;
         const blob=new Blob([text],{type:'text/html'});
         createdUrl=URL.createObjectURL(blob);
         setHtmlBlobUrl(createdUrl);
-      }catch(e){_warn('[FileViewer HTML fetch]',e.message);}
-      finally{if(!cancelled)setHtmlLoading(false);}
+      }catch(e){if(e.name!=='AbortError')_warn('[FileViewer HTML fetch]',e.message);}
+      finally{if(!abort.signal.aborted)setHtmlLoading(false);}
     })();
-    return()=>{cancelled=true;if(createdUrl)URL.revokeObjectURL(createdUrl);};
+    return()=>{
+      abort.abort();
+      if(createdUrl){try{URL.revokeObjectURL(createdUrl);}catch{}}
+      setHtmlBlobUrl(null);
+    };
   },[file?.driveId,isHtml]);
+
+  // On unmount: blank the iframe src so iOS Safari releases the Drive preview content.
+  // Without this, Safari holds onto the iframe's memory and freezes after a few opens.
+  useEffect(()=>{
+    return()=>{
+      try{if(iframeRef.current)iframeRef.current.src='about:blank';}catch{}
+    };
+  },[]);
+
+  if(!file)return null;
 
   // Drive thumbnail is fast and reliable for images
   const imgSrc = isDrive
     ? `https://drive.google.com/thumbnail?id=${file.driveId}&sz=w1200`
     : (file.blobUrl||file.dataUrl);
 
-  // Drive preview embed — works inline for PDF, DOCX, PPTX, XLSX (NOT html)
+  // Drive preview embed — works for PDF, DOCX, PPTX, XLSX (NOT html)
   const previewUrl = file.driveId
     ? `https://drive.google.com/file/d/${file.driveId}/preview`
     : null;
 
-  // "Open in new tab" fallback
   const openUrl = file.driveId
     ? `https://drive.google.com/file/d/${file.driveId}/view`
     : (file.driveUrl||file.blobUrl||file.dataUrl);
 
-  // What to actually embed:
-  //   HTML → prefer our fetched blob URL (renders properly), fall back to dataUrl
-  //   Other → Drive preview URL, then dataUrl/blobUrl
   const embedSrc = isHtml
     ? (htmlBlobUrl || file.dataUrl || file.blobUrl)
     : (previewUrl || file.dataUrl || file.blobUrl);
   const canEmbed = !isImg && !!embedSrc;
+
+  // Safe close — blank iframe first so Safari releases memory, then call parent's onClose.
+  function safeClose(){
+    try{if(iframeRef.current)iframeRef.current.src='about:blank';}catch{}
+    if(htmlBlobUrl){try{URL.revokeObjectURL(htmlBlobUrl);}catch{}}
+    // Small delay lets Safari actually process the src change before unmount
+    setTimeout(onClose, 50);
+  }
 
   return(
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.92)",zIndex:600,display:"flex",flexDirection:"column"}}>
@@ -2086,7 +2103,7 @@ function FileViewer({file,onClose}){
       <div style={{background:C.teal,padding:"0.75rem 1rem",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         <div style={{flex:1,color:"white",fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.fileName}</div>
         {openUrl&&<a href={openUrl} target="_blank" rel="noreferrer" style={{color:"white",fontSize:11,textDecoration:"none",opacity:0.8,marginRight:8}}>↗ New tab</a>}
-        <button onClick={onClose} style={{background:"rgba(255,255,255,0.25)",border:"none",color:"white",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:20,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        <button onClick={safeClose} style={{background:"rgba(255,255,255,0.25)",border:"none",color:"white",width:36,height:36,borderRadius:"50%",cursor:"pointer",fontSize:20,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
       </div>
 
       {/* Content */}
@@ -2094,7 +2111,7 @@ function FileViewer({file,onClose}){
 
         {/* Floating close button — always tappable even when iframe captures touches */}
         <button
-          onClick={onClose}
+          onClick={safeClose}
           aria-label="Close"
           style={{
             position:"absolute",top:12,right:12,zIndex:10,
@@ -2131,9 +2148,12 @@ function FileViewer({file,onClose}){
           </div>
         )}
 
-        {/* ── Inline iframe embed — renders HTML/PDF/docs ── */}
+        {/* ── Inline iframe embed — renders HTML/PDF/docs. Key forces clean
+             remount when file changes so iOS Safari doesn't reuse old frame. ── */}
         {canEmbed&&!iframeError&&(!isHtml||!htmlLoading)&&(
           <iframe
+            key={file.driveId||file.fileName||'file'}
+            ref={iframeRef}
             src={embedSrc}
             title={file.fileName}
             style={{width:"100%",height:"100%",border:"none",background:"#fff"}}
@@ -2158,10 +2178,9 @@ function FileViewer({file,onClose}){
         )}
       </div>
 
-      {/* Always-visible close bar at bottom — positioned with high z-index
-          so iframe can't overlap it on iOS Safari. */}
+      {/* Bottom close bar */}
       <div
-        onClick={onClose}
+        onClick={safeClose}
         style={{
           background:"rgba(0,0,0,0.85)",
           borderTop:"1px solid rgba(255,255,255,0.15)",
