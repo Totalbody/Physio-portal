@@ -4581,118 +4581,77 @@ export default function App(){
         const[bulkOpen,setBulkOpen]=useState(false);
         const[bulkType,setBulkType]=useState("peer_review");
         const[uploadStatus,setUploadStatus]=useState("");
+        const[stagedFiles,setStagedFiles]=useState([]); // [{file, targetId}]
         const bulkRef=useRef();
         const reviewsAndAudits=audits.filter(a=>(a.type==="peer_review"||a.type==="clinical_notes")&&a.id<100000);
         const withEvidence=reviewsAndAudits.filter(a=>a.evidence).length;
         const needEvidence=reviewsAndAudits.length-withEvidence;
-        async function handleBulkUpload(e){
+
+        // Staff name patterns for auto-guessing
+        const staffPatterns=[
+          {key:"jade",names:["Jade Warren"],     patterns:[/jade/i,/warren/i]},
+          {key:"alistair",names:["Alistair Burgess"],patterns:[/alistair/i,/burgess/i]},
+          {key:"hans",names:["Hans Vermeulen"],  patterns:[/hans/i,/vermeulen/i]},
+          {key:"timothy",names:["Timothy Keung"],patterns:[/\btim\b/i,/timothy/i,/keung/i]},
+          {key:"dylan",names:["Dylan Connolly"], patterns:[/dylan/i,/connolly/i]},
+          {key:"isabella",names:["Isabella Yang"],patterns:[/isabella/i,/yang/i]},
+        ];
+        function guessFromFilename(name,candidates){
+          const lower=name.toLowerCase();
+          let staffName=null;
+          for(const s of staffPatterns){
+            if(s.patterns.some(p=>p.test(lower))){staffName=s.names[0];break;}
+          }
+          const yearMatch=name.match(/(20\d{2})/);
+          const year=yearMatch?parseInt(yearMatch[1]):null;
+          const months={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+          let month=null;
+          for(const[k,v]of Object.entries(months)){if(new RegExp("\\b"+k,"i").test(lower)){month=v;break;}}
+          // Score all candidates
+          let best=null,bestScore=-1;
+          for(const c of candidates){
+            let s=0;
+            const cYear=parseInt(String(c.date).slice(0,4));
+            const cMonth=parseInt(String(c.date).slice(5,7));
+            if(staffName){
+              if((c.physioAudited||"").toLowerCase()===staffName.toLowerCase())s+=100;
+              else continue;
+            }
+            if(year&&cYear===year)s+=20;
+            if(month&&cMonth===month)s+=10;
+            if(s>bestScore){bestScore=s;best=c;}
+          }
+          return bestScore>=20?best?.id:null;
+        }
+        function stageFiles(e){
           const files=Array.from(e.target.files||[]);
           if(!files.length)return;
-          setUploadStatus(`Matching ${files.length} file${files.length===1?'':'s'}…`);
-
-          // Staff name patterns to search in filenames
-          const staffPatterns = [
-            {key:"jade",     patterns:[/jade/i, /warren/i]},
-            {key:"alistair", patterns:[/alistair/i, /burgess/i, /al[_\-\s]/i]},
-            {key:"hans",     patterns:[/hans/i, /vermeulen/i]},
-            {key:"timothy",  patterns:[/tim\b/i, /timothy/i, /keung/i]},
-            {key:"dylan",    patterns:[/dylan/i, /connolly/i]},
-            {key:"isabella", patterns:[/isabella/i, /yang/i]},
-            {key:"gwenne",   patterns:[/gwenne/i, /manares/i]},
-            {key:"ibrahim",  patterns:[/ibrahim/i, /jumaily/i]},
-            {key:"komal",    patterns:[/komal/i, /kaur/i]},
-          ];
-          const staffIdToName={jade:"Jade Warren",alistair:"Alistair Burgess",hans:"Hans Vermeulen",timothy:"Timothy Keung",dylan:"Dylan Connolly",isabella:"Isabella Yang",gwenne:"Gwenne Manares",ibrahim:"Ibrahim Al-Jumaily",komal:"Komal Preet Kaur"};
-
-          // Parse a filename and extract: staff key, year, month (if present)
-          function parseFilename(name){
-            const lower=name.toLowerCase();
-            let staffKey=null;
-            for(const s of staffPatterns){
-              if(s.patterns.some(p=>p.test(lower))){staffKey=s.key;break;}
-            }
-            // Year: 2022-2026
-            const yearMatch=name.match(/(20\d{2})/);
-            const year=yearMatch?parseInt(yearMatch[1]):null;
-            // Month: named or numeric
-            const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
-            let month=null;
-            for(const[k,v]of Object.entries(months)){if(new RegExp("\\b"+k+"\\b","i").test(lower)){month=v;break;}}
-            // Numeric date like 20-10-2023 or 2023-10-20 or 20/10/23
-            if(!month){const dm=name.match(/(\d{1,2})[\/\-_](\d{1,2})[\/\-_](\d{2,4})/);if(dm){month=parseInt(dm[2]);}}
-            return{staffKey,year,month};
-          }
-
-          // Build candidate pool of records of the chosen type that need evidence
           const candidates=audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence);
-
-          // Score each (file, candidate) pair — higher score = better match
-          function score(parsed, candidate){
-            let s=0;
-            const cDate=String(candidate.date||"");
-            const cYear=parseInt(cDate.slice(0,4));
-            const cMonth=parseInt(cDate.slice(5,7));
-            const cStaff=(candidate.physioAudited||"").toLowerCase();
-            // Staff match is the strongest signal
-            if(parsed.staffKey){
-              const expectedName=(staffIdToName[parsed.staffKey]||"").toLowerCase();
-              if(cStaff===expectedName)s+=100;
-              else if(cStaff.includes(parsed.staffKey))s+=100;
-              else return -1; // wrong staff — disqualify
-            }
-            if(parsed.year&&cYear===parsed.year)s+=20;
-            else if(parsed.year&&Math.abs(cYear-parsed.year)<=1)s+=5; // near miss
-            if(parsed.month&&cMonth===parsed.month)s+=10;
-            else if(parsed.month&&Math.abs(cMonth-parsed.month)<=2)s+=3;
-            return s;
+          const staged=files.map((f,i)=>({
+            id:Date.now()+i,
+            file:f,
+            targetId:guessFromFilename(f.name,candidates)||"",
+          }));
+          setStagedFiles(staged);
+          setUploadStatus("");
+          e.target.value="";
+        }
+        async function commitUpload(){
+          const toUpload=stagedFiles.filter(s=>s.targetId);
+          if(toUpload.length===0){alert("Pick a record for at least one file.");return;}
+          // Check for duplicate target assignments
+          const seen={};
+          for(const s of toUpload){
+            if(seen[s.targetId]){alert("Two files are assigned to the same record. Each file needs its own record.");return;}
+            seen[s.targetId]=true;
           }
-
-          // Match files to candidates greedily (best score first), one-to-one
-          const filesWithParsed=files.map(f=>({file:f,parsed:parseFilename(f.name)}));
-          const usedCandidateIds=new Set();
-          const matches=[]; // {file, candidate, confidence}
-          const unmatched=[];
-          // Sort files so well-parsed ones (with staff + year) go first
-          filesWithParsed.sort((a,b)=>{
-            const ap=(a.parsed.staffKey?1:0)+(a.parsed.year?1:0);
-            const bp=(b.parsed.staffKey?1:0)+(b.parsed.year?1:0);
-            return bp-ap;
-          });
-          for(const fp of filesWithParsed){
-            let best=null,bestScore=-1;
-            for(const c of candidates){
-              if(usedCandidateIds.has(c.id))continue;
-              const sc=score(fp.parsed,c);
-              if(sc>bestScore){bestScore=sc;best=c;}
-            }
-            if(best&&bestScore>=20){ // require staff match OR strong year match
-              usedCandidateIds.add(best.id);
-              matches.push({file:fp.file,candidate:best,confidence:bestScore});
-            }else{
-              unmatched.push(fp.file);
-            }
-          }
-
-          if(matches.length===0){
-            setUploadStatus(`❌ Couldn't match any of ${files.length} file${files.length===1?'':'s'} to records — check filenames contain staff name + year`);
-            e.target.value="";
-            return;
-          }
-
-          // Preview confirmation so user can see what's happening
-          const previewLines=matches.map(m=>`  • ${m.file.name}\n     → ${m.candidate.physioAudited} · ${fmtNZ(m.candidate.date)}`).join("\n");
-          const unmatchedText=unmatched.length>0?`\n\n⚠️ ${unmatched.length} file${unmatched.length===1?"":"s"} couldn't be matched:\n${unmatched.map(f=>"  • "+f.name).join("\n")}`:"";
-          if(!window.confirm(`Matched ${matches.length} of ${files.length} file${files.length===1?"":"s"}:\n\n${previewLines}${unmatchedText}\n\nProceed with upload?`)){
-            setUploadStatus("");
-            e.target.value="";
-            return;
-          }
-
-          // Upload matched files
+          setUploadStatus(`⏳ Uploading 0/${toUpload.length}…`);
           let attached=0;
           const newAudits=[...audits];
-          for(let i=0;i<matches.length;i++){
-            const{file:f,candidate:target}=matches[i];
+          for(let i=0;i<toUpload.length;i++){
+            const{file:f,targetId}=toUpload[i];
+            const target=audits.find(a=>a.id===targetId);
+            if(!target)continue;
             try{
               if(f.size>25*1024*1024){_warn("skip oversize",f.name);continue;}
               const dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f);});
@@ -4705,15 +4664,15 @@ export default function App(){
               const idx=newAudits.findIndex(a=>a.id===target.id);
               if(idx>=0)newAudits[idx]={...target,evidence};
               attached++;
-              setUploadStatus(`⏳ ${attached}/${matches.length}: ${target.physioAudited} ${fmtNZ(target.date)}…`);
+              setUploadStatus(`⏳ ${attached}/${toUpload.length}: ${target.physioAudited} ${fmtNZ(target.date)}…`);
             }catch(err){_warn("bulk upload",err.message);}
           }
           setAudits(newAudits);saveGen("audits",newAudits);
-          const unmatchedMsg=unmatched.length>0?` · ${unmatched.length} unmatched`:"";
-          setUploadStatus(`✅ Attached ${attached} of ${files.length} file${files.length===1?'':'s'}${unmatchedMsg}`);
-          e.target.value="";
-          setTimeout(()=>setUploadStatus(""),8000);
+          setUploadStatus(`✅ Attached ${attached} file${attached===1?'':'s'}`);
+          setStagedFiles([]);
+          setTimeout(()=>setUploadStatus(""),6000);
         }
+        const candidates=audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence).sort((a,b)=>a.date.localeCompare(b.date));
         return(
           <div style={{background:"#EEF6FF",border:`1px solid ${C.blue}`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -4723,30 +4682,58 @@ export default function App(){
                   {reviewsAndAudits.length} total · {withEvidence} have files · <strong style={{color:needEvidence?C.amber:C.green}}>{needEvidence} still need evidence</strong>
                 </div>
               </div>
-              <BSm onClick={()=>setBulkOpen(v=>!v)} color={C.blue}>{bulkOpen?"Close":"Upload scans ↑"}</BSm>
+              <BSm onClick={()=>{setBulkOpen(v=>!v);if(bulkOpen)setStagedFiles([]);}} color={C.blue}>{bulkOpen?"Close":"Upload scans ↑"}</BSm>
             </div>
             {bulkOpen&&<div style={{marginTop:"0.75rem",paddingTop:"0.75rem",borderTop:`1px solid ${C.blue}33`}}>
               <div style={{fontSize:12,color:C.muted,marginBottom:"0.5rem"}}>
-                Select multiple PDF scans. Files are <strong>auto-matched to records</strong> by staff name + date in the filename. A preview will show matches before uploading so you can confirm. Max 25MB per file.
+                Select multiple scans, then pick which record each goes to using the dropdowns. I'll try to guess from the filename but you can override. Max 25MB per file.
               </div>
-              <div style={{fontSize:11,color:C.muted,marginBottom:"0.5rem",background:"white",padding:"6px 10px",borderRadius:6,border:`1px solid ${C.border}`}}>
-                💡 <strong>Tip:</strong> Filenames like <code>Peer_Review_Tim_Feb_2024.pdf</code> or <code>Notes_Audit_Hans_Aug_2024.pdf</code> match perfectly. Generic names like <code>scan001.pdf</code> won't match — rename first or do one at a time.
+              <div style={{display:"flex",gap:8,marginBottom:"0.75rem",flexWrap:"wrap"}}>
+                <button onClick={()=>{setBulkType("peer_review");setStagedFiles([]);}} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="peer_review"?C.blue:C.border}`,background:bulkType==="peer_review"?C.blue:"white",color:bulkType==="peer_review"?"white":C.text,cursor:"pointer",fontWeight:500}}>🔍 Peer reviews ({audits.filter(a=>a.type==="peer_review"&&a.id<100000&&!a.evidence).length} need)</button>
+                <button onClick={()=>{setBulkType("clinical_notes");setStagedFiles([]);}} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="clinical_notes"?C.blue:C.border}`,background:bulkType==="clinical_notes"?C.blue:"white",color:bulkType==="clinical_notes"?"white":C.text,cursor:"pointer",fontWeight:500}}>📋 Notes audits ({audits.filter(a=>a.type==="clinical_notes"&&a.id<100000&&!a.evidence).length} need)</button>
               </div>
-              <div style={{display:"flex",gap:8,marginBottom:"0.5rem",flexWrap:"wrap"}}>
-                <button onClick={()=>setBulkType("peer_review")} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="peer_review"?C.blue:C.border}`,background:bulkType==="peer_review"?C.blue:"white",color:bulkType==="peer_review"?"white":C.text,cursor:"pointer",fontWeight:500}}>🔍 Peer reviews ({audits.filter(a=>a.type==="peer_review"&&a.id<100000&&!a.evidence).length} need)</button>
-                <button onClick={()=>setBulkType("clinical_notes")} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="clinical_notes"?C.blue:C.border}`,background:bulkType==="clinical_notes"?C.blue:"white",color:bulkType==="clinical_notes"?"white":C.text,cursor:"pointer",fontWeight:500}}>📋 Notes audits ({audits.filter(a=>a.type==="clinical_notes"&&a.id<100000&&!a.evidence).length} need)</button>
-              </div>
-              <div style={{fontSize:11,color:C.muted,marginBottom:"0.5rem"}}>
-                Order in which {bulkType==="peer_review"?"peer reviews":"notes audits"} need files (oldest first):
-              </div>
-              <div style={{fontSize:11,color:C.muted,background:"white",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",maxHeight:140,overflowY:"auto",marginBottom:"0.75rem"}}>
-                {audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence).sort((a,b)=>a.date.localeCompare(b.date)).map((a,i)=>(
-                  <div key={a.id} style={{padding:"2px 0"}}>{i+1}. {fmtNZ(a.date)} — {a.physioAudited||"(no physio)"} <span style={{color:C.muted}}>· {a.clinic}</span></div>
-                ))}
-                {audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence).length===0&&<div style={{fontStyle:"italic"}}>All {bulkType==="peer_review"?"peer reviews":"notes audits"} have evidence ✓</div>}
-              </div>
-              <Btn onClick={()=>bulkRef.current.click()}>Choose PDF scans →</Btn>
-              <input ref={bulkRef} type="file" multiple accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handleBulkUpload}/>
+
+              {stagedFiles.length===0
+                ?<Btn onClick={()=>bulkRef.current.click()}>Choose PDF scans →</Btn>
+                :<>
+                  <div style={{fontSize:12,fontWeight:600,marginBottom:"0.5rem"}}>
+                    {stagedFiles.length} file{stagedFiles.length===1?'':'s'} selected — assign each to a record:
+                  </div>
+                  <div style={{maxHeight:300,overflowY:"auto",background:"white",border:`1px solid ${C.border}`,borderRadius:6,marginBottom:"0.75rem"}}>
+                    {stagedFiles.map(sf=>{
+                      const usedIds=stagedFiles.filter(s=>s.id!==sf.id&&s.targetId).map(s=>s.targetId);
+                      return(
+                        <div key={sf.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:`1px solid ${C.border}`,fontSize:12,flexWrap:"wrap"}}>
+                          <div style={{flex:"1 1 200px",minWidth:180,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={sf.file.name}>
+                            📄 {sf.file.name}
+                            <span style={{color:C.muted,fontWeight:400,marginLeft:6}}>({(sf.file.size/1024/1024).toFixed(1)}MB)</span>
+                          </div>
+                          <span style={{color:C.muted}}>→</span>
+                          <select
+                            value={sf.targetId}
+                            onChange={e=>setStagedFiles(sfs=>sfs.map(x=>x.id===sf.id?{...x,targetId:e.target.value?parseInt(e.target.value):""}:x))}
+                            style={{flex:"2 1 280px",minWidth:240,padding:"5px 8px",border:`1px solid ${sf.targetId?C.green:C.amber}`,borderRadius:5,fontSize:12,background:sf.targetId?"#f0faf4":"#fffdf0"}}
+                          >
+                            <option value="">— pick record —</option>
+                            {candidates.map(c=>(
+                              <option key={c.id} value={c.id} disabled={usedIds.includes(c.id)}>
+                                {c.physioAudited||"?"} · {fmtNZ(c.date)} · {c.clinic}{usedIds.includes(c.id)?" (used)":""}
+                              </option>
+                            ))}
+                          </select>
+                          <button onClick={()=>setStagedFiles(sfs=>sfs.filter(x=>x.id!==sf.id))} style={{border:"none",background:"transparent",color:C.red,cursor:"pointer",fontSize:14,padding:"2px 6px"}}>✕</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <Btn onClick={commitUpload}>Upload {stagedFiles.filter(s=>s.targetId).length} file{stagedFiles.filter(s=>s.targetId).length===1?'':'s'} →</Btn>
+                    <Btn outline onClick={()=>bulkRef.current.click()}>+ Add more files</Btn>
+                    <Btn outline onClick={()=>setStagedFiles([])}>Clear</Btn>
+                  </div>
+                </>
+              }
+              <input ref={bulkRef} type="file" multiple accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={stageFiles}/>
               {uploadStatus&&<div style={{fontSize:12,marginTop:"0.5rem",color:uploadStatus.startsWith("✅")?C.green:uploadStatus.startsWith("⚠️")?C.amber:C.blue}}>{uploadStatus}</div>}
             </div>}
           </div>
