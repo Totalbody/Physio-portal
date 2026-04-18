@@ -2032,6 +2032,23 @@ function saveGen(k, d) {
   try { localStorage.setItem(k, JSON.stringify(d)); return true; } catch { return false; }
 }
 
+// Immediate version — bypasses debounce and awaits Drive save so callers know it persisted.
+// Use for bulk operations that need guaranteed persistence before page navigation/reload.
+async function saveGenImmediate(k, d) {
+  if (_portalReady) {
+    _portalStore.data[k] = d;
+    clearTimeout(_saveTimer);  // cancel any pending debounced save
+    try {
+      await _saveDriveState();
+      return true;
+    } catch (e) {
+      _warn('[saveGenImmediate] Drive save failed', e);
+      return false;
+    }
+  }
+  try { localStorage.setItem(k, JSON.stringify(d)); return true; } catch { return false; }
+}
+
 function loadGen(k) {
   if (_portalReady) return _portalStore.data[k] || null;
   try { const d = localStorage.getItem(k); return d ? JSON.parse(d) : null; } catch { return null; }
@@ -2974,14 +2991,18 @@ function FireDrillLoader({audits,setAudits}){
       // Small pause between files — gives Drive API breathing room
       if(i<list.length-1)await new Promise(r=>setTimeout(r,600));
     }
-    // Single batch save at the end
-    setAudits(newAudits);saveGen("audits",newAudits);
-    const finalMsg = failed.length===0
-      ? `✅ Attached all ${attached} FENZ evacuation PDFs`
-      : `⚠️ Attached ${attached} of ${list.length} — ${failed.length} failed: ${failed.slice(0,3).join(", ")}${failed.length>3?"…":""}`;
+    // Commit: update React state + AWAIT Drive save so we know it persisted
+    setAudits(newAudits);
+    setStatus(`💾 Saving ${attached} PDFs to Drive…`);
+    const saved=await saveGenImmediate("audits",newAudits);
+    const finalMsg = !saved
+      ? `❌ Upload succeeded but Drive save failed — try again or check connection`
+      : failed.length===0
+        ? `✅ Attached all ${attached} FENZ evacuation PDFs (saved to Drive)`
+        : `⚠️ Attached ${attached} of ${list.length} — ${failed.length} failed: ${failed.slice(0,3).join(", ")}${failed.length>3?"…":""}`;
     setStatus(finalMsg);
     setRunning(false);
-    setTimeout(()=>setStatus(""),12000);
+    setTimeout(()=>setStatus(""),15000);
   }
 
   return(
@@ -3082,10 +3103,14 @@ function PBNZPeerReviewLoader({audits,setAudits}){
       }
       if(i<list.length-1)await new Promise(r=>setTimeout(r,600));
     }
-    setAudits(newAudits);saveGen("audits",newAudits);
-    const finalMsg = failed.length===0
-      ? `✅ Attached all ${attached} PBNZ peer review PDFs`
-      : `⚠️ Attached ${attached} of ${list.length} — ${failed.length} failed: ${failed.slice(0,3).join(", ")}${failed.length>3?"…":""}`;
+    setAudits(newAudits);
+    setStatus(`💾 Saving ${attached} PDFs to Drive…`);
+    const saved=await saveGenImmediate("audits",newAudits);
+    const finalMsg = !saved
+      ? `❌ Upload succeeded but Drive save failed — try again or check connection`
+      : failed.length===0
+        ? `✅ Attached all ${attached} PBNZ peer review PDFs (saved to Drive)`
+        : `⚠️ Attached ${attached} of ${list.length} — ${failed.length} failed: ${failed.slice(0,3).join(", ")}${failed.length>3?"…":""}`;
     setStatus(finalMsg);
     setRunning(false);
     setTimeout(()=>setStatus(""),12000);
