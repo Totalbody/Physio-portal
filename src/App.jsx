@@ -2887,22 +2887,45 @@ function AuditEvidenceBtn({audit,audits,setAudits,onView}){
 function FireDrillLoader({audits,setAudits}){
   const[running,setRunning]=useState(false);
   const[status,setStatus]=useState("");
+  const[restored,setRestored]=useState(false);
   // All seeded fire drills that have an embedded FENZ PDF available
   const allDrills=audits.filter(a=>a.type==="fire_drill"&&a.id<100000&&FIRE_DRILL_PDFS[a.id]);
-  // Ones that need the FENZ PDF attached (no evidence, OR evidence isn't already a FENZ PDF)
   const needsFenz=allDrills.filter(a=>{
     if(!a.evidence)return true;
     const fn=(a.evidence.fileName||"").toLowerCase();
-    return !fn.startsWith("fire_drill_"); // not our FENZ PDF
+    return !fn.startsWith("fire_drill_");
   });
-  if(allDrills.length===0)return null;
-  const allDone=needsFenz.length===0;
+  // Check for deleted seed fire drills — ones with embedded PDFs but not in audits
+  const presentIds=new Set(allDrills.map(a=>a.id));
+  const deletedFireDrillIds=Object.keys(FIRE_DRILL_PDFS).map(Number).filter(id=>!presentIds.has(id));
+
+  if(allDrills.length===0&&deletedFireDrillIds.length===0)return null;
+  const allDone=needsFenz.length===0&&deletedFireDrillIds.length===0;
 
   function b64toBlob(b64,type){
     const bin=atob(b64);
     const bytes=new Uint8Array(bin.length);
     for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
     return new Blob([bytes],{type});
+  }
+
+  function restoreDeleted(){
+    if(deletedFireDrillIds.length===0)return;
+    const msg=`Restore ${deletedFireDrillIds.length} deleted fire drill record${deletedFireDrillIds.length===1?'':'s'}?\n\nIDs: ${deletedFireDrillIds.join(', ')}\n\nThis clears the "deleted" flag so they reappear in the list.`;
+    if(!window.confirm(msg))return;
+    // Remove these IDs from localStorage + Drive deletedAuditIds
+    try{
+      const key="tbp_deleted_audit_ids";
+      const prev=JSON.parse(localStorage.getItem(key)||"[]");
+      const filtered=prev.filter(id=>!deletedFireDrillIds.includes(id));
+      localStorage.setItem(key,JSON.stringify(filtered));
+      saveGen("deletedAuditIds",filtered);
+      setRestored(true);
+      setStatus(`✅ Restored — reload the page to see the ${deletedFireDrillIds.length} fire drill${deletedFireDrillIds.length===1?'':'s'}`);
+    }catch(e){
+      _warn("[restore deleted]",e);
+      setStatus(`❌ Restore failed: ${e.message||e}`);
+    }
   }
   async function loadAll(forceAll){
     const list = forceAll ? allDrills : needsFenz;
@@ -2937,21 +2960,22 @@ function FireDrillLoader({audits,setAudits}){
           if(idx>=0)newAudits[idx]={...target,evidence};
           attached++;
           success=true;
-          // Persist to portal store each iteration (no React re-render); final setAudits at end
-          saveGen("audits",newAudits);
+          // Don't save/setAudits in loop — causes iPad Safari memory churn + stalls
         }catch(e){
           _warn(`[FireDrill load] attempt ${attempt} failed`,target.id,e.message||e);
           if(attempt<3){
             setStatus(`⚠️ Retry ${attempt}/3 for ${target.clinic} ${fmtNZ(target.date)}…`);
-            await new Promise(r=>setTimeout(r,1500*attempt)); // 1.5s, 3s backoff
+            await new Promise(r=>setTimeout(r,1500*attempt));
           }else{
             failed.push(`${target.clinic} ${fmtNZ(target.date)}`);
           }
         }
       }
       // Small pause between files — gives Drive API breathing room
-      if(i<list.length-1)await new Promise(r=>setTimeout(r,400));
+      if(i<list.length-1)await new Promise(r=>setTimeout(r,600));
     }
+    // Single batch save at the end
+    setAudits(newAudits);saveGen("audits",newAudits);
     const finalMsg = failed.length===0
       ? `✅ Attached all ${attached} FENZ evacuation PDFs`
       : `⚠️ Attached ${attached} of ${list.length} — ${failed.length} failed: ${failed.slice(0,3).join(", ")}${failed.length>3?"…":""}`;
@@ -2966,18 +2990,23 @@ function FireDrillLoader({audits,setAudits}){
         <div style={{flex:1,minWidth:200}}>
           <div style={{fontSize:13,fontWeight:600,color:"#1B2B5C"}}>🚨 FENZ Evacuation Report PDFs</div>
           <div style={{fontSize:11,color:C.muted,marginTop:2}}>
-            {allDone
-              ? <>All <strong>{allDrills.length}</strong> fire drills have FENZ PDFs attached ✓ — tap Regenerate to re-create with the latest template.</>
-              : <><strong>{needsFenz.length}</strong> of {allDrills.length} fire drill{allDrills.length===1?'':'s'} still need{needsFenz.length===1?'s':''} a FENZ Evacuation Report — matches the official Fire and Emergency NZ template.</>
+            {deletedFireDrillIds.length>0
+              ? <><strong style={{color:C.red}}>{deletedFireDrillIds.length} fire drill record{deletedFireDrillIds.length===1?'':'s'} deleted</strong> — restore them first to regenerate PDFs for all {Object.keys(FIRE_DRILL_PDFS).length} drills.</>
+              : allDone
+                ? <>All <strong>{allDrills.length}</strong> fire drills have FENZ PDFs attached ✓ — tap Regenerate to re-create.</>
+                : <><strong>{needsFenz.length}</strong> of {allDrills.length} fire drill{allDrills.length===1?'':'s'} still need{needsFenz.length===1?'s':''} a FENZ Evacuation Report.</>
             }
           </div>
         </div>
-        {!allDone&&<Btn onClick={()=>loadAll(false)} style={{background:"#1B2B5C",borderColor:"#1B2B5C",opacity:running?0.5:1}}>
+        {deletedFireDrillIds.length>0&&<Btn onClick={restoreDeleted} style={{background:"#E8342E",borderColor:"#E8342E"}}>
+          🔙 Restore {deletedFireDrillIds.length} deleted
+        </Btn>}
+        {!allDone&&deletedFireDrillIds.length===0&&<Btn onClick={()=>loadAll(false)} style={{background:"#1B2B5C",borderColor:"#1B2B5C",opacity:running?0.5:1}}>
           {running?"⏳":`Attach ${needsFenz.length} PDF${needsFenz.length===1?'':'s'} →`}
         </Btn>}
-        <BSm outline onClick={()=>loadAll(true)} style={{opacity:running?0.5:1}}>{running?"⏳":`🔄 Regenerate all ${allDrills.length}`}</BSm>
+        {allDrills.length>0&&<BSm outline onClick={()=>loadAll(true)} style={{opacity:running?0.5:1}}>{running?"⏳":`🔄 Regenerate ${allDrills.length}`}</BSm>}
       </div>
-      {status&&<div style={{fontSize:12,marginTop:"0.5rem",color:status.startsWith("✅")?C.green:"#1B2B5C"}}>{status}</div>}
+      {status&&<div style={{fontSize:12,marginTop:"0.5rem",color:status.startsWith("✅")?C.green:status.startsWith("❌")||status.startsWith("⚠️")?C.red:"#1B2B5C"}}>{status}</div>}
     </div>
   );
 }
@@ -3040,7 +3069,7 @@ function PBNZPeerReviewLoader({audits,setAudits}){
           if(idx>=0)newAudits[idx]={...target,evidence};
           attached++;
           success=true;
-          saveGen("audits",newAudits);
+          // Single batch save at end — don't churn in loop
         }catch(e){
           _warn(`[PBNZ load] attempt ${attempt} failed`,target.id,e.message||e);
           if(attempt<3){
@@ -3051,8 +3080,9 @@ function PBNZPeerReviewLoader({audits,setAudits}){
           }
         }
       }
-      if(i<list.length-1)await new Promise(r=>setTimeout(r,400));
+      if(i<list.length-1)await new Promise(r=>setTimeout(r,600));
     }
+    setAudits(newAudits);saveGen("audits",newAudits);
     const finalMsg = failed.length===0
       ? `✅ Attached all ${attached} PBNZ peer review PDFs`
       : `⚠️ Attached ${attached} of ${list.length} — ${failed.length} failed: ${failed.slice(0,3).join(", ")}${failed.length>3?"…":""}`;
