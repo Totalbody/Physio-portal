@@ -2938,11 +2938,12 @@ function BulkEvidenceUploader({audits,setAudits}){
   const[uploadStatus,setUploadStatus]=useState("");
   const[stagedFiles,setStagedFiles]=useState([]);
   const bulkRef=useRef();
-  const reviewsAndAudits=audits.filter(a=>(a.type==="peer_review"||a.type==="clinical_notes")&&a.id<100000);
+  const reviewsAndAudits=audits.filter(a=>(a.type==="peer_review"||a.type==="clinical_notes"||a.type==="fire_drill")&&a.id<100000);
   const withEvidence=reviewsAndAudits.filter(a=>a.evidence).length;
   const needEvidence=reviewsAndAudits.length-withEvidence;
   const peerNeed=audits.filter(a=>a.type==="peer_review"&&a.id<100000&&!a.evidence).length;
   const notesNeed=audits.filter(a=>a.type==="clinical_notes"&&a.id<100000&&!a.evidence).length;
+  const fireNeed=audits.filter(a=>a.type==="fire_drill"&&a.id<100000&&!a.evidence).length;
   const candidates=audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence).sort((a,b)=>a.date.localeCompare(b.date));
 
   const staffPatterns=[
@@ -2953,8 +2954,30 @@ function BulkEvidenceUploader({audits,setAudits}){
     {name:"Dylan Connolly",  patterns:[/dylan/i,/connolly/i]},
     {name:"Isabella Yang",   patterns:[/isabella/i,/yang/i]},
   ];
-  function guessFromFilename(name,pool){
+  function guessFromFilename(name,pool,type){
     const lower=name.toLowerCase();
+    // Fire drills: match by exact date and clinic (e.g. "fire_drill_5001_2023-06-15_Pakuranga.pdf")
+    if(type==="fire_drill"){
+      const dm=name.match(/(\d{4})-(\d{2})-(\d{2})/);
+      const exactDate=dm?`${dm[1]}-${dm[2]}-${dm[3]}`:null;
+      const clinicMap=[
+        {name:"Pakuranga",re:/pakuranga/i},
+        {name:"Flat Bush",re:/flat[\s_-]?bush/i},
+        {name:"Titirangi",re:/titirangi/i},
+        {name:"Panmure",re:/panmure/i},
+      ];
+      let fdClinic=null;
+      for(const c of clinicMap){if(c.re.test(lower)){fdClinic=c.name;break;}}
+      let best=null,bestScore=-1;
+      for(const c of pool){
+        let s=0;
+        if(exactDate&&c.date===exactDate)s+=100;
+        if(fdClinic&&(c.clinic||"").toLowerCase()===fdClinic.toLowerCase())s+=50;
+        if(s>bestScore){bestScore=s;best=c;}
+      }
+      return bestScore>=100?best?.id:null;
+    }
+    // Peer reviews / clinical notes: match by staff name + year/month
     let staffName=null;
     for(const s of staffPatterns){
       if(s.patterns.some(p=>p.test(lower))){staffName=s.name;break;}
@@ -2991,7 +3014,7 @@ function BulkEvidenceUploader({audits,setAudits}){
     const fresh=files.map((f,i)=>({
       id:Date.now()+i+Math.random(),
       file:f,
-      targetId:guessFromFilename(f.name,pool)||"",
+      targetId:guessFromFilename(f.name,pool,bulkType)||"",
     }));
     // If adding to existing staged files, skip candidate IDs already taken
     const taken=new Set(stagedFiles.map(s=>s.targetId).filter(Boolean));
@@ -3027,7 +3050,7 @@ function BulkEvidenceUploader({audits,setAudits}){
         const idx=newAudits.findIndex(a=>a.id===target.id);
         if(idx>=0)newAudits[idx]={...target,evidence};
         attached++;
-        setUploadStatus(`⏳ ${attached}/${toUpload.length}: ${target.physioAudited} ${fmtNZ(target.date)}…`);
+        setUploadStatus(`⏳ ${attached}/${toUpload.length}: ${target.type==="fire_drill"?`${target.clinic} ${fmtNZ(target.date)}`:`${target.physioAudited||""} ${fmtNZ(target.date)}`}…`);
       }catch(err){_warn("bulk upload",err.message||err);}
     }
     setAudits(newAudits);saveGen("audits",newAudits);
@@ -3040,7 +3063,7 @@ function BulkEvidenceUploader({audits,setAudits}){
     <div style={{background:"#EEF6FF",border:`1px solid ${C.blue}`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:200}}>
-          <div style={{fontSize:13,fontWeight:600,color:C.blue}}>📎 Upload evidence scans — peer reviews & notes audits</div>
+          <div style={{fontSize:13,fontWeight:600,color:C.blue}}>📎 Upload evidence — peer reviews, notes audits & fire drills</div>
           <div style={{fontSize:11,color:C.muted,marginTop:2}}>
             {reviewsAndAudits.length} total · {withEvidence} have files · <strong style={{color:needEvidence?C.amber:C.green}}>{needEvidence} still need evidence</strong>
           </div>
@@ -3054,6 +3077,7 @@ function BulkEvidenceUploader({audits,setAudits}){
         <div style={{display:"flex",gap:8,marginBottom:"0.75rem",flexWrap:"wrap"}}>
           <button onClick={()=>{setBulkType("peer_review");setStagedFiles([]);}} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="peer_review"?C.blue:C.border}`,background:bulkType==="peer_review"?C.blue:"white",color:bulkType==="peer_review"?"white":C.text,cursor:"pointer",fontWeight:500}}>🔍 Peer reviews ({peerNeed} need)</button>
           <button onClick={()=>{setBulkType("clinical_notes");setStagedFiles([]);}} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="clinical_notes"?C.blue:C.border}`,background:bulkType==="clinical_notes"?C.blue:"white",color:bulkType==="clinical_notes"?"white":C.text,cursor:"pointer",fontWeight:500}}>📋 Notes audits ({notesNeed} need)</button>
+          <button onClick={()=>{setBulkType("fire_drill");setStagedFiles([]);}} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="fire_drill"?C.blue:C.border}`,background:bulkType==="fire_drill"?C.blue:"white",color:bulkType==="fire_drill"?"white":C.text,cursor:"pointer",fontWeight:500}}>🔥 Fire drills ({fireNeed} need)</button>
         </div>
 
         {stagedFiles.length===0
@@ -3080,7 +3104,7 @@ function BulkEvidenceUploader({audits,setAudits}){
                       <option value="">— pick record —</option>
                       {candidates.map(c=>(
                         <option key={c.id} value={c.id} disabled={usedIds.includes(c.id)}>
-                          {c.physioAudited||"?"} · {fmtNZ(c.date)} · {c.clinic}{usedIds.includes(c.id)?" (used)":""}
+                          {c.type==="fire_drill"?`${c.clinic} · ${fmtNZ(c.date)}`:`${c.physioAudited||"?"} · ${fmtNZ(c.date)} · ${c.clinic}`}{usedIds.includes(c.id)?" (used)":""}
                         </option>
                       ))}
                     </select>
