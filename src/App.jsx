@@ -8,9 +8,26 @@ const _isDev = typeof window !== 'undefined' && (window.location.hostname === 'l
 // iPad / iPhone Safari doesn't give you DevTools, so every _log/_warn/_err
 // call is mirrored into this buffer and surfaced in the floating "🐛 Debug"
 // panel at the bottom-right of the screen. Tap it to see what's happened.
-const _debugLog = [];
+// The last 500 entries are persisted to localStorage so they survive a
+// page refresh — invaluable for diagnosing "worked then disappeared" bugs.
+const _DEBUG_STORAGE_KEY = 'tbp_debug_log';
+const _debugLog = (() => {
+  try {
+    const raw = localStorage.getItem(_DEBUG_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        // Mark boundary so it's clear where previous session ended
+        parsed.push({ ts: new Date().toLocaleTimeString('en-NZ',{hour12:false}), level:'log', msg:'─── page refresh ───' });
+        return parsed;
+      }
+    }
+  } catch {}
+  return [];
+})();
 const _DEBUG_MAX = 500;
 const _debugListeners = new Set();
+let _debugPersistTimer = null;
 function _debugAdd(level, args) {
   const ts = new Date().toLocaleTimeString('en-NZ', { hour12:false });
   const msg = args.map(a => {
@@ -22,6 +39,11 @@ function _debugAdd(level, args) {
   _debugLog.push({ ts, level, msg });
   if (_debugLog.length > _DEBUG_MAX) _debugLog.shift();
   _debugListeners.forEach(fn => { try { fn(); } catch {} });
+  // Persist debounced — don't hammer localStorage on every log line
+  clearTimeout(_debugPersistTimer);
+  _debugPersistTimer = setTimeout(() => {
+    try { localStorage.setItem(_DEBUG_STORAGE_KEY, JSON.stringify(_debugLog)); } catch {}
+  }, 500);
 }
 const _log  = (...a) => { _debugAdd('log',  a); if (_isDev) console.log(...a); };
 const _warn = (...a) => { _debugAdd('warn', a); if (_isDev) console.warn(...a); };
@@ -716,23 +738,45 @@ function _mirrorStateToVercel() {
 async function _loadDriveData() {
   try {
     const q = `name='portal-state.json' and '${DRIVE_FOLDERS.root}' in parents and trashed=false`;
-    const list = await window.gapi.client.drive.files.list({ q, fields:'files(id)', spaces:'drive' });
-    if (list.result.files.length > 0) {
-      _driveStateFileId = list.result.files[0].id;
-      // Cache for KPI's public URL fallback
-      try { localStorage.setItem('tbp_state_file_id', _driveStateFileId); } catch {}
-      const resp = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${_driveStateFileId}?alt=media&_cb=${Date.now()}`,
-        { headers:{ Authorization:`Bearer ${_driveToken}`, 'Cache-Control':'no-cache', 'Pragma':'no-cache' } }
-      );
-      const data = await resp.json();
-      const files = data._files || {};
-      delete data._files;
-      _portalStore = { files, data };
-      _log('[Drive] Loaded', Object.keys(files).length, 'files,', Object.keys(data).length, 'data keys');
-    } else {
+    // Sort by modifiedTime DESC so the newest file wins even if duplicates exist.
+    // Duplicates can appear if an earlier session lost its file-ID cache (e.g. 404
+    // on PATCH → retry creates a new file) — and the old copy sticks around
+    // in Drive. Without this sort, _loadDriveData might pick an older copy
+    // arbitrarily, which is exactly how "state reverts on refresh" happens.
+    const list = await window.gapi.client.drive.files.list({
+      q, fields:'files(id,modifiedTime,size)', spaces:'drive',
+      orderBy: 'modifiedTime desc', pageSize: 50,
+    });
+    const found = (list.result.files || []);
+    if (found.length === 0) {
       _log('[Drive] No portal-state.json found — starting fresh');
+      await _syncLocalToDrive();
+      return;
     }
+    if (found.length > 1) {
+      _warn(`[Drive] ⚠️ Found ${found.length} portal-state.json files — using newest. Older copies:`,
+        found.slice(1).map(f => `${f.id} (modified ${f.modifiedTime})`).join(' | '));
+    }
+    _driveStateFileId = found[0].id;
+    _log(`[Drive] Using state file id=${found[0].id.slice(0,10)}… modified=${found[0].modifiedTime} size=${((Number(found[0].size)||0)/1024).toFixed(0)}KB`);
+    try { localStorage.setItem('tbp_state_file_id', _driveStateFileId); } catch {}
+    const resp = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${_driveStateFileId}?alt=media&_cb=${Date.now()}`,
+      { headers:{ Authorization:`Bearer ${_driveToken}`, 'Cache-Control':'no-cache', 'Pragma':'no-cache' } }
+    );
+    const data = await resp.json();
+    const files = data._files || {};
+    delete data._files;
+    _portalStore = { files, data };
+    // Diagnostic: show how many fire drills and peer reviews have PDF evidence
+    // in the state we just loaded. If this is 0/14 right after a "successful"
+    // upload batch, the save didn't actually persist.
+    const _aud = data.audits || [];
+    const _fdTot = _aud.filter(a=>a?.type==='fire_drill').length;
+    const _fdEv  = _aud.filter(a=>a?.type==='fire_drill' && a?.evidence?.driveId).length;
+    const _prTot = _aud.filter(a=>a?.type==='peer_review').length;
+    const _prEv  = _aud.filter(a=>a?.type==='peer_review' && a?.evidence?.driveId).length;
+    _log(`[Drive] Loaded ${Object.keys(files).length} files, ${Object.keys(data).length} data keys · fire drills ${_fdEv}/${_fdTot} w/ evidence · peer reviews ${_prEv}/${_prTot} w/ evidence`);
     // After loading Drive data, sync any cert records that exist in THIS device's
     // localStorage but are missing from Drive (catches the "4% on one device" problem)
     await _syncLocalToDrive();
@@ -1806,13 +1850,19 @@ async function _relinkExistingDocs(allAudits, allMeetings, onProgress) {
         const dateMatch = file.name.match(/(\d{4}-\d{2}-\d{2})/);
         if (!dateMatch) continue;
         const fileDate = dateMatch[1];
-        // Match to an audit record — reconnect even if evidence exists but driveId is missing/stale
+        // Match to an audit record — ONLY link if no evidence is currently set.
+        // Previous condition ("relink if evidence.driveId differs") was destructive:
+        // it happily overwrote a freshly-uploaded FENZ PDF with whatever HTML template
+        // happened to still be sitting in the audit folder from an earlier regen.
+        // If an audit has a driveId, leave it alone — the user (or a bulk uploader)
+        // put it there deliberately. Broken links can be fixed by re-uploading.
         const match = updatedAudits.find(a => a.date === fileDate && file.name.includes(a.type) &&
-          (!a.evidence || !a.evidence.driveId || a.evidence.driveId !== file.id));
+          !a.evidence?.driveId);
         if (match) {
           match.evidence = { driveId: file.id, driveUrl: file.webViewLink,
             blobUrl:`https://drive.google.com/uc?export=view&id=${file.id}`,
             fileName: file.name, fileType:'text/html' };
+          _log(`[Relink] Linked HTML form to ${match.type} ${match.date} ${match.clinic}`);
           relinked++;
         }
       }
@@ -1831,13 +1881,15 @@ async function _relinkExistingDocs(allAudits, allMeetings, onProgress) {
         const dateMatch = file.name.match(/(\d{4}-\d{2}-\d{2})/);
         if (!dateMatch) continue;
         const fileDate = dateMatch[1];
+        // Only link if no attachment exists — never overwrite deliberate uploads.
         const match = updatedMeetings.find(m => m.date === fileDate &&
-          (!getMeetingFile(m) || !m.attachment?.driveId || m.attachment.driveId !== file.id));
+          !m.attachment?.driveId);
         if (match) {
           match.attachment = { driveId: file.id, driveUrl: file.webViewLink,
             blobUrl:`https://drive.google.com/uc?export=view&id=${file.id}`,
             fileName: file.name, fileType:'text/html',
             uploadedDate: fileDate, id: Date.now() };
+          _log(`[Relink] Linked HTML minutes to ${match.date} ${match.clinic}`);
           relinked++;
         }
       }
@@ -3127,10 +3179,40 @@ function FireDrillLoader({audits,setAudits}){
     // State file is now TINY because evidence just has driveId, not inlined PDF
     const result=await saveGenImmediate("audits",newAudits);
     _log(`[FireDrill] Batch complete: uploaded=${uploaded} failed=${failed.length} saveOk=${result.ok}`);
+
+    // ── VERIFY: fetch state file back from Drive and confirm evidence persisted ──
+    // If the write succeeds but the read-back shows no evidence, we have a ghost
+    // file or a Drive consistency issue — either way, we need to know.
+    let verifyMsg = '';
+    if (result.ok && _driveStateFileId && _driveToken) {
+      try {
+        setStatus(`🔍 Verifying save landed on Drive…`);
+        const vr = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${_driveStateFileId}?alt=media&_cb=${Date.now()}`,
+          { headers:{ Authorization:`Bearer ${_driveToken}`, 'Cache-Control':'no-cache' } }
+        );
+        if (vr.ok) {
+          const vd = await vr.json();
+          const va = vd.audits || [];
+          const expected = newAudits.filter(a=>a?.type==='fire_drill' && a?.evidence?.driveId).length;
+          const actual   = va.filter(a=>a?.type==='fire_drill' && a?.evidence?.driveId).length;
+          _log(`[FireDrill] VERIFY: Drive shows ${actual}/${newAudits.filter(a=>a?.type==='fire_drill').length} fire drills w/ evidence (expected ${expected}) — file id ${_driveStateFileId.slice(0,10)}…`);
+          if (actual < expected) {
+            _err(`[FireDrill] ⚠️ VERIFY FAILED: expected ${expected} fire drills with evidence on Drive, got ${actual}. Evidence was NOT persisted! Check 🐛 Debug log and look for duplicate state files.`);
+            verifyMsg = ` ⚠️ VERIFY FAILED: Drive has ${actual}/${expected} — evidence didn't stick! Tap 🐛 Debug.`;
+          } else {
+            verifyMsg = ` ✓ Verified ${actual} evidence on Drive.`;
+          }
+        } else {
+          _warn(`[FireDrill] Verify fetch returned ${vr.status}`);
+        }
+      } catch(e) { _warn('[FireDrill] Verify failed', e.message||e); }
+    }
+
     const finalMsg = !result.ok
       ? `❌ State save failed: ${(result.error||'unknown').slice(0,100)} — tap 🐛 Debug to see details`
       : failed.length===0
-        ? `✅ All ${uploaded} FENZ PDFs uploaded & saved — refresh any device to see them`
+        ? `✅ All ${uploaded} FENZ PDFs uploaded & saved.${verifyMsg}`
         : `⚠️ ${uploaded} of ${list.length} uploaded — ${failed.length} failed: ${failed.slice(0,2).join(", ")}${failed.length>2?"…":""}`;
     setStatus(finalMsg);
     // Keep the final message up for 60s (was 25s) so you can actually read it
@@ -11622,7 +11704,7 @@ function DebugPanel(){
                 <button onClick={()=>setFilter('warn+err')} style={{fontSize:11,padding:'4px 10px',border:'1px solid #e2e0d8',borderRadius:4,background:filter==='warn+err'?'#1a1a1a':'white',color:filter==='warn+err'?'white':'#333',cursor:'pointer'}}>Errors only</button>
               </div>
               <button onClick={copyAll} style={{fontSize:11,padding:'4px 10px',border:'1px solid #e2e0d8',borderRadius:4,background:'#EAF3DE',cursor:'pointer'}}>📋 Copy all</button>
-              <button onClick={()=>{_debugLog.length=0;setTick(n=>n+1);}} style={{fontSize:11,padding:'4px 10px',border:'1px solid #e2e0d8',borderRadius:4,background:'white',cursor:'pointer'}}>Clear</button>
+              <button onClick={()=>{_debugLog.length=0;try{localStorage.removeItem(_DEBUG_STORAGE_KEY);}catch{};setTick(n=>n+1);}} style={{fontSize:11,padding:'4px 10px',border:'1px solid #e2e0d8',borderRadius:4,background:'white',cursor:'pointer'}}>Clear</button>
               <button onClick={()=>setOpen(false)} style={{fontSize:20,background:'none',border:'none',cursor:'pointer',padding:'0 4px',lineHeight:1}}>✕</button>
             </div>
             <div style={{flex:1,overflowY:'auto',padding:'8px 12px',fontFamily:'ui-monospace,Menlo,monospace',fontSize:11,lineHeight:1.5,background:'#fafaf8'}}>
