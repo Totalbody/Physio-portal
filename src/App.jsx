@@ -1881,25 +1881,41 @@ function MultiFileRow({label,gkey,onView,accent=C.teal}){
   function handle(e){
     const selected=Array.from(e.target.files||[]);
     if(!selected.length)return;
-    const oversize=selected.find(f=>f.size>3*1024*1024);
-    if(oversize){alert(`"${oversize.name}" is over 3MB.`);return;}
+    const SIZE_LIMIT=25*1024*1024;
+    const oversize=selected.find(f=>f.size>SIZE_LIMIT);
+    if(oversize){alert(`"${oversize.name}" is over 25MB (${(oversize.size/1024/1024).toFixed(1)}MB).`);return;}
     // Process each file sequentially so uploads don't stomp each other
-    let running=[...files];
     const processNext=(i)=>{
       if(i>=selected.length){e.target.value="";return;}
       const f=selected[i];
       const r=new FileReader();
       r.onload=ev=>{
-        const d={id:Date.now()+i,fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
-        running=[...running,d];setFiles(running);saveGen(gkey,running);
+        const id=Date.now()+i;
+        // Show in UI immediately with dataUrl so user can preview, but DON'T persist
+        // the dataUrl — large files would bloat portal-state.json. Persistence happens
+        // after Drive upload completes with the proper Drive ID.
+        const localRec={id,fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ"),_uploading:true};
+        setFiles(prev=>[...prev,localRec]);
         if(_portalReady){
-          _uploadFileToDrive(gkey+"_"+d.id,d.fileName,d.fileType,d.dataUrl).then(driveFile=>{
+          _uploadFileToDrive(gkey+"_"+id,f.name,f.type,ev.target.result).then(driveFile=>{
             if(driveFile){
-              setFiles(prev=>{const up=prev.map(x=>x.id===d.id?{...x,...driveFile,dataUrl:undefined}:x);saveGen(gkey,up);return up;});
+              setFiles(prev=>{
+                const up=prev.map(x=>x.id===id?{...x,...driveFile,_uploading:false,dataUrl:undefined}:x);
+                // Persist clean metadata only (has driveId/blobUrl, no base64)
+                saveGen(gkey,up.filter(x=>!x._uploading));
+                return up;
+              });
+            } else {
+              alert(`Couldn't save "${f.name}" to Google Drive. Check your connection and try again.`);
+              setFiles(prev=>prev.filter(x=>x.id!==id));
             }
-          }).catch(()=>{});
+            processNext(i+1);
+          }).catch(()=>{processNext(i+1);});
+        } else {
+          // No Drive connection — fall back to localStorage metadata only
+          setFiles(prev=>{const up=prev.map(x=>x.id===id?{...x,_uploading:false}:x);saveGen(gkey,up);return up;});
+          processNext(i+1);
         }
-        processNext(i+1);
       };
       r.readAsDataURL(f);
     };
@@ -1916,10 +1932,10 @@ function MultiFileRow({label,gkey,onView,accent=C.teal}){
         <BSm onClick={()=>ref.current.click()} color={accent}>📄 {files.length?"Add more":"Upload files"}</BSm>
       </div>
       {files.map((file,i)=>(
-        <div key={file.id||i} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 0 5px 4px",borderTop:i>0?`1px solid ${C.border}`:""}}> 
+        <div key={file.id||i} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 0 5px 4px",borderTop:i>0?`1px solid ${C.border}`:"",opacity:file._uploading?0.6:1}}> 
           <div style={{flex:1}}>
             <div style={{fontSize:12,fontWeight:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{file.fileName}</div>
-            <div style={{fontSize:11,color:C.muted}}>Uploaded {file.uploadedDate}</div>
+            <div style={{fontSize:11,color:C.muted}}>{file._uploading?"⏳ Uploading to Drive…":`Uploaded ${file.uploadedDate}`}</div>
           </div>
           <BSm onClick={()=>onView(file)} color={C.teal}>👁 View</BSm>
           <BSm onClick={()=>{if(window.confirm("Remove?"))remove(file.id||i);}} color={C.red}>✕</BSm>
@@ -3723,6 +3739,31 @@ export default function App(){
     const[filterClinic,setFilterClinic]=useState("all");
     const[filterYear,setFilterYear]=useState(String(new Date().getFullYear()));
     const[ni,setNi]=useState({date:"",clinic:"All clinics",topic:"",presenter:"",attendees:"",notes:""});
+    // Load communal resource files so each inservice card can link to its evidence.
+    // Re-loaded on every render via loadGen to stay current with uploads.
+    const communalFiles=(loadGen("isrv_communal")||[]);
+    // Extract "File: x.pdf" / "Files: a.pdf, b.docx" trailing section from notes.
+    // Returns { body, fileRefs } — body is notes minus that section.
+    const _splitNotes=(notes)=>{
+      if(!notes)return{body:"",fileRefs:[]};
+      const m=notes.match(/^([\s\S]*?)(?:\s*Files?:\s*(.+?))?\s*$/);
+      if(!m||!m[2])return{body:(notes||"").trim(),fileRefs:[]};
+      const refs=m[2].split(",").map(s=>s.trim()).filter(Boolean);
+      return{body:(m[1]||"").trim(),fileRefs:refs};
+    };
+    // Find a communal file whose name best matches a reference.
+    const _findFile=(ref)=>{
+      if(!ref||!communalFiles.length)return null;
+      const norm=s=>(s||"").toLowerCase().replace(/\.[a-z0-9]+$/,"").replace(/[^a-z0-9]/g,"");
+      const refN=norm(ref);
+      if(!refN)return null;
+      // Exact normalized match
+      let hit=communalFiles.find(f=>norm(f.fileName)===refN);
+      if(hit)return hit;
+      // Partial — either direction
+      hit=communalFiles.find(f=>{const fn=norm(f.fileName);return fn&&(fn.includes(refN)||refN.includes(fn));});
+      return hit;
+    };
     const years=[...new Set(inservices.map(i=>String(i.year||i.date?.slice(0,4)||"2025")))].sort((a,b)=>b-a);
     if(!years.includes(filterYear))years.unshift(filterYear);
     const clinicOptions=["all",...CLINICS.filter(c=>!c.isSchool).map(c=>c.short)];
@@ -3814,7 +3855,10 @@ export default function App(){
             <div style={{display:"flex",gap:8}}><Btn onClick={addInservice}>Save session</Btn><Btn outline onClick={()=>setShowForm(false)}>Cancel</Btn></div>
           </Card>}
           {visible.length===0&&<Alert type="blue" title="No sessions found">No in-service sessions match this filter. Log a new session above.</Alert>}
-          {visible.map(s=>(
+          {visible.map(s=>{
+            const{body,fileRefs}=_splitNotes(s.notes);
+            const matches=fileRefs.map(ref=>({ref,file:_findFile(ref)}));
+            return(
             <Card key={s.id} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem",background:s._isPersonal?"#FAFAF7":C.card}}>
               <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
                 <div style={{flex:1}}>
@@ -3830,7 +3874,14 @@ export default function App(){
                   </div>
                   {s.attendees&&!s._isPersonal&&<div style={{fontSize:12,color:C.muted,marginTop:1}}>Attendees: {s.attendees}</div>}
                   {s.loggedTo&&s.loggedTo.length&&!s._isPersonal&&<div style={{fontSize:12,color:C.muted,marginTop:1}}>Logged to {s.loggedTo.length} staff · {s.hours||1}h</div>}
-                  {s.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"5px 8px",borderRadius:5,marginTop:6,lineHeight:1.5}}>{s.notes}</div>}
+                  {body&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"5px 8px",borderRadius:5,marginTop:6,lineHeight:1.5}}>{body}</div>}
+                  {matches.length>0&&<div style={{marginTop:6,display:"flex",flexWrap:"wrap",gap:4,alignItems:"center"}}>
+                    <span style={{fontSize:11,color:C.muted}}>📎 Files:</span>
+                    {matches.map((m,i)=>m.file
+                      ? <BSm key={i} onClick={(e)=>{e.stopPropagation();setIvf(m.file);}} color={C.teal}>{m.file.fileName}</BSm>
+                      : <span key={i} style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>{m.ref} <span style={{fontSize:10}}>(not uploaded)</span></span>
+                    )}
+                  </div>}
                 </div>
                 <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
                   <Pill s={s._isPersonal?"due":"ok"} label={s._isPersonal?"Personal CPD":"Completed ✓"}/>
@@ -3838,7 +3889,8 @@ export default function App(){
                 </div>
               </div>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
       {isrvTab==="resources"&&<Card><div style={{fontSize:14,fontWeight:600,marginBottom:"0.75rem"}}>In-service resources — all clinics</div><div style={{fontSize:12,color:C.muted,marginBottom:"1rem",lineHeight:1.6}}>Shared resource library. Upload handouts, slides or reading materials. All staff can view.</div><MultiFileRow label="📚 Shared in-service resources — all clinics" gkey="isrv_communal" onView={f=>setIvf(f)}/><div style={{marginTop:"0.75rem",fontSize:11,color:C.muted}}>Accepted: PDF, Word, image. Max 3MB.</div></Card>}
