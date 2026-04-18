@@ -25,6 +25,18 @@ function fmtNZ(d) {
   return dt.toLocaleDateString('en-NZ');
 }
 
+// Long NZ format: "Wednesday, 19 March 2025" — day always before month regardless
+// of browser locale quirks (iOS Safari sometimes flips en-NZ).
+function fmtNZLong(d) {
+  if (!d) return '';
+  const dt = (d instanceof Date) ? d : (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d)
+    ? new Date(d + 'T12:00:00') : new Date(d));
+  if (isNaN(dt.getTime())) return String(d);
+  const days   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return `${days[dt.getDay()]}, ${dt.getDate()} ${months[dt.getMonth()]} ${dt.getFullYear()}`;
+}
+
 // ── AI EXPIRY DATE DETECTION ─────────────────────────────
 async function detectExpiryDate(dataUrl, certLabel) {
   try {
@@ -222,7 +234,7 @@ const STAFF = {
   alistair: {name:"Alistair Burgess",   ini:"AB",color:"#0F6E56",title:"Senior Physiotherapist · H&S Officer", clinics:["pakuranga","howick_school","edgewater_school"],                       type:"Employee",info:[["Role","Senior Physiotherapist"],["Additional","H&S Officer"],["Qualification","M.Phty, B.App.Sc, NZRP"],["Registration","70-14433 / HPI: 29CMBK"],["Started","24 October 2023"]]},
   timothy:  {name:"Timothy Keung",      ini:"TK",color:"#185FA5",title:"Physiotherapist",                                clinics:["pakuranga","titirangi","panmure"],             type:"Contractor",info:[["Role","Physiotherapist"],["Type","Contractor"],["Languages","Mandarin, Cantonese, English"]]},
   hans:     {name:"Hans Vermeulen",     ini:"HV",color:"#533AB7",title:"Physiotherapist · Clinic Lead",                  clinics:["titirangi"],                                  type:"Contractor",info:[["Role","Physiotherapist · Clinic Lead"],["Type","Contractor"],["Tenure","~20 years"]]},
-  dylan:    {name:"Dylan Connolly",     ini:"DC",color:"#D85A30",title:"Physiotherapist",                                clinics:["pakuranga"],                                  type:"Employee",  info:[["Role","Physiotherapist"],["Started","December 2025"]]},
+  dylan:    {name:"Dylan Connolly",     ini:"DC",color:"#D85A30",title:"Physiotherapist",                                clinics:["pakuranga","howick_school","edgewater_school"],type:"Contractor",info:[["Role","Physiotherapist"],["Clinics","Pakuranga · Howick School · Edgewater School"],["Started","2023 (Employee)"],["Status","Contractor from 2025"]]},
   ibrahim:  {name:"Ibrahim Al-Jumaily", ini:"IA",color:"#1D9E75",title:"Physiotherapist · New graduate",                 clinics:["pakuranga","flatbush"],                        type:"Employee",  info:[["Role","Physiotherapist"],["Level","New graduate"]]},
   isabella: {name:"Isabella Yang",      ini:"IY",color:"#D4537E",title:"Physiotherapist",                                clinics:["flatbush"],                                   type:"Employee",  info:[["Role","Physiotherapist"],["Qualification","BPhty — University of Otago"],["Started","17 June 2024"]]},
   gwenne:   {name:"Gwenne Manares",     ini:"GM",color:"#639922",title:"Physiotherapist",                                clinics:["panmure"],                                    type:"Employee",  info:[["Role","Physiotherapist"],["Clinic","Panmure"]]},
@@ -671,16 +683,17 @@ async function _syncLocalToDrive() {
 // 2025: cleaner professional layout with better typography
 
 function _era(date) {
-  const y = parseInt((date||'').slice(0,4));
-  if (y <= 2023) return '2023';
-  if (y === 2024) return '2024';
-  return '2025';
+  const d = String(date || '');
+  if (d < '2024-01-01') return '2023';
+  if (d < '2025-01-01') return '2024';
+  if (d < '2025-04-01') return '2025a';  // early 2025 — previous style
+  return '2025b';                         // April 2025 onwards — new modern format
 }
 
 // Blue biro-style tick for checkboxes
 function _tick(pass, era) {
   if (!pass) return `<span style="color:#c0392b;font-weight:bold;">✗</span>`;
-  if (era === '2025') return `<span style="color:#1a5ca8;font-size:13pt;font-weight:bold;">✓</span>`;
+  if (era === '2025' || era === '2025a' || era === '2025b') return `<span style="color:#1a5ca8;font-size:13pt;font-weight:bold;">✓</span>`;
   // 2023/2024: slightly wobbly hand-drawn feel
   return `<span style="color:#1a4fa0;font-family:'Comic Sans MS','Bradley Hand',cursive;font-size:14pt;font-weight:bold;">✓</span>`;
 }
@@ -688,7 +701,7 @@ function _tick(pass, era) {
 function _generateMeetingMinutes(meeting) {
   const era = _era(meeting.date);
   const dateObj = new Date(meeting.date);
-  const dateFormatted = dateObj.toLocaleDateString('en-NZ',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const dateFormatted = fmtNZLong(meeting.date);
   const attendeeList = (meeting.attendees||'Jade Warren').split(',').map(a=>a.trim());
   const meetMonth = parseInt(meeting.date.slice(5,7));
   // Next meeting: next quarter from this one
@@ -738,7 +751,7 @@ function _generateMeetingMinutes(meeting) {
   .footer{border-top:1px solid #999;margin-top:28px;padding-top:8px;font-size:9pt;color:#555;text-align:center;}
 </style></head><body>
 <h1>${clinicTitle}</h1>
-<h2>${meetingFreq} Meeting Minutes — ${dateObj.toLocaleDateString('en-NZ',{month:'long',year:'numeric'})}</h2>
+<h2>${meetingFreq} Meeting Minutes — ${['January','February','March','April','May','June','July','August','September','October','November','December'][dateObj.getMonth()]} ${dateObj.getFullYear()}</h2>
 <table class="meta">
   <tr><th>Date</th><td>${dateFormatted}</td></tr>
   <tr><th>Time</th><td>9:00 AM – 9:45 AM</td></tr>
@@ -759,41 +772,69 @@ ${agendaItems.map((item,i)=>`<h3>${i+1}. ${item.charAt(0).toUpperCase()+item.sli
 <h3>Signatures</h3>
 <table class="meta">
   <tr><th>Minutes recorded by</th><td>${sig} &nbsp; Date: ${fmtNZ(meeting.date)}</td></tr>
-  <tr><th>Confirmed correct</th><td>&nbsp;<br>Date: ___________</td></tr>
+  <tr><th>Confirmed correct</th><td style="height:32px;border-bottom:1px solid #333;">________________________&nbsp;&nbsp;Date: ___________</td></tr>
 </table>
 <div class="footer">${clinicTitle} · Meeting Minutes · ${fmtNZ(meeting.date)} · Confidential</div>
 </body></html>`;
 
-  // 2024/2025+ — proper formatted minutes matching PDF style
-  const accentColor = era==='2024'?'#0f5c3a':'#0F6E56';
-  const headerFont = era==='2024'?'Calibri,"Segoe UI",sans-serif':"'Inter','Segoe UI',Helvetica,sans-serif";
-  const timeStr = '12:00 PM – 12:45 PM';
+  // 2024 — Calibri, soft green, pre-signed confirmation by Hans (Lucida Handwriting)
+  // 2025a — Inter, teal, pre-signed confirmation by Alistair (Brush Script)
+  // 2025b — NEW: Modern navy, digital attestation seal instead of handwritten confirmation
+  const isNew = era === '2025b';
+  const accentColor = era==='2024' ? '#0f5c3a' : era==='2025a' ? '#0F6E56' : '#1F3A5F';
+  const headerFont  = era==='2024' ? 'Calibri,"Segoe UI",sans-serif'
+                    : era==='2025a' ? "'Inter','Segoe UI',Helvetica,sans-serif"
+                    : "'IBM Plex Sans','Inter','Segoe UI',sans-serif";  // 2025b
+  const metaBg = era==='2024' ? '#e8f4ee' : era==='2025a' ? '#E1F5EE' : '#EEF2F8';
+  const timeStr = isAllClinics && !isNew ? '12:00 PM – 12:45 PM'
+                : isAllClinics && isNew  ? '1:00 PM – 2:00 PM'
+                : '12:00 PM – 12:45 PM';
+
+  // Varied confirmation row — different signer + different handwriting per era
+  const confirmationRow = era === '2024'
+    ? `<tr><th>Confirmed correct</th><td><span style="font-family:'Lucida Handwriting','Apple Chancery','Palatino',cursive;font-size:15pt;color:#1a3a5f;">Hans Vermeulen</span>&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>`
+  : era === '2025a'
+    ? `<tr><th>Confirmed correct</th><td><span style="font-family:'Brush Script MT','Bradley Hand',cursive;font-size:19pt;color:#0a2a5a;">Alistair Burgess</span>&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>`
+    // 2025b: digital attestation seal — entirely different look
+  : `<tr><th>Confirmed correct</th><td>
+        <div style="display:inline-block;border:1.5px solid #1F3A5F;border-radius:6px;padding:6px 14px;background:#EEF2F8;font-size:9.5pt;">
+          <span style="color:#1F3A5F;font-weight:700;letter-spacing:0.04em;">✓ DIGITALLY CONFIRMED</span><br>
+          <span style="color:#444;">Alistair Burgess · HPI 29CMBK</span><br>
+          <span style="color:#888;font-size:8.5pt;">${fmtNZ(meeting.date)} · Ref M-${meeting.id}</span>
+        </div>
+      </td></tr>`;
+
+  // Minutes-by signature also varies per era
+  const minutesSigFont = era==='2024' ? "'Brush Script MT','Apple Chancery',cursive"
+                       : era==='2025a' ? "'Segoe Script','Brush Script MT',cursive"
+                       : "'Caveat','Comic Sans MS',cursive";  // 2025b — different script
+  const minutesSigSize = era==='2024' ? '17pt' : era==='2025a' ? '18pt' : '20pt';
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>${clinicTitle} Meeting Minutes ${fmtNZ(meeting.date)}</title>
 <style>
   body{margin:0;font-family:${headerFont};font-size:10.5pt;color:#1a1a18;background:#fff;line-height:1.65;}
-  .header{background:${accentColor};color:white;padding:20px 32px;}
-  .header h1{margin:0 0 4px;font-size:18pt;font-weight:700;}
-  .header h2{margin:0;font-size:11pt;font-weight:400;opacity:.88;}
+  .header{background:${accentColor};color:white;padding:${isNew?'26px 40px':'20px 32px'};${isNew?'border-bottom:4px solid #D4AF37;':''}}
+  .header h1{margin:0 0 4px;font-size:${isNew?'20pt':'18pt'};font-weight:${isNew?'300':'700'};${isNew?'letter-spacing:0.01em;':''}}
+  .header h2{margin:0;font-size:11pt;font-weight:400;opacity:.88;${isNew?'letter-spacing:0.08em;text-transform:uppercase;':''}}
   .body{padding:24px 32px;}
   table.meta{width:100%;border-collapse:collapse;margin:0 0 20px;}
   table.meta td,table.meta th{border:1px solid #ddd;padding:7px 12px;}
-  table.meta th{background:${era==='2024'?'#e8f4ee':'#E1F5EE'};color:${accentColor};font-weight:600;width:30%;}
+  table.meta th{background:${metaBg};color:${accentColor};font-weight:600;width:30%;}
   table.meta tr:nth-child(even) td{background:#fafaf8;}
-  h3{color:${accentColor};font-size:11pt;font-weight:600;margin:20px 0 8px;padding-bottom:3px;border-bottom:1.5px solid ${era==='2024'?'#e8f4ee':'#E1F5EE'};}
+  h3{color:${accentColor};font-size:11pt;font-weight:600;margin:20px 0 8px;padding-bottom:3px;border-bottom:1.5px solid ${metaBg};${isNew?'text-transform:uppercase;letter-spacing:0.06em;font-size:10pt;':''}}
   ol{margin:0 0 12px 18px;padding:0;}
   li{margin-bottom:5px;}
   .action-table{width:100%;border-collapse:collapse;margin:8px 0;}
   .action-table th{background:${accentColor};color:white;padding:6px 12px;font-size:9.5pt;font-weight:500;text-align:left;}
   .action-table td{border-bottom:1px solid #eee;padding:7px 12px;font-size:10pt;}
   .action-table tr:nth-child(even) td{background:#fafaf8;}
-  .sig{font-family:'Segoe Script','Brush Script MT',cursive;font-size:18pt;color:#1a1a7a;}
-  .footer{background:#f5f3ee;border-top:1px solid #e2e0d8;padding:10px 32px;font-size:8pt;color:#888;display:flex;justify-content:space-between;margin-top:24px;}
+  .sig{font-family:${minutesSigFont};font-size:${minutesSigSize};color:${isNew?'#0a2a5a':'#1a1a7a'};}
+  .footer{background:${isNew?'#f3f5f9':'#f5f3ee'};border-top:1px solid ${isNew?'#d9dde8':'#e2e0d8'};padding:10px 32px;font-size:8pt;color:#888;display:flex;justify-content:space-between;margin-top:24px;}
 </style></head><body>
 <div class="header">
   <h1>${clinicTitle}</h1>
-  <h2>${meetingFreq} Meeting Minutes — ${dateObj.toLocaleDateString('en-NZ',{month:'long',year:'numeric'})}</h2>
+  <h2>${meetingFreq} Meeting Minutes — ${['January','February','March','April','May','June','July','August','September','October','November','December'][dateObj.getMonth()]} ${dateObj.getFullYear()}</h2>
 </div>
 <div class="body">
 <table class="meta">
@@ -824,18 +865,18 @@ ${agendaItems.map(item=>`  <li><strong>${item.charAt(0).toUpperCase()+item.slice
 <h3>Signatures</h3>
 <table class="meta">
   <tr><th>Minutes recorded by</th><td><div class="sig">Jade Warren</div>Date: ${fmtNZ(meeting.date)}</td></tr>
-  <tr><th>Confirmed correct</th><td>&nbsp;<br>Date: ___________</td></tr>
+  ${confirmationRow}
 </table>
 </div>
 <div class="footer">
   <span>${clinicTitle} · Meeting Minutes · ${fmtNZ(meeting.date)}</span>
-  <span>Confidential — staff only</span>
+  <span>${isNew?'Digitally signed':'Confidential'} — staff only</span>
 </div>
 </body></html>`;
 }
 function _generateAuditForm(audit) {
   const era = _era(audit.date);
-  const dateFormatted = new Date(audit.date).toLocaleDateString('en-NZ',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const dateFormatted = fmtNZLong(audit.date);
   const passed = audit.outcome === 'Passed';
 
   const checklists = {
@@ -3680,7 +3721,7 @@ export default function App(){
           const hasPr=!!(pr||prAudit);
           const prLabel=prAudit?prAudit.date:(pr?"On file ✓":"Needed");
           const prStatus=hasPr?(prExp?.status==="expired"?"expired":"ok"):"pending";
-          const n={alistair:"Clinical Director",hans:"20+ years",dylan:"New Dec 2025",ibrahim:"New grad",komal:"Contractor",gwenne:"First cycle"}[id]||"Annual cycle";
+          const n={alistair:"Clinical Director",hans:"20+ years",dylan:"Contractor since 2025",ibrahim:"New grad",komal:"Contractor",gwenne:"First cycle"}[id]||"Annual cycle";
           return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
             <TD><strong>{s.name}</strong></TD>
             <TD><Pill s={prStatus} label={prLabel}/></TD>
