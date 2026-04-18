@@ -8,6 +8,23 @@ const _warn = (...a) => { if (_isDev) console.warn(...a); };
 const _err  = (...a) => { if (_isDev) console.error(...a); };
 const _apiHeaders = { "Content-Type": "application/json", "X-Portal-Secret": PORTAL_SECRET };
 
+// ── NZ DATE FORMATTING ────────────────────────────────────────
+// Convert any date string (ISO yyyy-mm-dd, Date object, or already-formatted)
+// into NZ display format dd/mm/yyyy. Safe with null/undefined.
+function fmtNZ(d) {
+  if (!d) return '';
+  if (typeof d === 'string') {
+    // Already in dd/mm/yyyy — leave alone
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(d)) return d;
+    // ISO yyyy-mm-dd (possibly with time) — parse directly to avoid TZ surprises
+    const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  }
+  const dt = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(dt.getTime())) return String(d);
+  return dt.toLocaleDateString('en-NZ');
+}
+
 // ── AI EXPIRY DATE DETECTION ─────────────────────────────
 async function detectExpiryDate(dataUrl, certLabel) {
   try {
@@ -704,7 +721,7 @@ function _generateMeetingMinutes(meeting) {
   const sig = `<span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:${era==='2023'?'20':'18'}pt;color:#1a1a7a;">Jade Warren</span>`;
 
   if (era === '2023') return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>${clinicTitle} Meeting Minutes ${meeting.date}</title>
+<title>${clinicTitle} Meeting Minutes ${fmtNZ(meeting.date)}</title>
 <style>
   body{margin:2cm 2.5cm;font-family:"Times New Roman",serif;font-size:11pt;color:#111;line-height:1.6;}
   h1{font-size:15pt;text-align:center;margin:0 0 3px;}
@@ -741,10 +758,10 @@ ${agendaItems.map((item,i)=>`<h3>${i+1}. ${item.charAt(0).toUpperCase()+item.sli
 <p>Approximately ${nextMeetMonth} ${nextMeetYear} — date to be confirmed.</p>
 <h3>Signatures</h3>
 <table class="meta">
-  <tr><th>Minutes recorded by</th><td>${sig} &nbsp; Date: ${meeting.date}</td></tr>
+  <tr><th>Minutes recorded by</th><td>${sig} &nbsp; Date: ${fmtNZ(meeting.date)}</td></tr>
   <tr><th>Confirmed correct</th><td>&nbsp;<br>Date: ___________</td></tr>
 </table>
-<div class="footer">${clinicTitle} · Meeting Minutes · ${meeting.date} · Confidential</div>
+<div class="footer">${clinicTitle} · Meeting Minutes · ${fmtNZ(meeting.date)} · Confidential</div>
 </body></html>`;
 
   // 2024/2025+ — proper formatted minutes matching PDF style
@@ -753,7 +770,7 @@ ${agendaItems.map((item,i)=>`<h3>${i+1}. ${item.charAt(0).toUpperCase()+item.sli
   const timeStr = '12:00 PM – 12:45 PM';
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>${clinicTitle} Meeting Minutes ${meeting.date}</title>
+<title>${clinicTitle} Meeting Minutes ${fmtNZ(meeting.date)}</title>
 <style>
   body{margin:0;font-family:${headerFont};font-size:10.5pt;color:#1a1a18;background:#fff;line-height:1.65;}
   .header{background:${accentColor};color:white;padding:20px 32px;}
@@ -806,12 +823,12 @@ ${agendaItems.map(item=>`  <li><strong>${item.charAt(0).toUpperCase()+item.slice
 
 <h3>Signatures</h3>
 <table class="meta">
-  <tr><th>Minutes recorded by</th><td><div class="sig">Jade Warren</div>Date: ${meeting.date}</td></tr>
+  <tr><th>Minutes recorded by</th><td><div class="sig">Jade Warren</div>Date: ${fmtNZ(meeting.date)}</td></tr>
   <tr><th>Confirmed correct</th><td>&nbsp;<br>Date: ___________</td></tr>
 </table>
 </div>
 <div class="footer">
-  <span>${clinicTitle} · Meeting Minutes · ${meeting.date}</span>
+  <span>${clinicTitle} · Meeting Minutes · ${fmtNZ(meeting.date)}</span>
   <span>Confidential — staff only</span>
 </div>
 </body></html>`;
@@ -954,7 +971,7 @@ function _generateAuditForm(audit) {
       const isFail = i===failIdx||i===failIdx2;
       return `<tr><td>${label}</td><td style="text-align:center;width:65px;">${isFail?`<span style="color:#c0392b;font-weight:bold;">✗ FAIL</span>`:_tick(true,'2023')}</td><td style="width:200px;font-size:9.5pt;color:#444;">${isFail?'See notes':'—'}</td></tr>`;
     }).join('');
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${audit.date}</title>
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${fmtNZ(audit.date)}</title>
 <style>
   body{margin:2.5cm 3cm;font-family:"Times New Roman",Times,serif;font-size:11pt;color:#111;line-height:1.5;}
   h1{font-size:14pt;text-align:center;margin-bottom:2px;}
@@ -994,10 +1011,10 @@ ${rows}
 <h2>Sign-off</h2>
 <table class="meta">
 <tr><th>Auditor signature</th><td><span style="font-family:'Comic Sans MS',cursive;font-size:18pt;color:#1a1a7a;">${audit.auditor}</span></td></tr>
-<tr><th>Date</th><td>${audit.date}</td></tr>
+<tr><th>Date</th><td>${fmtNZ(audit.date)}</td></tr>
 <tr><th>Director review</th><td><span style="font-family:'Comic Sans MS',cursive;font-size:18pt;color:#1a1a7a;">Jade Warren</span></td></tr>
 </table>
-<div class="footer">Total Body Physio Ltd · ${title} · ${audit.date} · ${audit.clinic} · Ref: ${ref}</div>
+<div class="footer">Total Body Physio Ltd · ${title} · ${fmtNZ(audit.date)} · ${audit.clinic} · Ref: ${ref}</div>
 </body></html>`;
   }
 
@@ -1006,7 +1023,7 @@ ${rows}
       const isFail = i===failIdx||i===failIdx2;
       return `<tr><td>${label}</td><td style="text-align:center;width:70px;background:${isFail?'#fdecea':'#f0faf4'};">${isFail?`<span style="color:#c0392b;font-weight:bold;">✗ Fail</span>`:_tick(true,'2024')}</td><td style="width:190px;font-size:9.5pt;color:#555;">${isFail?'See notes below':'—'}</td></tr>`;
     }).join('');
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${audit.date}</title>
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${fmtNZ(audit.date)}</title>
 <style>
   body{margin:2cm 2.5cm;font-family:Calibri,"Segoe UI",sans-serif;font-size:11pt;color:#1a1a1a;line-height:1.6;}
   .header{background:#0f5c3a;color:white;padding:15px 20px;margin:-2cm -2.5cm 18px;display:flex;justify-content:space-between;}
@@ -1024,7 +1041,7 @@ ${rows}
   .notes-box{background:#fffef0;border:1px solid #d4b800;border-left:4px solid #e6a817;padding:10px;margin:8px 0;font-size:10.5pt;min-height:36px;}
   .footer{border-top:1px solid #ccc;margin-top:28px;padding-top:8px;font-size:8.5pt;color:#777;text-align:center;}
 </style></head><body>
-<div class="header"><div><h1>Total Body Physio</h1><div>${title}</div></div><div class="sub">Ref: ${ref}<br>${audit.clinic} · ${audit.date}</div></div>
+<div class="header"><div><h1>Total Body Physio</h1><div>${title}</div></div><div class="sub">Ref: ${ref}<br>${audit.clinic} · ${fmtNZ(audit.date)}</div></div>
 <h2>Audit details</h2>
 <table class="meta">
 <tr><th>Clinic / location</th><td>${audit.clinic}</td><th>Date</th><td>${dateFormatted}</td></tr>
@@ -1047,10 +1064,10 @@ ${rows}
 <div class="notes-box">${audit.notes||'No issues identified. All items satisfactory.'}</div>
 <h2>Sign-off</h2>
 <table class="meta">
-<tr><th>Auditor signature</th><td><span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;">${audit.auditor}</span>&nbsp;&nbsp;Date: ${audit.date}</td></tr>
-<tr><th>Director review</th><td><span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;">Jade Warren</span>&nbsp;&nbsp;Date: ${audit.date}</td></tr>
+<tr><th>Auditor signature</th><td><span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;">${audit.auditor}</span>&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
+<tr><th>Director review</th><td><span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;">Jade Warren</span>&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
 </table>
-<div class="footer">Total Body Physio Ltd · ${title} · ${audit.date} · ${audit.clinic} · Ref: ${ref} · Confidential</div>
+<div class="footer">Total Body Physio Ltd · ${title} · ${fmtNZ(audit.date)} · ${audit.clinic} · Ref: ${ref} · Confidential</div>
 </body></html>`;
   }
 
@@ -1063,7 +1080,7 @@ ${rows}
       <td style="width:200px;font-size:9.5pt;color:#666;padding:6px 12px;">${isFail?'See notes':'—'}</td></tr>`;
   }).join('');
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${audit.date}</title>
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${fmtNZ(audit.date)}</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
   *{box-sizing:border-box;}
@@ -1087,7 +1104,7 @@ ${rows}
 </style></head><body>
 <div class="header">
   <div><h1>Total Body Physio</h1><div class="type">${title}</div></div>
-  <div class="ref">Ref: ${ref}<br>${audit.clinic} · ${audit.date}</div>
+  <div class="ref">Ref: ${ref}<br>${audit.clinic} · ${fmtNZ(audit.date)}</div>
 </div>
 <div class="body">
 <h2>Audit details</h2>
@@ -1112,11 +1129,11 @@ ${rows}
 <div class="notes">${audit.notes||'No issues identified. All items checked and found to be satisfactory.'}</div>
 <h2>Sign-off</h2>
 <table class="meta">
-<tr><th>Auditor</th><td><span class="sig">${audit.auditor}</span>&nbsp;&nbsp;&nbsp;Date: ${audit.date}</td></tr>
-<tr><th>Director review</th><td><span class="sig">Jade Warren</span>&nbsp;&nbsp;&nbsp;Date: ${audit.date}</td></tr>
+<tr><th>Auditor</th><td><span class="sig">${audit.auditor}</span>&nbsp;&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
+<tr><th>Director review</th><td><span class="sig">Jade Warren</span>&nbsp;&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
 </table>
 </div>
-<div class="footer"><span>Total Body Physio Ltd · ${title}</span><span>${audit.date} · ${audit.clinic} · Ref: ${ref} · Confidential</span></div>
+<div class="footer"><span>Total Body Physio Ltd · ${title}</span><span>${fmtNZ(audit.date)} · ${audit.clinic} · Ref: ${ref} · Confidential</span></div>
 </body></html>`;
 }
 
@@ -1215,7 +1232,7 @@ async function _generateHistoricalAttachments(allAudits, allMeetings, onProgress
   for (let i = 0; i < updatedMeetings.length; i++) {
     const m = updatedMeetings[i];
     if (getMeetingFile(m)) continue; // already has attachment
-    onProgress(`Meeting minutes ${done+1}/${total} — ${m.date} ${m.clinic}`);
+    onProgress(`Meeting minutes ${done+1}/${total} — ${fmtNZ(m.date)} ${m.clinic}`);
     try {
       const html = _generateMeetingMinutes(m);
       const dataUrl = _htmlToDataUrl(html);
@@ -1233,7 +1250,7 @@ async function _generateHistoricalAttachments(allAudits, allMeetings, onProgress
   for (let i = 0; i < updatedAudits.length; i++) {
     const a = updatedAudits[i];
     if (a.evidence) continue; // already has attachment
-    onProgress(`Audit form ${done+1}/${total} — ${a.date} ${a.clinic} ${a.type}`);
+    onProgress(`Audit form ${done+1}/${total} — ${fmtNZ(a.date)} ${a.clinic} ${a.type}`);
     try {
       const html = _generateAuditForm(a);
       const dataUrl = _htmlToDataUrl(html);
@@ -1265,7 +1282,7 @@ async function _regenerateMid2025Meetings(allMeetings, onProgress) {
   const updatedMeetings = [...allMeetings];
 
   for (const {m, i} of targets) {
-    onProgress(`Regenerating ${done+1}/${total} — ${m.date} ${m.clinic}`);
+    onProgress(`Regenerating ${done+1}/${total} — ${fmtNZ(m.date)} ${m.clinic}`);
     try {
       const html = _generateMeetingMinutes(m);
       const dataUrl = _htmlToDataUrl(html);
@@ -2325,7 +2342,7 @@ function AuditViewModal({audit,onClose}){
           <div>
             <div style={{color:"white",fontSize:16,fontWeight:600}}>{audit.icon} {audit.title}</div>
             <div style={{color:"rgba(255,255,255,0.8)",fontSize:12,marginTop:4,display:"flex",gap:12,flexWrap:"wrap"}}>
-              <span>📅 {audit.date}{audit.time?` · ⏰ ${audit.time}`:""}</span>
+              <span>📅 {fmtNZ(audit.date)}{audit.time?` · ⏰ ${audit.time}`:""}</span>
               <span>📍 {audit.clinic}</span>
               <span>👤 {audit.auditor}</span>
               {audit.duration&&<span>⏱ {audit.duration}</span>}
@@ -3685,7 +3702,7 @@ export default function App(){
           return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
             <TD><strong>{s.name}</strong></TD>
             <TD><Pill s={prStatus} label={prLabel}/></TD>
-            <TD style={{fontSize:11,color:prExp?prExp.color:(prAudit?C.green:C.hint)}}>{prExp?prExp.label:(prAudit?prAudit.date:"—")}</TD>
+            <TD style={{fontSize:11,color:prExp?prExp.color:(prAudit?C.green:C.hint)}}>{prExp?prExp.label:(prAudit?fmtNZ(prAudit.date):"—")}</TD>
             <TD><Pill s={ap?(apExp?.status==="expired"?"expired":"ok"):"pending"} label={ap?"On file ✓":"Needed"}/></TD>
             <TD style={{fontSize:11,color:apExp?apExp.color:C.hint}}>{apExp?apExp.label:"—"}</TD>
             <TD style={{fontSize:11,color:C.muted}}>{n}</TD>
@@ -3696,7 +3713,7 @@ export default function App(){
           const a=[...audits].filter(x=>x.type==="clinical_notes"&&x.physioAudited===s.name).sort((a,b)=>b.date.localeCompare(a.date))[0]||null;
           return <tr key={id} onClick={()=>{setPage("management");setMgmtTab("audits");}} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
             <TD><strong>{s.name}</strong></TD>
-            <TD><Pill s={a?"ok":"pending"} label={a?a.date:"Not yet run"}/></TD>
+            <TD><Pill s={a?"ok":"pending"} label={a?fmtNZ(a.date):"Not yet run"}/></TD>
             <TD>{a?<Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>:<span style={{fontSize:11,color:C.hint}}>—</span>}</TD>
             <TD style={{fontSize:11,color:C.muted}}>{a?.notes||"—"}</TD>
           </tr>;})}
@@ -3706,7 +3723,7 @@ export default function App(){
           const a=[...audits].filter(x=>x.type==="peer_review"&&x.physioAudited===s.name).sort((a,b)=>b.date.localeCompare(a.date))[0]||null;
           return <tr key={id} onClick={()=>{setPage("management");setMgmtTab("audits");}} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
             <TD><strong>{s.name}</strong></TD>
-            <TD><Pill s={a?"ok":"pending"} label={a?a.date:"Not yet run"}/></TD>
+            <TD><Pill s={a?"ok":"pending"} label={a?fmtNZ(a.date):"Not yet run"}/></TD>
             <TD style={{fontSize:11,color:C.muted}}>{a?.auditor||"—"}</TD>
             <TD>{a?<Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>:<span style={{fontSize:11,color:C.hint}}>—</span>}</TD>
             <TD>{a?.evidence?<span style={{fontSize:11,color:C.teal}}>📎 On file</span>:<span style={{fontSize:11,color:C.hint}}>—</span>}</TD>
@@ -3737,7 +3754,7 @@ export default function App(){
               {typeAudits.length>0&&<div style={{background:C.grayXL,borderRadius:8,padding:"0.75rem",fontSize:12}}>
                 {typeAudits.slice(0,3).map((a,i)=>(
                   <div key={a.id} style={{display:"flex",alignItems:"center",gap:10,padding:"4px 0",borderBottom:i<Math.min(typeAudits.length,3)-1?`1px solid ${C.border}`:""}}>
-                    <span style={{color:C.muted,minWidth:80}}>{a.date}</span>
+                    <span style={{color:C.muted,minWidth:80}}>{fmtNZ(a.date)}</span>
                     <span style={{flex:1,color:C.text}}>{a.clinic}</span>
                     <span style={{color:C.muted}}>Auditor: {a.auditor}</span>
                     <Pill s={a.outcome==="Passed"?"ok":"pending"} label={a.outcome}/>
@@ -3963,7 +3980,7 @@ export default function App(){
                     {s.topic}
                   </div>
                   <div style={{fontSize:12,color:C.muted,marginTop:2}}>
-                    {s.date}
+                    {fmtNZ(s.date)}
                     {s._isPersonal
                       ? <> · <strong>Personal CPD</strong>{s.staffId?` · ${s.staffId}`:""}{s.hours?` · ${s.hours}h`:""}</>
                       : <> · {s.clinic}{s.presenter?` · Presenter: ${s.presenter}`:""}</>}
@@ -4202,7 +4219,7 @@ export default function App(){
                                 {/* Audit summary row — tap to expand */}
                                 <div onClick={()=>toggleA(a.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px",borderRadius:aOpen?"6px 6px 0 0":6,background:C.grayXL,border:`1px solid ${aOpen?C.border:C.border}`,cursor:"pointer",userSelect:"none"}}>
                                   <div style={{flex:1,minWidth:0}}>
-                                    <div style={{fontSize:12,fontWeight:600,color:C.text}}>{a.date} <span style={{color:C.muted,fontWeight:400}}>· {a.clinic}</span></div>
+                                    <div style={{fontSize:12,fontWeight:600,color:C.text}}>{fmtNZ(a.date)} <span style={{color:C.muted,fontWeight:400}}>· {a.clinic}</span></div>
                                     <div style={{fontSize:11,color:C.muted,marginTop:1}}>Auditor: {a.auditor}{a.physioAudited?` · Physio: ${a.physioAudited}`:""}</div>
                                   </div>
                                   {a.evidence&&<span style={{fontSize:11,color:C.teal,flexShrink:0}}>📎</span>}
@@ -4222,7 +4239,7 @@ export default function App(){
                                   <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                                     <BSm onClick={e=>{e.stopPropagation();setViewAudit(a);}} color={C.blue}>View full report →</BSm>
                                     <AuditEvidenceBtn audit={a} audits={audits} setAudits={setAudits} onView={setEavf}/>
-                                    <BSm onClick={e=>{e.stopPropagation();if(!window.confirm(`Delete this ${a.type} audit for ${a.clinic} on ${a.date}?\n\nThis cannot be undone.`))return;const updated=audits.filter(x=>x.id!==a.id);setAudits(updated);saveGen("audits",updated);// Track deleted seeded IDs so they don't reload from INIT
+                                    <BSm onClick={e=>{e.stopPropagation();if(!window.confirm(`Delete this ${a.type} audit for ${a.clinic} on ${fmtNZ(a.date)}?\n\nThis cannot be undone.`))return;const updated=audits.filter(x=>x.id!==a.id);setAudits(updated);saveGen("audits",updated);// Track deleted seeded IDs so they don't reload from INIT
 if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getItem("tbp_deleted_audit_ids")||"[]");localStorage.setItem("tbp_deleted_audit_ids",JSON.stringify([...new Set([...prev,a.id])]));saveGen("deletedAuditIds",[...new Set([...prev,a.id])]);};}} color={C.red}>🗑 Delete</BSm>
                                   </div>
                                 </div>}
@@ -4367,7 +4384,7 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
                           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:3}}>{m.topic||"Staff meeting"}</div>
-                              <div style={{fontSize:11,color:C.muted}}>📅 {m.date} &nbsp;·&nbsp; 📍 {m.clinic}</div>
+                              <div style={{fontSize:11,color:C.muted}}>📅 {fmtNZ(m.date)} &nbsp;·&nbsp; 📍 {m.clinic}</div>
                             </div>
                             <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
                               <Pill s="ok" label="Done ✓"/>
