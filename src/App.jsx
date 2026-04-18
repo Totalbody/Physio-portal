@@ -1879,22 +1879,31 @@ function MultiFileRow({label,gkey,onView,accent=C.teal}){
     return Array.isArray(d)?d:[d]; // migrate single → array
   });
   function handle(e){
-    const f=e.target.files[0];if(!f)return;
-    if(f.size>3*1024*1024){alert("File over 3MB.");return;}
-    const r=new FileReader();
-    r.onload=ev=>{
-      const d={id:Date.now(),fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
-      const updated=[...files,d];setFiles(updated);saveGen(gkey,updated);
-      // Upload to Drive and replace record with driveId/blobUrl
-      if(_portalReady){
-        _uploadFileToDrive(gkey+"_"+d.id,d.fileName,d.fileType,d.dataUrl).then(driveFile=>{
-          if(driveFile){
-            setFiles(prev=>{const up=prev.map(x=>x.id===d.id?{...x,...driveFile,dataUrl:undefined}:x);saveGen(gkey,up);return up;});
-          }
-        }).catch(()=>{});
-      }
+    const selected=Array.from(e.target.files||[]);
+    if(!selected.length)return;
+    const oversize=selected.find(f=>f.size>3*1024*1024);
+    if(oversize){alert(`"${oversize.name}" is over 3MB.`);return;}
+    // Process each file sequentially so uploads don't stomp each other
+    let running=[...files];
+    const processNext=(i)=>{
+      if(i>=selected.length){e.target.value="";return;}
+      const f=selected[i];
+      const r=new FileReader();
+      r.onload=ev=>{
+        const d={id:Date.now()+i,fileName:f.name,dataUrl:ev.target.result,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+        running=[...running,d];setFiles(running);saveGen(gkey,running);
+        if(_portalReady){
+          _uploadFileToDrive(gkey+"_"+d.id,d.fileName,d.fileType,d.dataUrl).then(driveFile=>{
+            if(driveFile){
+              setFiles(prev=>{const up=prev.map(x=>x.id===d.id?{...x,...driveFile,dataUrl:undefined}:x);saveGen(gkey,up);return up;});
+            }
+          }).catch(()=>{});
+        }
+        processNext(i+1);
+      };
+      r.readAsDataURL(f);
     };
-    r.readAsDataURL(f);e.target.value="";
+    processNext(0);
   }
   function remove(id){
     const updated=files.filter(f=>f.id!==id);
@@ -1904,7 +1913,7 @@ function MultiFileRow({label,gkey,onView,accent=C.teal}){
     <div style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:files.length?6:0}}>
         <div style={{flex:1,fontSize:13,fontWeight:500}}>{label}</div>
-        <BSm onClick={()=>ref.current.click()} color={accent}>📄 {files.length?"Add another":"Upload"}</BSm>
+        <BSm onClick={()=>ref.current.click()} color={accent}>📄 {files.length?"Add more":"Upload files"}</BSm>
       </div>
       {files.map((file,i)=>(
         <div key={file.id||i} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 0 5px 4px",borderTop:i>0?`1px solid ${C.border}`:""}}> 
@@ -1916,7 +1925,7 @@ function MultiFileRow({label,gkey,onView,accent=C.teal}){
           <BSm onClick={()=>{if(window.confirm("Remove?"))remove(file.id||i);}} color={C.red}>✕</BSm>
         </div>
       ))}
-      <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
+      <input ref={ref} type="file" multiple accept="image/*,application/pdf,.doc,.docx,.ppt,.pptx" style={{display:"none"}} onChange={handle}/>
     </div>
   );
 }
@@ -3212,6 +3221,19 @@ const INIT_AUDITS=[
   _mk(8028,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2026-03-19",19,0,0,19,"Passed","Term 1 2026 hygiene — Edgewater School. All passed."),
 ];
 
+// ── SEED INSERVICES — built from uploaded records ────────────────────────────
+// IDs 1-99 are reserved for seed records; user-added records use Date.now() (>= ~1.7e12).
+const INIT_INSERVICES = [
+  {id:1,date:"2024-03-06",clinic:"All clinics",topic:"Kettlebells, Achilles review, Acupuncture, Patient cases",presenter:"Alistair, Dylan, Tim, Alice",attendees:"Jade, Alistair, Dylan, Tim, Alice",notes:"Alistair — Kettlebell Inservice & Rehab applications (referencing Meigh et al. 2019 scoping review and the BELL trial on kettlebell training in older adults). Dylan — Patient review: Achilles. Tim — Acupuncture review & evidence. Alice — Patient review. Discussion re: Schools coverage. Files: Inservice_March_6_2024.pdf, KETTLEBELLS_Inservice.docx, s13102-019-0130-z.pdf, Effects_of_supervised_hardstyle_kettlebell_training.pdf",year:2024},
+  {id:2,date:"2024-04-24",clinic:"All clinics",topic:"AMPS paper · Pelvis assessment · Natural history · Case study",presenter:"Alice, Alistair, Dylan",attendees:"Jade, Alistair, Dylan, Alice",notes:"Alistair — Pelvis Assessment techniques & Differentiation. Dylan — Natural History of Conditions. Alice — Case Study + AMPS (Amplified Musculoskeletal Pain Syndrome) paper review (Sherry et al. 2020 pediatric rheumatology cohort of 636). Clinic business: DNAs process using SEED, cancellation fees, uniform review. Files: Staff_Meeting_Inservice_April_24_2024.pdf, In_service_24_April_24_AMPS_paper.pdf",year:2024},
+  {id:3,date:"2024-07-15",clinic:"All clinics",topic:"Patellar Tendinopathy — assessment & treatment",presenter:"Dylan Connolly",attendees:"Jade, Alistair, Dylan, Hans",notes:"Jumper's knee. Repetitive extensor overload — common in volleyball, basketball. Risk factors: reduced quad strength, inappropriate training load, flexibility deficits. Treatments compared: Progressive Tendon Loading (Breda 2020) vs eccentrics, Isometric → HSR (Lim 2018), ESWT, PRP, K-Tape, load management. Dose (Pavlova 2023): higher intensity, lower frequency. File: Patellar_Tendinopathy_Inservice_July_24.pdf",year:2024},
+  {id:4,date:"2025-02-11",clinic:"All clinics",topic:"Beyond 3 × 10 — Strength training for rehab & beyond",presenter:"Alistair Burgess",attendees:"Jade, Alistair, Hans, Dylan, Tim",notes:"SAID principle (Specific Adaptation to Imposed Demand). Strength–endurance continuum: 1–6 reps = strength, 8–12 = hypertrophy, 15+ = endurance. Rehab progression: Pain/swelling → ROM → general strength → specific strength → return to activity/sport. Loading protocols explored: 5×5, 10×10, 3×3, EMOM/AMRAP, ladders, singles, TUT. NZ aging population context. File: Inservice_Strength_Training_Beyond_3x10.pdf",year:2025},
+  {id:5,date:"2025-05-14",clinic:"All clinics",topic:"Case study — 73yo male, calf strain → Achilles rupture",presenter:"Dylan Connolly",attendees:"Jade, Alistair, Dylan, Hans, Tim",notes:"73yo, initial Grade I calf strain walking downhill. Pre-injury ax Dec 2023 clear — Thompson squeeze cleared. On second step of skipping test, loud pop, Achilles tear confirmed same day. Timeline: Eastcare confirmation → 6 wk plaster → 6 wk moonboot → ortho → WBAT + heel inserts → physio return. Research: Xergia 2023 (risk factors), Ochen 2019 (operative vs non-operative — re-rupture diff only 1.6%, complications 3.3%). File: TBP_Case_Study.pdf",year:2025},
+  {id:6,date:"2025-08-20",clinic:"All clinics",topic:"Knee meniscus tear — presentation & management",presenter:"",attendees:"Jade, Alistair, Dylan, Hans",notes:"Review of meniscus tear presentation, assessment, and management options. File: Knee_meniscus_tear.pptx",year:2025},
+  {id:7,date:"2025-11-05",clinic:"All clinics",topic:"School Nurse Study Day — TBP presentation",presenter:"",attendees:"Jade",notes:"External presentation delivered at School Nurse Study Day. Covered TBP physiotherapy services, referral pathways, and common paediatric MSK presentations. File: Presentation_School_Nurse_Study_Day.pptx",year:2025},
+  {id:8,date:"2026-02-18",clinic:"All clinics",topic:"MSK Paediatrics & Growing Pains — introduction",presenter:"",attendees:"Jade, Alistair, Dylan, Hans",notes:"Introduction to paediatric MSK presentations. Growing pains vs pathological causes. Differentials and when to refer. File: An_Introduction_to_MSK_Paeds_and_Growing_Pains.pptx",year:2026},
+];
+
 export default function App(){
   const[page,setPage]=useState("dashboard");const[profile,setProfile]=useState(null);const[role,setRole]=useState("owner");
   const[portalLoading,setPortalLoading]=useState(true);
@@ -3220,7 +3242,7 @@ export default function App(){
   const[compTab,setCompTab]=useState("overview");const[mgmtTab,setMgmtTab]=useState("audits");const[docsTab,setDocsTab]=useState("contracts");const[isrvTab,setIsrvTab]=useState("log");
   const[meetings,setMeetings]=useState([]);
   const[audits,setAudits]=useState(INIT_AUDITS);
-  const[inservices,setInservices]=useState([{id:1,date:"2025-08-10",clinic:"Titirangi",topic:"Shoulder rehab protocols",presenter:"Hans Vermeulen",attendees:"Hans, Alistair",notes:"Reviewed UniSportsOrtho shoulder stabilisation phases.",year:2025}]);
+  const[inservices,setInservices]=useState(INIT_INSERVICES);
   const[activeAudit,setActiveAudit]=useState(null);
   const[viewAudit,setViewAudit]=useState(null);
   // logAudit and showLogAudit moved into ManagementPage to prevent re-mount on every keystroke
@@ -3293,11 +3315,24 @@ export default function App(){
     saveGen("audits",   newAudits);
     saveGen("meetings", newMeetings);
 
-    if(d["inservices"]&&d["inservices"].length){
+    if(d["inservices"]||INIT_INSERVICES.length){
       // Shared with KPI app: inservice broadcasts (type 'inservice' or no type)
       // PLUS personal CPD entries (type 'personal_cpd'). Show all of them but tag
       // personal CPD with _isPersonal so the UI can style them differently.
-      const cleaned=d["inservices"]
+      const isSeeded = id => typeof id === 'number' && id <= 99;
+      const deletedInserviceIds = new Set(d["deletedInserviceIds"] || []);
+      const raw = d["inservices"] || [];
+      const driveById = {};
+      raw.forEach(e => { if(isSeeded(e?.id)) driveById[e.id] = e; });
+      // User-created records (timestamp ids) — keep Drive as-is
+      const userRecords = raw.filter(e => !isSeeded(e?.id));
+      // INIT records — restore if present in Drive (Drive wins for user-edited fields)
+      // but exclude any the user has intentionally deleted
+      const seedRecords = INIT_INSERVICES
+        .filter(s => !deletedInserviceIds.has(s.id))
+        .map(s => driveById[s.id] || s);
+      const combined = [...seedRecords, ...userRecords];
+      const cleaned=combined
         .map(e=>{
           const isInservice = !e.type || e.type==="inservice";
           const isPersonalCpd = e.type==="personal_cpd";
@@ -3710,6 +3745,21 @@ export default function App(){
       setNi({date:"",clinic:"All clinics",topic:"",presenter:"",attendees:"",notes:""});
       setShowForm(false);
     }
+    function deleteInservice(id){
+      if(!window.confirm("Remove this inservice record?"))return;
+      const updated=inservices.filter(i=>String(i.id)!==String(id));
+      setInservices(updated);
+      // Save merged array back, excluding the deleted record
+      const raw=(_portalStore?.data?.["inservices"])||[];
+      const preserved=raw.filter(e=>String(e?.id)!==String(id));
+      saveGen("inservices",preserved);
+      // If it was a seed record, track the deletion so it doesn't come back on next load
+      const isSeed = typeof id === 'number' && id <= 99;
+      if(isSeed){
+        const existing=(_portalStore?.data?.["deletedInserviceIds"])||[];
+        saveGen("deletedInserviceIds",[...new Set([...existing,id])]);
+      }
+    }
     // Per-clinic status for current year — excludes personal CPD (those are individual)
     const thisYear=String(new Date().getFullYear());
     const clinicStatus=CLINICS.filter(c=>!c.isSchool).map(cl=>{
@@ -3781,7 +3831,10 @@ export default function App(){
                   {s.loggedTo&&s.loggedTo.length&&!s._isPersonal&&<div style={{fontSize:12,color:C.muted,marginTop:1}}>Logged to {s.loggedTo.length} staff · {s.hours||1}h</div>}
                   {s.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"5px 8px",borderRadius:5,marginTop:6,lineHeight:1.5}}>{s.notes}</div>}
                 </div>
-                <Pill s={s._isPersonal?"due":"ok"} label={s._isPersonal?"Personal CPD":"Completed ✓"}/>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
+                  <Pill s={s._isPersonal?"due":"ok"} label={s._isPersonal?"Personal CPD":"Completed ✓"}/>
+                  <BSm onClick={(e)=>{e.stopPropagation();deleteInservice(s.id);}} color={C.red}>✕</BSm>
+                </div>
               </div>
             </Card>
           ))}
