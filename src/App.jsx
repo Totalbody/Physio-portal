@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 const PORTAL_API = "https://tbp-cliniko-proxy-j6f9.vercel.app/api/portal";
 const PORTAL_SECRET = "LSLYXuABMuqYUAJ7BeF4oHhnKh0xvBlogog99ipQ";
@@ -3251,77 +3251,85 @@ export default function App(){
   },[]);
   const[staffOverrides,setStaffOverrides]=useState({});
   const roleNames={owner:"Jade Warren",alistair:"Alistair Burgess",hans:"Hans Vermeulen",staff:"Staff member"};
+  // Hydrate React state from _portalStore — runs on initial load and after a
+  // successful Connect so data appears without needing a manual refresh.
+  const hydrateFromStore = useCallback(() => {
+    const d = _portalStore.data;
+
+    // Seeded records (IDs < 100000): INIT always wins for record data,
+    // BUT we preserve any evidence/attachment the user already generated
+    // so documents don't disappear when code is updated.
+    // User records (timestamp IDs >= 100000): Drive always wins.
+    const isSeeded = id => typeof id === 'number' && id < 100000;
+
+    const deletedIds = new Set([
+      ...(d["deletedAuditIds"] || []),
+      ...JSON.parse(localStorage.getItem("tbp_deleted_audit_ids") || "[]"),
+    ]);
+
+    const driveById = {};
+    (d["audits"]||[]).forEach(a => { if(isSeeded(a.id)) driveById[a.id] = a; });
+    const driveMeetById = {};
+    (d["meetings"]||[]).forEach(m => { if(isSeeded(m.id)) driveMeetById[m.id] = m; });
+
+    const driveAudits   = (d["audits"]   || []).filter(a => !isSeeded(a.id));
+    const driveMeetings = (d["meetings"] || []).filter(m => !isSeeded(m.id));
+
+    const initAudits = INIT_AUDITS
+      .filter(a => !deletedIds.has(a.id))
+      .map(a => { const drv = driveById[a.id]; return drv?.evidence ? {...a, evidence: drv.evidence} : a; });
+    const initMeetings = INIT_MEETINGS.map(m => {
+      const drv = driveMeetById[m.id];
+      return drv?.attachment ? {...m, attachment: drv.attachment} : m;
+    });
+
+    const newAudits   = [...initAudits,   ...driveAudits];
+    const newMeetings = [...initMeetings, ...driveMeetings];
+    newAudits.sort((a,b)=>b.date.localeCompare(a.date));
+    newMeetings.sort((a,b)=>b.date.localeCompare(a.date));
+
+    setAudits(newAudits);
+    setMeetings(newMeetings);
+    saveGen("audits",   newAudits);
+    saveGen("meetings", newMeetings);
+
+    if(d["inservices"]&&d["inservices"].length){
+      // Shared with KPI app: inservice broadcasts (type 'inservice' or no type)
+      // PLUS personal CPD entries (type 'personal_cpd'). Show all of them but tag
+      // personal CPD with _isPersonal so the UI can style them differently.
+      const cleaned=d["inservices"]
+        .map(e=>{
+          const isInservice = !e.type || e.type==="inservice";
+          const isPersonalCpd = e.type==="personal_cpd";
+          if(!isInservice && !isPersonalCpd) return null;
+          return {
+            ...e,
+            _isPersonal: isPersonalCpd,
+            topic: e.topic || e.title || "(untitled)",
+            clinic: e.clinic || (isPersonalCpd ? "Personal CPD" : "All clinics"),
+            year: e.year || parseInt((e.date||"").slice(0,4)) || new Date().getFullYear(),
+          };
+        })
+        .filter(Boolean);
+      setInservices(cleaned);
+    }
+    if(d["extAudits"]&&d["extAudits"].length)setExtAudits(d["extAudits"]);
+    if(d["ppDocs"])setPpDocs(d["ppDocs"]||[]);
+    if(d["ppReviews"])setPpReviews(d["ppReviews"]||{});
+    const overrides={};
+    Object.keys(STAFF).forEach(id=>{
+      const ei=d[`empinfo_${id}`]||null;
+      if(ei)overrides[id]=ei;
+    });
+    setStaffOverrides(overrides);
+  }, []);
+
   useEffect(()=>{
     _portalForceUpdate=forceRender;
     _loadStore().then((ok)=>{
       setPortalConnected(ok&&_portalReady);
       if(ok){
-        const d=_portalStore.data;
-
-        // Seeded records (IDs < 100000): INIT always wins for record data,
-        // BUT we preserve any evidence/attachment the user already generated
-        // so documents don't disappear when code is updated.
-        // User records (timestamp IDs >= 100000): Drive always wins.
-
-        const isSeeded = id => typeof id === 'number' && id < 100000;
-
-        // Load the list of intentionally deleted seeded records
-        const deletedIds = new Set([
-          ...(d["deletedAuditIds"] || []),
-          ...JSON.parse(localStorage.getItem("tbp_deleted_audit_ids") || "[]"),
-        ]);
-
-        // Index Drive's seeded records so we can pull their evidence/attachment
-        const driveById = {};
-        (d["audits"]||[]).forEach(a => { if(isSeeded(a.id)) driveById[a.id] = a; });
-        const driveMeetById = {};
-        (d["meetings"]||[]).forEach(m => { if(isSeeded(m.id)) driveMeetById[m.id] = m; });
-
-        // User-created records (keep as-is from Drive)
-        const driveAudits   = (d["audits"]   || []).filter(a => !isSeeded(a.id));
-        const driveMeetings = (d["meetings"] || []).filter(m => !isSeeded(m.id));
-
-        // INIT records — use INIT data but restore Drive's evidence/attachment if present
-        // Skip any records the user has explicitly deleted
-        const initAudits   = INIT_AUDITS
-          .filter(a => !deletedIds.has(a.id))
-          .map(a => {
-          const drv = driveById[a.id];
-          return drv?.evidence ? {...a, evidence: drv.evidence} : a;
-        });
-        const initMeetings = INIT_MEETINGS.map(m => {
-          const drv = driveMeetById[m.id];
-          return drv?.attachment ? {...m, attachment: drv.attachment} : m;
-        });
-
-        const newAudits   = [...initAudits,   ...driveAudits];
-        const newMeetings = [...initMeetings, ...driveMeetings];
-        newAudits.sort((a,b)=>b.date.localeCompare(a.date));
-        newMeetings.sort((a,b)=>b.date.localeCompare(a.date));
-
-        setAudits(newAudits);
-        setMeetings(newMeetings);
-        saveGen("audits",   newAudits);
-        saveGen("meetings", newMeetings);
-
-        if(d["inservices"]&&d["inservices"].length){
-          // The inservices array is shared with the KPI app, which also stores
-          // personal_cpd entries and broadcast inservices (no clinic field).
-          // Filter to inservices only + give KPI broadcasts a default clinic so they display.
-          const cleaned=d["inservices"]
-            .filter(e=>!e.type||e.type==="inservice")
-            .map(e=>({...e,clinic:e.clinic||"All clinics",year:e.year||parseInt((e.date||"").slice(0,4))||new Date().getFullYear()}));
-          setInservices(cleaned);
-        }
-        if(d["extAudits"]&&d["extAudits"].length)setExtAudits(d["extAudits"]);
-        if(d["ppDocs"])setPpDocs(d["ppDocs"]||[]);
-        if(d["ppReviews"])setPpReviews(d["ppReviews"]||{});
-        const overrides={};
-        Object.keys(STAFF).forEach(id=>{
-          const ei=d[`empinfo_${id}`]||null;
-          if(ei)overrides[id]=ei;
-        });
-        setStaffOverrides(overrides);
+        hydrateFromStore();
       } else {
         setAudits(INIT_AUDITS);
         setMeetings(INIT_MEETINGS);
@@ -3334,17 +3342,48 @@ export default function App(){
         .then(r=>r.ok?r.json():{}).then(vs=>{
           const vercelAudits=(Array.isArray(vs.data?.audits)?vs.data.audits:[])
             .filter(a=>typeof a.id==='string'||Number(a.id)>=100000);
-          if(vercelAudits.length===0)return;
-          setAudits(prev=>{
-            const existingIds=new Set(prev.map(a=>String(a.id)));
-            const toAdd=vercelAudits.filter(a=>!existingIds.has(String(a.id)));
-            if(toAdd.length===0)return prev;
-            const merged=[...prev,...toAdd].sort((a,b)=>b.date.localeCompare(a.date));
-            // If Drive is connected, also persist these into Drive
-            saveGen("audits",merged);
-            _log('[Portal] Pulled',toAdd.length,'audit(s) from Vercel');
-            return merged;
-          });
+          if(vercelAudits.length){
+            setAudits(prev=>{
+              const existingIds=new Set(prev.map(a=>String(a.id)));
+              const toAdd=vercelAudits.filter(a=>!existingIds.has(String(a.id)));
+              if(toAdd.length===0)return prev;
+              const merged=[...prev,...toAdd].sort((a,b)=>b.date.localeCompare(a.date));
+              saveGen("audits",merged);
+              _log('[Portal] Pulled',toAdd.length,'audit(s) from Vercel');
+              return merged;
+            });
+          }
+          // Same trick for inservices — KPI may have written them to Vercel only
+          // if Drive auth was down at the time.
+          const vercelInservices=Array.isArray(vs.data?.inservices)?vs.data.inservices:[];
+          if(vercelInservices.length){
+            setInservices(prev=>{
+              const existingIds=new Set(prev.map(i=>String(i?.id)));
+              const toAdd=vercelInservices
+                .filter(e=>!existingIds.has(String(e?.id)))
+                .filter(e=>!e.type||e.type==="inservice"||e.type==="personal_cpd")
+                .map(e=>{
+                  const isPersonalCpd=e.type==="personal_cpd";
+                  return{
+                    ...e,
+                    _isPersonal:isPersonalCpd,
+                    topic:e.topic||e.title||"(untitled)",
+                    clinic:e.clinic||(isPersonalCpd?"Personal CPD":"All clinics"),
+                    year:e.year||parseInt((e.date||"").slice(0,4))||new Date().getFullYear(),
+                  };
+                });
+              if(toAdd.length===0)return prev;
+              // Sync the Vercel-only records back into Drive state so they persist properly
+              const raw=(_portalStore?.data?.["inservices"])||[];
+              const rawIds=new Set(raw.map(e=>String(e?.id)));
+              const missingFromDrive=vercelInservices.filter(e=>!rawIds.has(String(e?.id)));
+              if(missingFromDrive.length>0){
+                saveGen("inservices",[...raw,...missingFromDrive]);
+                _log('[Portal] Pushed',missingFromDrive.length,'inservice(s) from Vercel to Drive');
+              }
+              return[...prev,...toAdd];
+            });
+          }
         }).catch(()=>{});
 
       setPortalLoading(false);
@@ -3671,10 +3710,10 @@ export default function App(){
       setNi({date:"",clinic:"All clinics",topic:"",presenter:"",attendees:"",notes:""});
       setShowForm(false);
     }
-    // Per-clinic status for current year
+    // Per-clinic status for current year — excludes personal CPD (those are individual)
     const thisYear=String(new Date().getFullYear());
     const clinicStatus=CLINICS.filter(c=>!c.isSchool).map(cl=>{
-      const done=inservices.filter(i=>String(i.year||i.date?.slice(0,4)||"")===thisYear&&(i.clinic===cl.short||i.clinic===cl.name||(i.clinic||"").includes(cl.short)));
+      const done=inservices.filter(i=>!i._isPersonal&&String(i.year||i.date?.slice(0,4)||"")===thisYear&&(i.clinic===cl.short||i.clinic===cl.name||(i.clinic||"").includes(cl.short)));
       return{...cl,count:done.length,done:done.length>0};
     });
     return(
@@ -3725,15 +3764,24 @@ export default function App(){
           </Card>}
           {visible.length===0&&<Alert type="blue" title="No sessions found">No in-service sessions match this filter. Log a new session above.</Alert>}
           {visible.map(s=>(
-            <Card key={s.id} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem"}}>
+            <Card key={s.id} style={{marginBottom:"0.5rem",padding:"0.875rem 1rem",background:s._isPersonal?"#FAFAF7":C.card}}>
               <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:600}}>{s.topic}</div>
-                  <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.date} · {s.clinic}{s.presenter?` · Presenter: ${s.presenter}`:""}</div>
-                  {s.attendees&&<div style={{fontSize:12,color:C.muted,marginTop:1}}>Attendees: {s.attendees}</div>}
+                  <div style={{fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+                    {s._isPersonal&&<span style={{fontSize:10}}>👤</span>}
+                    {s.topic}
+                  </div>
+                  <div style={{fontSize:12,color:C.muted,marginTop:2}}>
+                    {s.date}
+                    {s._isPersonal
+                      ? <> · <strong>Personal CPD</strong>{s.staffId?` · ${s.staffId}`:""}{s.hours?` · ${s.hours}h`:""}</>
+                      : <> · {s.clinic}{s.presenter?` · Presenter: ${s.presenter}`:""}</>}
+                  </div>
+                  {s.attendees&&!s._isPersonal&&<div style={{fontSize:12,color:C.muted,marginTop:1}}>Attendees: {s.attendees}</div>}
+                  {s.loggedTo&&s.loggedTo.length&&!s._isPersonal&&<div style={{fontSize:12,color:C.muted,marginTop:1}}>Logged to {s.loggedTo.length} staff · {s.hours||1}h</div>}
                   {s.notes&&<div style={{fontSize:12,color:C.muted,background:C.grayXL,padding:"5px 8px",borderRadius:5,marginTop:6,lineHeight:1.5}}>{s.notes}</div>}
                 </div>
-                <Pill s="ok" label="Completed ✓"/>
+                <Pill s={s._isPersonal?"due":"ok"} label={s._isPersonal?"Personal CPD":"Completed ✓"}/>
               </div>
             </Card>
           ))}
@@ -4205,7 +4253,7 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
         {/* Google Drive connect banner */}
         {!portalConnected&&<div style={{padding:"0.625rem 1rem",borderBottom:`1px solid ${C.border}`,background:"#FFF9E6"}}>
           <div style={{fontSize:11,color:"#7a5c00",marginBottom:4,fontWeight:500}}>📁 Not connected to Google Drive</div>
-          <button onClick={()=>_signInToDrive().then(ok=>{if(ok){setPortalConnected(true);_scheduleForceUpdate();}}).catch(()=>{})} style={{width:"100%",background:"#185FA5",color:"white",border:"none",borderRadius:5,padding:"5px 0",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+          <button onClick={()=>_signInToDrive().then(ok=>{if(ok){setPortalConnected(true);hydrateFromStore();_scheduleForceUpdate();}}).catch(()=>{})} style={{width:"100%",background:"#185FA5",color:"white",border:"none",borderRadius:5,padding:"5px 0",fontSize:11,fontWeight:600,cursor:"pointer"}}>
             Connect Google Drive →
           </button>
         </div>}
