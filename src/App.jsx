@@ -544,15 +544,20 @@ async function _deleteFromDrive(driveId) {
 
 // Save portal-state.json into the root portal folder (debounced)
 async function _saveDriveState() {
-  if (!_portalReady || !_driveToken) return;
+  if (!_portalReady || !_driveToken) throw new Error('Drive not ready');
+  const payload = JSON.stringify({ ..._portalStore.data, _files: _portalStore.files });
+  _log(`[Drive] Saving state (${(payload.length/1024).toFixed(0)}KB)…`);
   try {
-    const payload = JSON.stringify({ ..._portalStore.data, _files: _portalStore.files });
     if (_driveStateFileId) {
-      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${_driveStateFileId}?uploadType=media`, {
+      const resp = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${_driveStateFileId}?uploadType=media`, {
         method:'PATCH',
         headers:{ Authorization:`Bearer ${_driveToken}`, 'Content-Type':'application/json' },
         body: payload,
       });
+      if (!resp.ok) {
+        const errText = await resp.text().catch(()=>resp.statusText);
+        throw new Error(`Drive PATCH failed: ${resp.status} ${errText.slice(0,200)}`);
+      }
       // Ensure file stays publicly readable (set every save — idempotent on Drive's end)
       fetch(`https://www.googleapis.com/drive/v3/files/${_driveStateFileId}/permissions`, {
         method:'POST',
@@ -567,10 +572,13 @@ async function _saveDriveState() {
         'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
         { method:'POST', headers:{ Authorization:`Bearer ${_driveToken}` }, body: form }
       );
+      if (!resp.ok) {
+        const errText = await resp.text().catch(()=>resp.statusText);
+        throw new Error(`Drive create failed: ${resp.status} ${errText.slice(0,200)}`);
+      }
       const r = await resp.json();
       if (r.id) {
         _driveStateFileId = r.id;
-        // Cache file ID for KPI public fallback
         try { localStorage.setItem('tbp_state_file_id', r.id); } catch {}
         fetch(`https://www.googleapis.com/drive/v3/files/${r.id}/permissions`, {
           method:'POST',
@@ -579,11 +587,12 @@ async function _saveDriveState() {
         }).catch(()=>{});
       }
     }
-    _log('[Drive] State saved');
-    // Mirror key shared arrays to Vercel so non-owner staff (who can't read
-    // from the owner's Drive folder) always see up-to-date data via Vercel.
+    _log('[Drive] State saved successfully');
     _mirrorStateToVercel();
-  } catch(e) { _err('[Drive state save]', e.message); }
+  } catch(e) {
+    _err('[Drive state save]', e.message);
+    throw e; // re-throw so callers (like saveGenImmediate) see failures
+  }
 }
 
 // Push selected state arrays to Vercel's /store endpoint so KPI staff see them.
@@ -2033,20 +2042,20 @@ function saveGen(k, d) {
 }
 
 // Immediate version — bypasses debounce and awaits Drive save so callers know it persisted.
-// Use for bulk operations that need guaranteed persistence before page navigation/reload.
+// Returns {ok: true} on success, {ok: false, error: '...'} on failure.
 async function saveGenImmediate(k, d) {
   if (_portalReady) {
     _portalStore.data[k] = d;
-    clearTimeout(_saveTimer);  // cancel any pending debounced save
+    clearTimeout(_saveTimer);
     try {
       await _saveDriveState();
-      return true;
+      return { ok: true };
     } catch (e) {
       _warn('[saveGenImmediate] Drive save failed', e);
-      return false;
+      return { ok: false, error: e.message || String(e) };
     }
   }
-  try { localStorage.setItem(k, JSON.stringify(d)); return true; } catch { return false; }
+  try { localStorage.setItem(k, JSON.stringify(d)); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; }
 }
 
 function loadGen(k) {
@@ -2896,34 +2905,9 @@ function AuditEvidenceBtn({audit,audits,setAudits,onView}){
   );
 }
 
-// Resolve evidence at render-time: if the audit has a stub evidence flagged as
-// an embedded PDF (e.g., {embeddedPdf: 'fire_drill', auditId: 5001}), look up
-// the base64 from the bundle and construct a dataUrl fresh. Keeps Drive state
-// tiny — no PDF payloads stored; the PDF source of truth is the app bundle.
+// Returns evidence unchanged for now — kept as a hook for future transformations.
 function _resolveAuditEvidence(audit){
-  if(!audit?.evidence)return null;
-  const ev=audit.evidence;
-  if(ev.embeddedPdf==='fire_drill'&&typeof FIRE_DRILL_PDFS!=='undefined'&&FIRE_DRILL_PDFS[audit.id]){
-    const pdf=FIRE_DRILL_PDFS[audit.id];
-    return{
-      id:ev.id,
-      fileName:pdf.filename,
-      fileType:'application/pdf',
-      uploadedDate:ev.uploadedDate,
-      dataUrl:'data:application/pdf;base64,'+pdf.base64,
-    };
-  }
-  if(ev.embeddedPdf==='peer_review'&&typeof PEER_REVIEW_PDFS!=='undefined'&&PEER_REVIEW_PDFS[audit.id]){
-    const pdf=PEER_REVIEW_PDFS[audit.id];
-    return{
-      id:ev.id,
-      fileName:pdf.filename,
-      fileType:'application/pdf',
-      uploadedDate:ev.uploadedDate,
-      dataUrl:'data:application/pdf;base64,'+pdf.base64,
-    };
-  }
-  return ev;
+  return audit?.evidence || null;
 }
 
 // Bulk evidence uploader for peer reviews + clinical notes audits.
@@ -2939,8 +2923,6 @@ function FireDrillLoader({audits,setAudits}){
   const allDrills=audits.filter(a=>a.type==="fire_drill"&&a.id<100000&&FIRE_DRILL_PDFS[a.id]);
   const needsFenz=allDrills.filter(a=>{
     if(!a.evidence)return true;
-    // New stub flag wins
-    if(a.evidence.embeddedPdf==='fire_drill')return false;
     const fn=(a.evidence.fileName||"").toLowerCase();
     return !fn.startsWith("fire_drill_");
   });
@@ -2980,40 +2962,42 @@ function FireDrillLoader({audits,setAudits}){
     const list = forceAll ? allDrills : needsFenz;
     if(list.length===0){alert("No fire drills to update.");return;}
     const msg = forceAll
-      ? `Re-attach FENZ Evacuation Report PDFs to ALL ${list.length} fire drills?\n\nThis replaces existing evidence with the pre-filled FENZ PDF.`
+      ? `Re-attach FENZ Evacuation Report PDFs to ALL ${list.length} fire drills?`
       : `Attach FENZ-style evacuation report PDFs to ${list.length} fire drill record${list.length===1?'':'s'}?`;
     if(!window.confirm(msg))return;
     setRunning(true);
-    setStatus(`⏳ Preparing ${list.length} drills…`);
+    setStatus(`⏳ Preparing ${list.length} PDFs…`);
     const newAudits=[...audits];
     let prepared=0;
     const failed=[];
     for(let i=0;i<list.length;i++){
       const target=list[i];
-      if(!FIRE_DRILL_PDFS[target.id]){failed.push(`${target.clinic} ${fmtNZ(target.date)}`);continue;}
-      // Tiny evidence stub — actual PDF resolved from embedded constant at view-time
+      const pdfData=FIRE_DRILL_PDFS[target.id];
+      if(!pdfData){failed.push(`${target.clinic} ${fmtNZ(target.date)}`);continue;}
+      // Inline the PDF as dataUrl — self-contained evidence, no Drive file refs
       const evidence={
         id:Date.now()+i,
-        fileName:FIRE_DRILL_PDFS[target.id].filename,
+        fileName:pdfData.filename,
         fileType:'application/pdf',
         uploadedDate:new Date().toLocaleDateString("en-NZ"),
-        embeddedPdf:'fire_drill',  // stub flag — resolver will look up PDF at view time
+        dataUrl:'data:application/pdf;base64,'+pdfData.base64,
       };
       const idx=newAudits.findIndex(a=>a.id===target.id);
       if(idx>=0)newAudits[idx]={...target,evidence};
       prepared++;
     }
-    setStatus(`💾 Saving to Drive…`);
+    setStatus(`💾 Saving to Drive (this may take 10-15s)…`);
     setAudits(newAudits);
-    const saved=await saveGenImmediate("audits",newAudits);
-    const finalMsg = !saved
-      ? `❌ Drive save failed — try again`
+    // CRITICAL: await the actual Drive write so we know it persisted before telling user success
+    const result=await saveGenImmediate("audits",newAudits);
+    const finalMsg = !result.ok
+      ? `❌ Drive save failed: ${(result.error||'unknown').slice(0,100)}`
       : failed.length===0
-        ? `✅ Attached FENZ PDFs to all ${prepared} fire drills`
-        : `⚠️ Prepared ${prepared} of ${list.length} — ${failed.length} skipped`;
+        ? `✅ All ${prepared} FENZ PDFs saved to Drive — refresh any device to confirm`
+        : `⚠️ Saved ${prepared} of ${list.length} — ${failed.length} skipped`;
     setStatus(finalMsg);
     setRunning(false);
-    setTimeout(()=>setStatus(""),15000);
+    setTimeout(()=>setStatus(""),25000);
   }
 
   return(
@@ -3052,7 +3036,6 @@ function PBNZPeerReviewLoader({audits,setAudits}){
   const allReviews=audits.filter(a=>a.type==="peer_review"&&a.id<100000&&PEER_REVIEW_PDFS[a.id]);
   const needsPdf=allReviews.filter(a=>{
     if(!a.evidence)return true;
-    if(a.evidence.embeddedPdf==='peer_review')return false;
     const fn=(a.evidence.fileName||"").toLowerCase();
     return !fn.startsWith("peer_review_");
   });
@@ -3081,13 +3064,14 @@ function PBNZPeerReviewLoader({audits,setAudits}){
     const failed=[];
     for(let i=0;i<list.length;i++){
       const target=list[i];
-      if(!PEER_REVIEW_PDFS[target.id]){failed.push(`${target.physioAudited} ${fmtNZ(target.date)}`);continue;}
+      const pdfData=PEER_REVIEW_PDFS[target.id];
+      if(!pdfData){failed.push(`${target.physioAudited} ${fmtNZ(target.date)}`);continue;}
       const evidence={
         id:Date.now()+i,
-        fileName:PEER_REVIEW_PDFS[target.id].filename,
+        fileName:pdfData.filename,
         fileType:'application/pdf',
         uploadedDate:new Date().toLocaleDateString("en-NZ"),
-        embeddedPdf:'peer_review',  // stub — resolved at view time
+        dataUrl:'data:application/pdf;base64,'+pdfData.base64,
       };
       const idx=newAudits.findIndex(a=>a.id===target.id);
       if(idx>=0)newAudits[idx]={...target,evidence};
@@ -3095,15 +3079,15 @@ function PBNZPeerReviewLoader({audits,setAudits}){
     }
     setStatus(`💾 Saving to Drive…`);
     setAudits(newAudits);
-    const saved=await saveGenImmediate("audits",newAudits);
-    const finalMsg = !saved
-      ? `❌ Drive save failed — try again`
+    const result=await saveGenImmediate("audits",newAudits);
+    const finalMsg = !result.ok
+      ? `❌ Drive save failed: ${(result.error||'unknown').slice(0,100)}`
       : failed.length===0
-        ? `✅ Attached PBNZ PDFs to all ${prepared} peer reviews`
-        : `⚠️ Prepared ${prepared} of ${list.length} — ${failed.length} skipped`;
+        ? `✅ All ${prepared} PBNZ PDFs saved to Drive`
+        : `⚠️ Saved ${prepared} of ${list.length} — ${failed.length} skipped`;
     setStatus(finalMsg);
     setRunning(false);
-    setTimeout(()=>setStatus(""),15000);
+    setTimeout(()=>setStatus(""),25000);
   }
 
   return(
