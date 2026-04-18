@@ -2886,7 +2886,7 @@ function AuditEvidenceBtn({audit,audits,setAudits,onView}){
     <>
       {audit.evidence
         ?<>
-          <BSm onClick={()=>onView(audit.evidence)} color={C.teal}>📎 View</BSm>
+          <BSm onClick={()=>onView(_resolveAuditEvidence(audit))} color={C.teal}>📎 View</BSm>
           <BSm onClick={()=>ref.current.click()} color={C.gray} style={{opacity:uploading?0.5:1}}>{uploading?"⏳":"↑ Replace"}</BSm>
         </>
         :<BSm onClick={()=>ref.current.click()} color={C.blue} style={{opacity:uploading?0.5:1}}>{uploading?"⏳ Uploading…":"📎 Upload evidence"}</BSm>
@@ -2894,6 +2894,36 @@ function AuditEvidenceBtn({audit,audits,setAudits,onView}){
       <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
     </>
   );
+}
+
+// Resolve evidence at render-time: if the audit has a stub evidence flagged as
+// an embedded PDF (e.g., {embeddedPdf: 'fire_drill', auditId: 5001}), look up
+// the base64 from the bundle and construct a dataUrl fresh. Keeps Drive state
+// tiny — no PDF payloads stored; the PDF source of truth is the app bundle.
+function _resolveAuditEvidence(audit){
+  if(!audit?.evidence)return null;
+  const ev=audit.evidence;
+  if(ev.embeddedPdf==='fire_drill'&&typeof FIRE_DRILL_PDFS!=='undefined'&&FIRE_DRILL_PDFS[audit.id]){
+    const pdf=FIRE_DRILL_PDFS[audit.id];
+    return{
+      id:ev.id,
+      fileName:pdf.filename,
+      fileType:'application/pdf',
+      uploadedDate:ev.uploadedDate,
+      dataUrl:'data:application/pdf;base64,'+pdf.base64,
+    };
+  }
+  if(ev.embeddedPdf==='peer_review'&&typeof PEER_REVIEW_PDFS!=='undefined'&&PEER_REVIEW_PDFS[audit.id]){
+    const pdf=PEER_REVIEW_PDFS[audit.id];
+    return{
+      id:ev.id,
+      fileName:pdf.filename,
+      fileType:'application/pdf',
+      uploadedDate:ev.uploadedDate,
+      dataUrl:'data:application/pdf;base64,'+pdf.base64,
+    };
+  }
+  return ev;
 }
 
 // Bulk evidence uploader for peer reviews + clinical notes audits.
@@ -2909,6 +2939,8 @@ function FireDrillLoader({audits,setAudits}){
   const allDrills=audits.filter(a=>a.type==="fire_drill"&&a.id<100000&&FIRE_DRILL_PDFS[a.id]);
   const needsFenz=allDrills.filter(a=>{
     if(!a.evidence)return true;
+    // New stub flag wins
+    if(a.evidence.embeddedPdf==='fire_drill')return false;
     const fn=(a.evidence.fileName||"").toLowerCase();
     return !fn.startsWith("fire_drill_");
   });
@@ -2948,45 +2980,36 @@ function FireDrillLoader({audits,setAudits}){
     const list = forceAll ? allDrills : needsFenz;
     if(list.length===0){alert("No fire drills to update.");return;}
     const msg = forceAll
-      ? `Re-attach FENZ Evacuation Report PDFs to ALL ${list.length} fire drills?\n\nThis will replace existing evidence with the pre-filled FENZ PDF.`
+      ? `Re-attach FENZ Evacuation Report PDFs to ALL ${list.length} fire drills?\n\nThis replaces existing evidence with the pre-filled FENZ PDF.`
       : `Attach FENZ-style evacuation report PDFs to ${list.length} fire drill record${list.length===1?'':'s'}?`;
     if(!window.confirm(msg))return;
     setRunning(true);
-    setStatus(`⏳ Preparing ${list.length} PDFs…`);
-    // Build ALL evidence entries in memory first — no async operations, no Drive calls
+    setStatus(`⏳ Preparing ${list.length} drills…`);
     const newAudits=[...audits];
     let prepared=0;
     const failed=[];
     for(let i=0;i<list.length;i++){
       const target=list[i];
-      const pdfData=FIRE_DRILL_PDFS[target.id];
-      if(!pdfData){failed.push(`${target.clinic} ${fmtNZ(target.date)}`);continue;}
-      try{
-        // Construct dataUrl directly from base64 — no blob/FileReader needed
-        const dataUrl='data:application/pdf;base64,'+pdfData.base64;
-        const evidence={
-          id:Date.now()+i,
-          fileName:pdfData.filename,
-          fileType:'application/pdf',
-          uploadedDate:new Date().toLocaleDateString("en-NZ"),
-          dataUrl,  // inline — no Drive file needed
-        };
-        const idx=newAudits.findIndex(a=>a.id===target.id);
-        if(idx>=0)newAudits[idx]={...target,evidence};
-        prepared++;
-      }catch(e){
-        _warn('[FireDrill prep]',target.id,e.message||e);
-        failed.push(`${target.clinic} ${fmtNZ(target.date)}`);
-      }
+      if(!FIRE_DRILL_PDFS[target.id]){failed.push(`${target.clinic} ${fmtNZ(target.date)}`);continue;}
+      // Tiny evidence stub — actual PDF resolved from embedded constant at view-time
+      const evidence={
+        id:Date.now()+i,
+        fileName:FIRE_DRILL_PDFS[target.id].filename,
+        fileType:'application/pdf',
+        uploadedDate:new Date().toLocaleDateString("en-NZ"),
+        embeddedPdf:'fire_drill',  // stub flag — resolver will look up PDF at view time
+      };
+      const idx=newAudits.findIndex(a=>a.id===target.id);
+      if(idx>=0)newAudits[idx]={...target,evidence};
+      prepared++;
     }
-    // Now do ONE atomic save — single Drive API call for everything
-    setStatus(`💾 Saving ${prepared} PDFs to Drive (single write)…`);
+    setStatus(`💾 Saving to Drive…`);
     setAudits(newAudits);
     const saved=await saveGenImmediate("audits",newAudits);
     const finalMsg = !saved
-      ? `❌ Drive save failed — try again or check connection`
+      ? `❌ Drive save failed — try again`
       : failed.length===0
-        ? `✅ Attached all ${prepared} FENZ evacuation PDFs`
+        ? `✅ Attached FENZ PDFs to all ${prepared} fire drills`
         : `⚠️ Prepared ${prepared} of ${list.length} — ${failed.length} skipped`;
     setStatus(finalMsg);
     setRunning(false);
@@ -3029,6 +3052,7 @@ function PBNZPeerReviewLoader({audits,setAudits}){
   const allReviews=audits.filter(a=>a.type==="peer_review"&&a.id<100000&&PEER_REVIEW_PDFS[a.id]);
   const needsPdf=allReviews.filter(a=>{
     if(!a.evidence)return true;
+    if(a.evidence.embeddedPdf==='peer_review')return false;
     const fn=(a.evidence.fileName||"").toLowerCase();
     return !fn.startsWith("peer_review_");
   });
@@ -3047,42 +3071,35 @@ function PBNZPeerReviewLoader({audits,setAudits}){
     const list=forceAll?allReviews:needsPdf;
     if(list.length===0){alert("No peer reviews to update.");return;}
     const msg=forceAll
-      ? `Re-attach PBNZ-style peer review PDFs to ALL ${list.length} peer reviews?\n\nThis will replace existing evidence with the pre-filled PBNZ PDF.`
+      ? `Re-attach PBNZ-style peer review PDFs to ALL ${list.length} peer reviews?`
       : `Attach PBNZ-style peer review PDFs to ${list.length} peer review record${list.length===1?'':'s'}?`;
     if(!window.confirm(msg))return;
     setRunning(true);
-    setStatus(`⏳ Preparing ${list.length} PDFs…`);
+    setStatus(`⏳ Preparing ${list.length} reviews…`);
     const newAudits=[...audits];
     let prepared=0;
     const failed=[];
     for(let i=0;i<list.length;i++){
       const target=list[i];
-      const pdfData=PEER_REVIEW_PDFS[target.id];
-      if(!pdfData){failed.push(`${target.physioAudited} ${fmtNZ(target.date)}`);continue;}
-      try{
-        const dataUrl='data:application/pdf;base64,'+pdfData.base64;
-        const evidence={
-          id:Date.now()+i,
-          fileName:pdfData.filename,
-          fileType:'application/pdf',
-          uploadedDate:new Date().toLocaleDateString("en-NZ"),
-          dataUrl,
-        };
-        const idx=newAudits.findIndex(a=>a.id===target.id);
-        if(idx>=0)newAudits[idx]={...target,evidence};
-        prepared++;
-      }catch(e){
-        _warn('[PBNZ prep]',target.id,e.message||e);
-        failed.push(`${target.physioAudited} ${fmtNZ(target.date)}`);
-      }
+      if(!PEER_REVIEW_PDFS[target.id]){failed.push(`${target.physioAudited} ${fmtNZ(target.date)}`);continue;}
+      const evidence={
+        id:Date.now()+i,
+        fileName:PEER_REVIEW_PDFS[target.id].filename,
+        fileType:'application/pdf',
+        uploadedDate:new Date().toLocaleDateString("en-NZ"),
+        embeddedPdf:'peer_review',  // stub — resolved at view time
+      };
+      const idx=newAudits.findIndex(a=>a.id===target.id);
+      if(idx>=0)newAudits[idx]={...target,evidence};
+      prepared++;
     }
-    setStatus(`💾 Saving ${prepared} PDFs to Drive (single write)…`);
+    setStatus(`💾 Saving to Drive…`);
     setAudits(newAudits);
     const saved=await saveGenImmediate("audits",newAudits);
     const finalMsg = !saved
-      ? `❌ Drive save failed — try again or check connection`
+      ? `❌ Drive save failed — try again`
       : failed.length===0
-        ? `✅ Attached all ${prepared} PBNZ peer review PDFs`
+        ? `✅ Attached PBNZ PDFs to all ${prepared} peer reviews`
         : `⚠️ Prepared ${prepared} of ${list.length} — ${failed.length} skipped`;
     setStatus(finalMsg);
     setRunning(false);
