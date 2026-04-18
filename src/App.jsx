@@ -2948,58 +2948,46 @@ function FireDrillLoader({audits,setAudits}){
     const list = forceAll ? allDrills : needsFenz;
     if(list.length===0){alert("No fire drills to update.");return;}
     const msg = forceAll
-      ? `Re-attach FENZ Evacuation Report PDFs to ALL ${list.length} fire drills?\n\nThis will replace any existing evidence (including auto-generated HTML forms) with the pre-filled FENZ PDF.`
-      : `Attach FENZ-style evacuation report PDFs to ${list.length} fire drill record${list.length===1?'':'s'}?\n\nEach PDF is pre-filled with the clinic address, evacuation time, and assessment outcomes.`;
+      ? `Re-attach FENZ Evacuation Report PDFs to ALL ${list.length} fire drills?\n\nThis will replace existing evidence with the pre-filled FENZ PDF.`
+      : `Attach FENZ-style evacuation report PDFs to ${list.length} fire drill record${list.length===1?'':'s'}?`;
     if(!window.confirm(msg))return;
     setRunning(true);
     setStatus(`⏳ Preparing ${list.length} PDFs…`);
-    let attached=0;
-    const failed=[];
+    // Build ALL evidence entries in memory first — no async operations, no Drive calls
     const newAudits=[...audits];
+    let prepared=0;
+    const failed=[];
     for(let i=0;i<list.length;i++){
       const target=list[i];
       const pdfData=FIRE_DRILL_PDFS[target.id];
-      if(!pdfData){failed.push(`${target.clinic} ${fmtNZ(target.date)} (no PDF)`);continue;}
-      setStatus(`⏳ ${i+1}/${list.length}: ${target.clinic} · ${fmtNZ(target.date)}…`);
-      // Retry up to 3× for each file — Drive can hiccup under load
-      let success=false;
-      for(let attempt=1;attempt<=3&&!success;attempt++){
-        try{
-          const blob=b64toBlob(pdfData.base64,'application/pdf');
-          const dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);});
-          let evidence={id:Date.now()+i,fileName:pdfData.filename,fileType:'application/pdf',uploadedDate:new Date().toLocaleDateString("en-NZ")};
-          if(_portalReady){
-            const driveFile=await _uploadFileToDrive("auditevid_"+target.id,pdfData.filename,'application/pdf',dataUrl);
-            if(driveFile)Object.assign(evidence,driveFile);
-            else evidence.dataUrl=dataUrl;
-          }else evidence.dataUrl=dataUrl;
-          const idx=newAudits.findIndex(a=>a.id===target.id);
-          if(idx>=0)newAudits[idx]={...target,evidence};
-          attached++;
-          success=true;
-          // Don't save/setAudits in loop — causes iPad Safari memory churn + stalls
-        }catch(e){
-          _warn(`[FireDrill load] attempt ${attempt} failed`,target.id,e.message||e);
-          if(attempt<3){
-            setStatus(`⚠️ Retry ${attempt}/3 for ${target.clinic} ${fmtNZ(target.date)}…`);
-            await new Promise(r=>setTimeout(r,1500*attempt));
-          }else{
-            failed.push(`${target.clinic} ${fmtNZ(target.date)}`);
-          }
-        }
+      if(!pdfData){failed.push(`${target.clinic} ${fmtNZ(target.date)}`);continue;}
+      try{
+        // Construct dataUrl directly from base64 — no blob/FileReader needed
+        const dataUrl='data:application/pdf;base64,'+pdfData.base64;
+        const evidence={
+          id:Date.now()+i,
+          fileName:pdfData.filename,
+          fileType:'application/pdf',
+          uploadedDate:new Date().toLocaleDateString("en-NZ"),
+          dataUrl,  // inline — no Drive file needed
+        };
+        const idx=newAudits.findIndex(a=>a.id===target.id);
+        if(idx>=0)newAudits[idx]={...target,evidence};
+        prepared++;
+      }catch(e){
+        _warn('[FireDrill prep]',target.id,e.message||e);
+        failed.push(`${target.clinic} ${fmtNZ(target.date)}`);
       }
-      // Small pause between files — gives Drive API breathing room
-      if(i<list.length-1)await new Promise(r=>setTimeout(r,600));
     }
-    // Commit: update React state + AWAIT Drive save so we know it persisted
+    // Now do ONE atomic save — single Drive API call for everything
+    setStatus(`💾 Saving ${prepared} PDFs to Drive (single write)…`);
     setAudits(newAudits);
-    setStatus(`💾 Saving ${attached} PDFs to Drive…`);
     const saved=await saveGenImmediate("audits",newAudits);
     const finalMsg = !saved
-      ? `❌ Upload succeeded but Drive save failed — try again or check connection`
+      ? `❌ Drive save failed — try again or check connection`
       : failed.length===0
-        ? `✅ Attached all ${attached} FENZ evacuation PDFs (saved to Drive)`
-        : `⚠️ Attached ${attached} of ${list.length} — ${failed.length} failed: ${failed.slice(0,3).join(", ")}${failed.length>3?"…":""}`;
+        ? `✅ Attached all ${prepared} FENZ evacuation PDFs`
+        : `⚠️ Prepared ${prepared} of ${list.length} — ${failed.length} skipped`;
     setStatus(finalMsg);
     setRunning(false);
     setTimeout(()=>setStatus(""),15000);
@@ -3059,61 +3047,46 @@ function PBNZPeerReviewLoader({audits,setAudits}){
     const list=forceAll?allReviews:needsPdf;
     if(list.length===0){alert("No peer reviews to update.");return;}
     const msg=forceAll
-      ? `Re-attach PBNZ-style peer review PDFs to ALL ${list.length} peer reviews?\n\nThis will replace any existing evidence (including auto-generated HTML forms) with the pre-filled PBNZ PDF.`
-      : `Attach PBNZ-style peer review PDFs to ${list.length} peer review record${list.length===1?'':'s'}?\n\nEach PDF is pre-filled with the real reviewer comments, dates, and action plans from your uploaded forms.`;
+      ? `Re-attach PBNZ-style peer review PDFs to ALL ${list.length} peer reviews?\n\nThis will replace existing evidence with the pre-filled PBNZ PDF.`
+      : `Attach PBNZ-style peer review PDFs to ${list.length} peer review record${list.length===1?'':'s'}?`;
     if(!window.confirm(msg))return;
     setRunning(true);
     setStatus(`⏳ Preparing ${list.length} PDFs…`);
-    let attached=0;
-    const failed=[];
     const newAudits=[...audits];
+    let prepared=0;
+    const failed=[];
     for(let i=0;i<list.length;i++){
       const target=list[i];
       const pdfData=PEER_REVIEW_PDFS[target.id];
-      if(!pdfData){failed.push(`${target.physioAudited} ${fmtNZ(target.date)} (no PDF)`);continue;}
-      setStatus(`⏳ ${i+1}/${list.length}: ${target.physioAudited} · ${fmtNZ(target.date)}…`);
-      let success=false;
-      for(let attempt=1;attempt<=3&&!success;attempt++){
-        try{
-          const blob=b64toBlob(pdfData.base64,'application/pdf');
-          const dataUrl=await new Promise((res,rej)=>{
-            const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;
-            r.readAsDataURL(blob);
-          });
-          let evidence={id:Date.now()+i,fileName:pdfData.filename,fileType:'application/pdf',uploadedDate:new Date().toLocaleDateString("en-NZ")};
-          if(_portalReady){
-            const driveFile=await _uploadFileToDrive("auditevid_"+target.id,pdfData.filename,'application/pdf',dataUrl);
-            if(driveFile)Object.assign(evidence,driveFile);
-            else evidence.dataUrl=dataUrl;
-          }else evidence.dataUrl=dataUrl;
-          const idx=newAudits.findIndex(a=>a.id===target.id);
-          if(idx>=0)newAudits[idx]={...target,evidence};
-          attached++;
-          success=true;
-          // Single batch save at end — don't churn in loop
-        }catch(e){
-          _warn(`[PBNZ load] attempt ${attempt} failed`,target.id,e.message||e);
-          if(attempt<3){
-            setStatus(`⚠️ Retry ${attempt}/3 for ${target.physioAudited} ${fmtNZ(target.date)}…`);
-            await new Promise(r=>setTimeout(r,1500*attempt));
-          }else{
-            failed.push(`${target.physioAudited} ${fmtNZ(target.date)}`);
-          }
-        }
+      if(!pdfData){failed.push(`${target.physioAudited} ${fmtNZ(target.date)}`);continue;}
+      try{
+        const dataUrl='data:application/pdf;base64,'+pdfData.base64;
+        const evidence={
+          id:Date.now()+i,
+          fileName:pdfData.filename,
+          fileType:'application/pdf',
+          uploadedDate:new Date().toLocaleDateString("en-NZ"),
+          dataUrl,
+        };
+        const idx=newAudits.findIndex(a=>a.id===target.id);
+        if(idx>=0)newAudits[idx]={...target,evidence};
+        prepared++;
+      }catch(e){
+        _warn('[PBNZ prep]',target.id,e.message||e);
+        failed.push(`${target.physioAudited} ${fmtNZ(target.date)}`);
       }
-      if(i<list.length-1)await new Promise(r=>setTimeout(r,600));
     }
+    setStatus(`💾 Saving ${prepared} PDFs to Drive (single write)…`);
     setAudits(newAudits);
-    setStatus(`💾 Saving ${attached} PDFs to Drive…`);
     const saved=await saveGenImmediate("audits",newAudits);
     const finalMsg = !saved
-      ? `❌ Upload succeeded but Drive save failed — try again or check connection`
+      ? `❌ Drive save failed — try again or check connection`
       : failed.length===0
-        ? `✅ Attached all ${attached} PBNZ peer review PDFs (saved to Drive)`
-        : `⚠️ Attached ${attached} of ${list.length} — ${failed.length} failed: ${failed.slice(0,3).join(", ")}${failed.length>3?"…":""}`;
+        ? `✅ Attached all ${prepared} PBNZ peer review PDFs`
+        : `⚠️ Prepared ${prepared} of ${list.length} — ${failed.length} skipped`;
     setStatus(finalMsg);
     setRunning(false);
-    setTimeout(()=>setStatus(""),12000);
+    setTimeout(()=>setStatus(""),15000);
   }
 
   return(
