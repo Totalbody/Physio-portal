@@ -3835,6 +3835,57 @@ export default function App(){
     <div>
       <PH title="In-service training log" sub="Annual requirement — at least one per clinic per year · P&P §7.7.3"/>
       <Alert type="amber" title="P&P requirement">Section 7.7.3: Regular in-service education done at TBP. Topics suggested by staff, physios or selected by presenter. No client-identifying details in case studies.</Alert>
+      {/* ── Sync to KPI — force-push all inservice records to Drive + Vercel ── */}
+      {(()=>{
+        const[syncMsg,setSyncMsg]=useState("");
+        const[syncing,setSyncing]=useState(false);
+        const driveCount=((_portalStore?.data?.["inservices"])||[]).length;
+        async function forceSyncToKpi(){
+          setSyncing(true);setSyncMsg("");
+          const raw=((_portalStore?.data?.["inservices"])||[]);
+          const rawIds=new Set(raw.map(e=>String(e?.id)));
+          // Merge current state with anything already in Drive
+          const existingMap=new Map(raw.map(e=>[String(e?.id),e]));
+          inservices.forEach(s=>{
+            // Strip UI-only flags
+            const{_isPersonal,_uploading,...clean}=s;
+            existingMap.set(String(s.id),clean);
+          });
+          const merged=[...existingMap.values()];
+          _portalStore.data["inservices"]=merged;
+          let driveOk=false;
+          try{await _saveDriveState();driveOk=true;}catch(e){setSyncMsg("❌ Drive write failed: "+(e.message||e));}
+          // Also mirror to Vercel so KPI's readFullLog (which unions both) sees it
+          let vercelOk=false;
+          try{
+            const r=await fetch(PORTAL_API+"/store",{headers:{"X-Portal-Secret":PORTAL_SECRET}});
+            const vs=r.ok?await r.json():{};
+            const vercelExisting=Array.isArray(vs.data?.inservices)?vs.data.inservices:[];
+            const vercelMap=new Map(vercelExisting.map(e=>[String(e?.id),e]));
+            merged.forEach(e=>vercelMap.set(String(e.id),e));
+            const resp=await fetch(PORTAL_API+"/store",{method:"POST",headers:{"Content-Type":"application/json","X-Portal-Secret":PORTAL_SECRET},body:JSON.stringify({key:"inservices",value:[...vercelMap.values()]})});
+            vercelOk=resp.ok;
+          }catch(e){}
+          const broadcast=merged.filter(e=>e.type==="inservice"&&Array.isArray(e.loggedTo)&&e.loggedTo.length).length;
+          setSyncMsg(`✅ Synced ${merged.length} record${merged.length===1?'':'s'} (${broadcast} broadcasting to staff CPD) · Drive: ${driveOk?'✓':'✗'} · Vercel: ${vercelOk?'✓':'✗'}`);
+          setSyncing(false);
+        }
+        return(
+          <div style={{background:C.blueL,border:`1px solid ${C.blue}`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:200}}>
+                <div style={{fontSize:13,fontWeight:600,color:C.blue}}>🔄 Push inservices to KPI app</div>
+                <div style={{fontSize:11,color:C.muted,marginTop:2}}>
+                  {inservices.length} record{inservices.length===1?'':'s'} in portal · {driveCount} currently in Drive
+                  {driveCount<inservices.length&&<span style={{color:C.amber,fontWeight:600}}> · {inservices.length-driveCount} not yet pushed</span>}
+                </div>
+              </div>
+              <Btn onClick={forceSyncToKpi} style={{opacity:syncing?0.5:1}}>{syncing?"⏳ Syncing…":"Sync to KPI →"}</Btn>
+            </div>
+            {syncMsg&&<div style={{fontSize:12,marginTop:6,color:syncMsg.startsWith("✅")?C.green:C.red}}>{syncMsg}</div>}
+          </div>
+        );
+      })()}
       <TabBar items={[["log","Session log"],["status",thisYear+" Status"],["resources","Resources & files"]]} current={isrvTab} setter={setIsrvTab}/>
       {isrvTab==="status"&&(
         <div>
