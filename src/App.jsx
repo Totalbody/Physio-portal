@@ -3356,7 +3356,21 @@ export default function App(){
       const missingSeeds = seedRecords.filter(s => !rawIds.has(String(s.id)));
       if (missingSeeds.length > 0) {
         _log('[Portal] Pushing', missingSeeds.length, 'seed inservice(s) to Drive so KPI can see them');
-        saveGen("inservices", combined);
+        _portalStore.data["inservices"] = combined;
+        // Immediate write instead of debounced — ensures KPI sees seeds before
+        // the user switches tabs or closes the portal.
+        _saveDriveState().catch(e => _warn('[Portal seed push]', e.message||e));
+        // Also mirror to Vercel — KPI's readFullLog checks both sources.
+        try {
+          fetch(PORTAL_API+"/store",{headers:{"X-Portal-Secret":PORTAL_SECRET}})
+            .then(r=>r.ok?r.json():{}).then(vs=>{
+              const vercelExisting = Array.isArray(vs.data?.inservices) ? vs.data.inservices : [];
+              const vercelIds = new Set(vercelExisting.map(e=>String(e?.id)));
+              const merged = [...combined, ...vercelExisting.filter(e=>!vercelIds.has(String(e?.id))||!combined.find(c=>String(c.id)===String(e.id)))];
+              const finalArr = [...new Map(merged.map(e=>[String(e.id),e])).values()];
+              fetch(PORTAL_API+"/store",{method:"POST",headers:{"Content-Type":"application/json","X-Portal-Secret":PORTAL_SECRET},body:JSON.stringify({key:"inservices",value:finalArr})}).catch(()=>{});
+            }).catch(()=>{});
+        } catch {}
       }
       const cleaned=combined
         .map(e=>{
