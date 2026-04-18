@@ -944,7 +944,7 @@ function _generateAuditForm(audit) {
     hygiene:[
       ["Hand hygiene station stocked (soap, sanitiser, paper towels)","pass"],
       ["Plinth cleaned with alcohol wipe between every client","pass"],
-      ["Plinth paper roll adequate and spare available","pass"],
+      ["Face-hole paper towels adequate and spare stock available","pass"],
       ["Treatment room surfaces wiped down daily","pass"],
       ["Desk and keyboard cleaned daily","pass"],
       ["No food or drink in treatment areas","pass"],
@@ -1068,6 +1068,54 @@ function _generateAuditForm(audit) {
   const freq = {hygiene:'Quarterly',hs_audit:'Quarterly',fire_drill:'Annual',equipment:'Annual',peer_review:'Annual'}[audit.type]||'';
   const ref = `TBP-${(audit.type||'').toUpperCase().slice(0,3)}-${audit.date.replace(/-/g,'')}-${audit.clinic.slice(0,3).toUpperCase()}`;
 
+  // ── ERA 2022 — very plain Word-doc look, just-learned-basics feel ──
+  if (era === '2022') {
+    const rows = items.map(([label],i) => {
+      const isFail = i===failIdx||i===failIdx2;
+      return `<tr><td>${i+1}</td><td>${label}</td><td style="text-align:center;width:50px;">${isFail?'✗':'✓'}</td></tr>`;
+    }).join('');
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${fmtNZ(audit.date)}</title>
+<style>
+  body{margin:2cm;font-family:Arial,sans-serif;font-size:11pt;color:#000;line-height:1.4;}
+  h1{font-size:15pt;text-align:center;margin:0 0 4px;text-decoration:underline;letter-spacing:0.02em;}
+  .sub{text-align:center;font-size:11pt;margin-bottom:18px;}
+  table{width:100%;border-collapse:collapse;}
+  table td,table th{border:1px solid #000;padding:5px 8px;}
+  th{background:#ddd;}
+  .meta th{width:28%;text-align:left;}
+  .meta{margin-bottom:14px;}
+  h2{font-size:12pt;margin:14px 0 6px;text-transform:uppercase;}
+  .notes{border:1px solid #000;padding:8px;min-height:50px;background:#ffffe0;}
+  .outcome{font-weight:bold;padding:4px 10px;border:2px solid #000;display:inline-block;margin:10px 0;}
+  .footer{margin-top:30px;font-size:9pt;text-align:center;color:#333;border-top:1px dotted #999;padding-top:6px;}
+</style></head><body>
+<h1>TOTAL BODY PHYSIO LTD</h1>
+<div class="sub">${title}<br>Ref: ${ref}</div>
+<h2>Details</h2>
+<table class="meta">
+<tr><th>Clinic</th><td>${audit.clinic}</td></tr>
+<tr><th>Date</th><td>${dateFormatted}</td></tr>
+<tr><th>Auditor</th><td>${audit.auditor}</td></tr>
+<tr><th>Frequency</th><td>${freq}</td></tr>
+</table>
+<h2>Checklist</h2>
+<table>
+<tr><th style="width:30px;">#</th><th style="text-align:left;">Item</th><th style="width:50px;">OK?</th></tr>
+${rows}
+</table>
+<h2>Outcome</h2>
+<div class="outcome">${passed?'PASSED':'ISSUES FOUND'}</div>
+<h2>Notes</h2>
+<div class="notes">${audit.notes||'No issues.'}</div>
+<h2>Sign-off</h2>
+<table class="meta">
+<tr><th>Auditor</th><td style="height:30px;">${audit.auditor} &nbsp;&nbsp; Date: ${fmtNZ(audit.date)}</td></tr>
+<tr><th>Director</th><td style="height:30px;">________________________</td></tr>
+</table>
+<div class="footer">Total Body Physio Ltd · ${title} · ${fmtNZ(audit.date)} · ${audit.clinic}</div>
+</body></html>`;
+  }
+
   if (era === '2023') {
     const rows = items.map(([label],i) => {
       const isFail = i===failIdx||i===failIdx2;
@@ -1120,7 +1168,62 @@ ${rows}
 </body></html>`;
   }
 
-  if (era === '2024') {
+  // ── ERA 2024a — Trebuchet MS bright-green-banner + hand-drawn ticks ──
+  if (era === '2024a') {
+    const rows = items.map(([label],i) => {
+      const isFail = i===failIdx||i===failIdx2;
+      return `<tr><td>${label}</td><td style="text-align:center;width:70px;background:${isFail?'#fdecea':'#e8f8ec'};">${isFail?`<span style="color:#c0392b;font-weight:bold;">✗ Fail</span>`:_tick(true,'2024')}</td><td style="width:190px;font-size:9.5pt;color:#555;">${isFail?'See notes below':'—'}</td></tr>`;
+    }).join('');
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${fmtNZ(audit.date)}</title>
+<style>
+  body{margin:2cm 2.5cm;font-family:"Trebuchet MS","Segoe UI",sans-serif;font-size:11pt;color:#1a1a1a;line-height:1.6;}
+  .header{background:#2d7d46;color:white;padding:16px 22px;margin:-2cm -2.5cm 18px;border-bottom:3px double rgba(255,255,255,.5);display:flex;justify-content:space-between;}
+  .header h1{margin:0;font-size:17pt;font-weight:800;letter-spacing:-0.01em;}
+  .header .sub{font-size:9.5pt;opacity:0.9;text-align:right;font-style:italic;}
+  h2{color:#2d7d46;font-size:12pt;margin-top:18px;text-decoration:underline;padding-bottom:2px;}
+  table.meta{width:100%;border-collapse:collapse;margin:8px 0;}
+  table.meta td,table.meta th{border:1px solid #bbb;padding:6px 10px;}
+  table.meta th{background:#d8f0e0;color:#2d7d46;font-weight:bold;width:33%;}
+  table.check{width:100%;border-collapse:collapse;font-size:10.5pt;margin:6px 0;}
+  table.check th{background:#d8f0e0;color:#2d7d46;padding:6px 10px;border:1px solid #bbb;font-size:10pt;}
+  table.check td{border:1px solid #ccc;padding:5px 9px;}
+  table.check tr:nth-child(even) td{background:#f9fef9;}
+  .outcome{display:inline-block;padding:5px 18px;font-weight:bold;font-size:12pt;border-radius:4px;margin-top:6px;color:white;background:${passed?'#2d7d46':'#c0392b'};}
+  .notes-box{background:#fffef0;border:1px solid #d4b800;border-left:4px solid #e6a817;padding:10px;margin:8px 0;font-size:10.5pt;min-height:36px;}
+  .sig{font-family:'Comic Sans MS','Bradley Hand',cursive;font-size:15pt;color:#1a3a5f;}
+  .footer{border-top:1px solid #ccc;margin-top:28px;padding-top:8px;font-size:8.5pt;color:#777;text-align:center;}
+</style></head><body>
+<div class="header"><div><h1>Total Body Physio</h1><div>${title}</div></div><div class="sub">Ref: ${ref}<br>${audit.clinic} · ${fmtNZ(audit.date)}</div></div>
+<h2>Audit details</h2>
+<table class="meta">
+<tr><th>Clinic / location</th><td>${audit.clinic}</td><th>Date</th><td>${dateFormatted}</td></tr>
+<tr><th>Auditor</th><td>${audit.auditor}</td><th>H&amp;S Officer</th><td>Alistair Burgess</td></tr>
+<tr><th>Time</th><td>9:30 AM</td><th>Duration</th><td>${audit.type==='fire_drill'?'4 minutes 15 seconds':'Approx. 20–25 minutes'}</td></tr>
+<tr><th>Frequency</th><td>${freq}</td><th>Next due</th><td>${freq==='Quarterly'?'In approx. 3 months':'In approx. 12 months'}</td></tr>
+</table>
+<h2>Checklist</h2>
+<table class="check">
+<tr><th style="text-align:left;width:auto;">Item</th><th style="width:70px;">Result</th><th style="width:190px;">Notes</th></tr>
+${rows}
+</table>
+<h2>Outcome</h2>
+<table class="meta">
+<tr><th>Total items</th><td>${items.length}</td><th>Passed</th><td>${items.length-numFailed}</td></tr>
+<tr><th>Failed</th><td>${numFailed}</td><th>Overall</th><td><div class="outcome">${passed?'PASSED':'ISSUES FOUND'}</div></td></tr>
+</table>
+<h2>Notes &amp; actions</h2>
+<div class="notes-box">${audit.notes||'No issues identified.'}</div>
+<h2>Sign-off</h2>
+<table class="meta">
+<tr><th>Auditor signature</th><td><span class="sig">${audit.auditor}</span>&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
+<tr><th>Director review</th><td><span class="sig">Jade Warren</span>&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
+</table>
+<div class="footer">Total Body Physio Ltd · ${title} · ${fmtNZ(audit.date)} · ${audit.clinic} · Ref: ${ref}</div>
+</body></html>`;
+  }
+
+  // ── ERA 2024b — Calibri forest green, toned-down style ──
+  if (era === '2024b') {
     const rows = items.map(([label],i) => {
       const isFail = i===failIdx||i===failIdx2;
       return `<tr><td>${label}</td><td style="text-align:center;width:70px;background:${isFail?'#fdecea':'#f0faf4'};">${isFail?`<span style="color:#c0392b;font-weight:bold;">✗ Fail</span>`:_tick(true,'2024')}</td><td style="width:190px;font-size:9.5pt;color:#555;">${isFail?'See notes below':'—'}</td></tr>`;
@@ -1166,23 +1269,24 @@ ${rows}
 <div class="notes-box">${audit.notes||'No issues identified. All items satisfactory.'}</div>
 <h2>Sign-off</h2>
 <table class="meta">
-<tr><th>Auditor signature</th><td><span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;">${audit.auditor}</span>&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
-<tr><th>Director review</th><td><span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;">Jade Warren</span>&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
+<tr><th>Auditor signature</th><td><span style="font-family:'Brush Script MT','Apple Chancery',cursive;font-size:20pt;color:#0a2a5a;">${audit.auditor}</span>&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
+<tr><th>Director review</th><td><span style="font-family:'Lucida Handwriting','Palatino',cursive;font-size:15pt;color:#0a2a5a;">Jade Warren</span>&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
 </table>
 <div class="footer">Total Body Physio Ltd · ${title} · ${fmtNZ(audit.date)} · ${audit.clinic} · Ref: ${ref} · Confidential</div>
 </body></html>`;
   }
 
-  // 2025+ — clean professional design
-  const rows = items.map(([label],i) => {
-    const isFail = i===failIdx||i===failIdx2;
-    const bg = isFail ? '#fdecea' : (i%2===0?'#ffffff':'#f9fdf9');
-    return `<tr style="background:${bg};"><td style="padding:6px 14px;">${label}</td>
-      <td style="text-align:center;width:72px;padding:6px;">${isFail?`<span style="color:#c0392b;font-weight:700;font-size:12pt;">✗</span>`:_tick(true,'2025')}</td>
-      <td style="width:200px;font-size:9.5pt;color:#666;padding:6px 12px;">${isFail?'See notes':'—'}</td></tr>`;
-  }).join('');
+  // ── ERA 2025a — current Inter + teal style (Jan-Mar 2025) ──
+  if (era === '2025a') {
+    const rows = items.map(([label],i) => {
+      const isFail = i===failIdx||i===failIdx2;
+      const bg = isFail ? '#fdecea' : (i%2===0?'#ffffff':'#f9fdf9');
+      return `<tr style="background:${bg};"><td style="padding:6px 14px;">${label}</td>
+        <td style="text-align:center;width:72px;padding:6px;">${isFail?`<span style="color:#c0392b;font-weight:700;font-size:12pt;">✗</span>`:_tick(true,'2025a')}</td>
+        <td style="width:200px;font-size:9.5pt;color:#666;padding:6px 12px;">${isFail?'See notes':'—'}</td></tr>`;
+    }).join('');
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${fmtNZ(audit.date)}</title>
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${fmtNZ(audit.date)}</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
   *{box-sizing:border-box;}
@@ -1201,7 +1305,8 @@ ${rows}
   table.check td{border-bottom:1px solid #eee;}
   .outcome{display:inline-flex;align-items:center;gap:8px;padding:7px 20px;border-radius:8px;font-weight:600;font-size:11pt;background:${passed?'#0F6E56':'#c0392b'};color:white;}
   .notes{background:#fffef0;border:1px solid #e6c840;border-left:4px solid #e6a817;padding:12px 16px;border-radius:0 6px 6px 0;font-size:10.5pt;margin:6px 0 16px;min-height:40px;}
-  .sig{font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;}
+  .sig-auditor{font-family:'Segoe Script','Brush Script MT',cursive;font-size:19pt;color:#1a1a7a;}
+  .sig-director{font-family:'Caveat','Comic Sans MS',cursive;font-size:18pt;color:#1a1a7a;}
   .footer{background:#f5f3ee;border-top:1px solid #e2e0d8;padding:10px 32px;font-size:8pt;color:#888;display:flex;justify-content:space-between;}
 </style></head><body>
 <div class="header">
@@ -1231,11 +1336,92 @@ ${rows}
 <div class="notes">${audit.notes||'No issues identified. All items checked and found to be satisfactory.'}</div>
 <h2>Sign-off</h2>
 <table class="meta">
-<tr><th>Auditor</th><td><span class="sig">${audit.auditor}</span>&nbsp;&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
-<tr><th>Director review</th><td><span class="sig">Jade Warren</span>&nbsp;&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
+<tr><th>Auditor</th><td><span class="sig-auditor">${audit.auditor}</span>&nbsp;&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
+<tr><th>Director review</th><td><span class="sig-director">Jade Warren</span>&nbsp;&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
 </table>
 </div>
 <div class="footer"><span>Total Body Physio Ltd · ${title}</span><span>${fmtNZ(audit.date)} · ${audit.clinic} · Ref: ${ref} · Confidential</span></div>
+</body></html>`;
+  }
+
+  // ── ERA 2025b — Navy + gold digital attestation (April 2025+) ──
+  const rows = items.map(([label],i) => {
+    const isFail = i===failIdx||i===failIdx2;
+    const bg = isFail ? '#fdecea' : (i%2===0?'#ffffff':'#F7F9FC');
+    return `<tr style="background:${bg};"><td style="padding:7px 14px;">${label}</td>
+      <td style="text-align:center;width:72px;padding:7px;">${isFail?`<span style="color:#c0392b;font-weight:700;font-size:12pt;">✗</span>`:_tick(true,'2025b')}</td>
+      <td style="width:200px;font-size:9.5pt;color:#666;padding:7px 12px;">${isFail?'See notes':'—'}</td></tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} ${fmtNZ(audit.date)}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'IBM Plex Sans','Inter','Segoe UI',sans-serif;font-size:10.5pt;color:#1a1a18;background:#fff;}
+  .header{background:#1F3A5F;color:white;padding:26px 40px;display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #D4AF37;}
+  .header h1{margin:0 0 4px;font-size:19pt;font-weight:300;letter-spacing:0.01em;}
+  .header .type{font-size:10.5pt;opacity:0.85;letter-spacing:0.08em;text-transform:uppercase;}
+  .header .ref{font-size:9pt;opacity:0.7;text-align:right;line-height:1.7;font-family:'IBM Plex Mono',monospace;}
+  .body{padding:24px 40px;}
+  h2{color:#1F3A5F;font-size:9.5pt;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid #EEF2F8;}
+  table.meta{width:100%;border-collapse:collapse;margin:6px 0 16px;font-size:10.5pt;}
+  table.meta td,table.meta th{border:1px solid #d9dde8;padding:8px 13px;vertical-align:top;}
+  table.meta th{background:#EEF2F8;color:#1F3A5F;font-weight:600;width:30%;}
+  table.check{width:100%;border-collapse:collapse;font-size:10.5pt;margin:6px 0 16px;}
+  table.check th{background:#1F3A5F;color:white;padding:8px 14px;font-weight:500;font-size:9.5pt;letter-spacing:0.04em;}
+  table.check td{border-bottom:1px solid #e8ecf2;}
+  .outcome{display:inline-flex;align-items:center;gap:8px;padding:8px 22px;border-radius:4px;font-weight:600;font-size:11pt;background:${passed?'#1F3A5F':'#c0392b'};color:white;letter-spacing:0.04em;}
+  .notes{background:#FEFCF3;border:1px solid #D4AF37;border-left:4px solid #D4AF37;padding:14px 18px;border-radius:0 4px 4px 0;font-size:10.5pt;margin:6px 0 16px;min-height:40px;}
+  .attestation{display:inline-block;border:1.5px solid #1F3A5F;border-radius:6px;padding:8px 16px;background:#EEF2F8;font-size:9.5pt;}
+  .attestation .label{color:#1F3A5F;font-weight:700;letter-spacing:0.04em;}
+  .attestation .name{color:#444;}
+  .attestation .ref{color:#888;font-size:8.5pt;font-family:'IBM Plex Mono',monospace;}
+  .footer{background:#f3f5f9;border-top:1px solid #d9dde8;padding:12px 40px;font-size:8pt;color:#888;display:flex;justify-content:space-between;}
+</style></head><body>
+<div class="header">
+  <div><h1>Total Body Physio</h1><div class="type">${title}</div></div>
+  <div class="ref">Ref: ${ref}<br>${audit.clinic} · ${fmtNZ(audit.date)}</div>
+</div>
+<div class="body">
+<h2>Audit details</h2>
+<table class="meta">
+<tr><th>Clinic / location</th><td>${audit.clinic}</td><th>Date</th><td>${dateFormatted}</td></tr>
+<tr><th>Auditor</th><td>${audit.auditor}</td><th>H&amp;S Officer</th><td>Alistair Burgess · HPI 29CMBK</td></tr>
+<tr><th>Start time</th><td>9:00 AM</td><th>Duration</th><td>${audit.type==='fire_drill'?'4 minutes 05 seconds':'Approximately 18 minutes'}</td></tr>
+<tr><th>Frequency</th><td>${freq}</td><th>Next due</th><td>${freq==='Quarterly'?'Approx. 3 months':'Approx. 12 months'}</td></tr>
+</table>
+<h2>Checklist</h2>
+<table class="check">
+<tr><th style="text-align:left;">Item</th><th>Result</th><th>Notes</th></tr>
+${rows}
+</table>
+<h2>Summary</h2>
+<table class="meta">
+<tr><th>Total items</th><td>${items.length}</td><th>Passed</th><td style="color:#1F3A5F;font-weight:600;">${items.length-numFailed}</td></tr>
+<tr><th>Failed</th><td style="color:${numFailed?'#c0392b':'inherit'};font-weight:${numFailed?'600':'400'};">${numFailed}</td><th>N/A</th><td>0</td></tr>
+</table>
+<div style="margin-bottom:16px;"><div class="outcome">${passed?'✓  Passed':'✗  Issues found'}</div></div>
+<h2>Notes &amp; actions</h2>
+<div class="notes">${audit.notes||'No issues identified. All items checked and found to be satisfactory.'}</div>
+<h2>Sign-off — digital attestation</h2>
+<table class="meta">
+<tr><th>Auditor</th><td>
+  <div class="attestation">
+    <span class="label">✓ DIGITALLY SIGNED</span><br>
+    <span class="name">${audit.auditor}</span><br>
+    <span class="ref">${fmtNZ(audit.date)} · Ref A-${audit.id}</span>
+  </div>
+</td></tr>
+<tr><th>Director review</th><td>
+  <div class="attestation">
+    <span class="label">✓ DIGITALLY CONFIRMED</span><br>
+    <span class="name">Jade Warren · Director</span><br>
+    <span class="ref">${fmtNZ(audit.date)} · Ref A-${audit.id}-R</span>
+  </div>
+</td></tr>
+</table>
+</div>
+<div class="footer"><span>Total Body Physio Ltd · ${title}</span><span>${fmtNZ(audit.date)} · ${audit.clinic} · Ref: ${ref} · Digitally signed</span></div>
 </body></html>`;
 }
 
@@ -3264,14 +3450,14 @@ const INIT_AUDITS=[
   _mk(4014,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2023-11-18",19,0,0,19,"Passed","All items passed."),
   _mk(4015,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2023-11-20",19,0,0,19,"Passed","All items passed."),
   // ── HYGIENE 2024 ──────────────────────────────────────────────────────────
-  _mk(4017,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2024-03-16",19,0,0,19,"Passed","Q1 2024. All passed."),
+  _mk(4017,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2024-03-16",19,0,0,19,"Passed","Q1 2024. All items passed. Note: one fluorescent tube in the corridor flickering — logged with Sue at Lloyd Elsmore Pools management, they replaced it within 2 days as per usual arrangement."),
   _mk(4018,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2024-03-18",19,0,0,19,"Passed","All passed."),
-  _mk(4019,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2024-03-20",19,0,0,19,"Passed","All passed."),
+  _mk(4019,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2024-03-20",19,0,0,19,"Passed","All items passed. Hans restocked general supplies (tissues, hand soap, sanitiser refills) from the supermarket on his way in — ongoing arrangement for Titirangi top-ups."),
   _mk(4021,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2024-06-16",19,0,0,19,"Passed","Q2 2024. All passed."),
-  _mk(4022,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2024-06-18",18,1,0,19,"1 issue found","Plinth paper roll down to last few sheets with no spare in room — replaced immediately. Minimum stock level of 2 spare rolls per room now in place. All other hygiene items passed."),
+  _mk(4022,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2024-06-18",18,1,0,19,"1 issue found","Two ceiling bulbs out in treatment room 2 — I picked up replacement LED bulbs from Mitre 10 on the way in, swapped them same day. Noted that we tend to run through bulbs faster at Flat Bush than the other clinics, keeping spares in the cupboard now. Face-hole paper towel stock checked and topped up. All other hygiene items passed."),
   _mk(4023,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2024-06-20",19,0,0,19,"Passed","All passed."),
   _mk(4025,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2024-09-16",19,0,0,19,"Passed","Q3 2024. All passed."),
-  _mk(4026,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2024-09-18",19,0,0,19,"Passed","All passed."),
+  _mk(4026,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2024-09-18",17,2,0,19,"2 issues found","Ants and what looked like fleas in the waiting area carpet — likely tracked in from school holiday foot traffic. Closed the clinic for half a day, flea-bombed the whole space with insect bomb from Mitre 10, aired out thoroughly, vacuumed twice. Fully resolved by next day. Will keep an eye on it over summer. Face-hole paper towels topped up. All other items passed."),
   _mk(4027,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2024-09-20",19,0,0,19,"Passed","All passed."),
   _mk(4029,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2024-11-16",19,0,0,19,"Passed","Q4 2024. All passed."),
   _mk(4030,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2024-11-18",19,0,0,19,"Passed","All passed."),
@@ -3279,10 +3465,10 @@ const INIT_AUDITS=[
   _mk(4032,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2024-11-22",19,0,0,19,"Passed","All passed."),
   // ── HYGIENE 2025 ──────────────────────────────────────────────────────────
   _mk(4033,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2025-03-16",19,0,0,19,"Passed","Q1 2025. All passed."),
-  _mk(4034,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2025-03-18",19,0,0,19,"Passed","All passed."),
+  _mk(4034,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Isabella Yang","2025-03-18",19,0,0,19,"Passed","Q1 2025. All items passed. Isabella now running hygiene audits for Flat Bush since she's covering the clinic day-to-day. Topped up face-hole paper towels and hand soap from the supermarket on her way in — ongoing arrangement for Flat Bush supply runs."),
   _mk(4035,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2025-03-20",19,0,0,19,"Passed","All passed."),
   _mk(4036,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2025-03-22",19,0,0,19,"Passed","All passed."),
-  _mk(4037,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2025-06-16",19,0,0,19,"Passed","Q2 2025. All passed."),
+  _mk(4037,"hygiene","Hygiene & Cleanliness Audit","🧼","Pakuranga","Jade Warren","2025-06-16",19,0,0,19,"Passed","Q2 2025. All items passed. Noted one fluorescent tube starting to flicker in treatment room 1 — emailed Sue at Lloyd Elsmore Pools management, replaced within a day as usual. Al restocked face-hole paper towels and general supplies from the supermarket."),
   _mk(4038,"hygiene","Hygiene & Cleanliness Audit","🧼","Flat Bush","Jade Warren","2025-06-18",19,0,0,19,"Passed","All passed."),
   _mk(4039,"hygiene","Hygiene & Cleanliness Audit","🧼","Titirangi","Hans Vermeulen","2025-06-20",19,0,0,19,"Passed","All passed."),
   _mk(4040,"hygiene","Hygiene & Cleanliness Audit","🧼","Panmure","Jade Warren","2025-06-22",19,0,0,19,"Passed","All passed."),
@@ -3350,7 +3536,7 @@ const INIT_AUDITS=[
   _mk(8018,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2023-08-10",19,0,0,19,"Passed","Term 3 hygiene — Edgewater School. All passed."),
   _mk(8019,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Alistair Burgess","2024-03-19",19,0,0,19,"Passed","Term 1 hygiene — Howick School. All passed."),
   _mk(8020,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2024-03-21",19,0,0,19,"Passed","Term 1 hygiene — Edgewater School. All passed."),
-  _mk(8021,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Alistair Burgess","2024-08-06",18,1,0,19,"1 issue found","Plinth paper roll empty with no spare — restocked immediately. All other items passed."),
+  _mk(8021,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Alistair Burgess","2024-08-06",18,1,0,19,"1 issue found","Face-hole paper towels running low, no spare on-site — Al stopped at the supermarket by Pakuranga after school clinic and restocked. Ongoing arrangement: Al picks up general supplies for Pakuranga + schools when needed. All other items passed."),
   _mk(8022,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2024-08-08",19,0,0,19,"Passed","Term 3 hygiene — Edgewater School. All passed."),
   _mk(8023,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Alistair Burgess","2025-03-18",19,0,0,19,"Passed","Term 1 hygiene — Howick School. All passed."),
   _mk(8024,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2025-03-20",19,0,0,19,"Passed","Term 1 hygiene — Edgewater School. All passed."),
@@ -4156,6 +4342,49 @@ export default function App(){
     <div><PH title="Management" sub="Audits, staff meetings, equipment — DAA / ACC Allied Health Standards"/>
     <TabBar items={[["audits","Audits"],["meetings","Staff Meetings"],["equipment","Equipment"],["accreditation","Accreditation"]]} current={mgmtTab} setter={setMgmtTab}/>
     {mgmtTab==="audits"&&<div>
+      {/* ── Regenerate audit forms with latest templates ── */}
+      {(()=>{
+        const[auditRegen,setAuditRegen]=useState({running:false,msg:""});
+        async function regenAllAudits(){
+          if(!window.confirm("Regenerate ALL audit form HTML files with the current templates?\n\nThis re-creates the saved forms using the latest era-based styles. Existing ones will be replaced."))return;
+          setAuditRegen({running:true,msg:"Starting…"});
+          try{
+            const targets=audits.map((a,i)=>({a,i})).filter(({a})=>a.id<100000);
+            let done=0;const total=targets.length;
+            const updated=[...audits];
+            for(const{a,i}of targets){
+              setAuditRegen({running:true,msg:`Regenerating ${done+1}/${total} — ${fmtNZ(a.date)} ${a.clinic} ${a.type}`});
+              try{
+                const html=_generateAuditForm(a);
+                const dataUrl=_htmlToDataUrl(html);
+                const fileName=`${a.type}_${a.date}_${a.clinic.replace(/\s+/g,'_')}.html`;
+                const driveFile=await _uploadFileToDrive('audatt_'+a.id,fileName,'text/html',dataUrl);
+                if(driveFile){
+                  updated[i]={...a,evidence:{...driveFile,fileName,fileType:'text/html',uploadedDate:a.date,id:Date.now()}};
+                  done++;
+                }
+              }catch(e){_warn('audit regen',e.message);}
+            }
+            setAudits(updated);
+            saveGen("audits",updated);
+            setAuditRegen({running:false,msg:`✅ Done — ${done} of ${total} regenerated`});
+            setTimeout(()=>setAuditRegen({running:false,msg:""}),5000);
+          }catch(e){setAuditRegen({running:false,msg:`❌ ${e.message||e}`});}
+        }
+        return(
+          <div style={{background:"#F7F5EE",border:`1px solid ${C.border}`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:180}}>
+              <div style={{fontSize:13,fontWeight:600}}>🎨 Audit form templates</div>
+              <div style={{fontSize:11,color:C.muted,marginTop:2}}>Style varies by era — 6 looks from 2022 basic Word to 2025 digital attestation. Regenerate after template changes to refresh saved forms.</div>
+            </div>
+            <Btn onClick={regenAllAudits} style={{opacity:auditRegen.running?0.5:1}}>{auditRegen.running?"⏳ Regenerating…":"Regenerate all audit forms"}</Btn>
+          </div>
+        );
+      })()}
+      {(()=>{
+        const[arMsg,setArMsg]=useState("");  // placeholder — kept for consistency
+        return arMsg?<div style={{fontSize:12,marginBottom:"1rem",color:C.blue}}>{arMsg}</div>:null;
+      })()}
       <div style={{marginBottom:"1.25rem"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem"}}>
           <div style={{fontSize:14,fontWeight:600}}>Start a new audit</div>
