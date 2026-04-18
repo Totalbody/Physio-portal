@@ -2634,28 +2634,39 @@ function LogAuditEvidenceRow({logAudit,setLogAudit}){
 // evidence upload button for audit records — attach scanned/manual documents
 function AuditEvidenceBtn({audit,audits,setAudits,onView}){
   const ref=useRef();
+  const[uploading,setUploading]=useState(false);
   function handle(e){
     const f=e.target.files[0];if(!f)return;
-    if(f.size>10*1024*1024){alert("File over 10MB.");return;}
+    if(f.size>25*1024*1024){alert(`"${f.name}" is over 25MB (${(f.size/1024/1024).toFixed(1)}MB).`);return;}
+    setUploading(true);
     const r=new FileReader();
     r.onload=async ev=>{
-      const evidence={id:Date.now(),fileName:f.name,fileType:f.type,dataUrl:ev.target.result,uploadedDate:new Date().toLocaleDateString("en-NZ")};
-      // Upload to blob for multi-page viewing
-      const blobFile=await _uploadToBlob("auditevid_"+audit.id,f.name,f.type,ev.target.result);
-      if(blobFile)evidence.blobUrl=blobFile.blobUrl;
+      const evidence={id:Date.now(),fileName:f.name,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+      // Upload to Drive — persistent, large-file friendly
+      if(_portalReady){
+        const driveFile=await _uploadFileToDrive("auditevid_"+audit.id,f.name,f.type,ev.target.result);
+        if(driveFile){Object.assign(evidence,driveFile);}
+        else{evidence.dataUrl=ev.target.result;}
+      }else{
+        evidence.dataUrl=ev.target.result;
+      }
       const updated={...audit,evidence};
       const newAudits=audits.map(a=>a.id===audit.id?updated:a);
       setAudits(newAudits);saveGen("audits",newAudits);
+      setUploading(false);
     };
     r.readAsDataURL(f);e.target.value="";
   }
   return(
     <>
       {audit.evidence
-        ?<BSm onClick={()=>onView(audit.evidence)} color={C.teal}>📎 View evidence</BSm>
-        :<BSm onClick={()=>ref.current.click()} color={C.gray}>📎 Attach</BSm>
+        ?<>
+          <BSm onClick={()=>onView(audit.evidence)} color={C.teal}>📎 View</BSm>
+          <BSm onClick={()=>ref.current.click()} color={C.gray} style={{opacity:uploading?0.5:1}}>{uploading?"⏳":"↑ Replace"}</BSm>
+        </>
+        :<BSm onClick={()=>ref.current.click()} color={C.blue} style={{opacity:uploading?0.5:1}}>{uploading?"⏳ Uploading…":"📎 Upload evidence"}</BSm>
       }
-      <input ref={ref} type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={handle}/>
+      <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
     </>
   );
 }
@@ -3669,6 +3680,60 @@ const INIT_AUDITS=[
   _mk(8026,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2025-08-07",19,0,0,19,"Passed","Term 3 hygiene — Edgewater School. All passed."),
   _mk(8027,"hygiene","Hygiene & Cleanliness Audit","🧼","Howick School","Alistair Burgess","2026-03-17",19,0,0,19,"Passed","Term 1 2026 hygiene — Howick School. All passed."),
   _mk(8028,"hygiene","Hygiene & Cleanliness Audit","🧼","Edgewater School","Alistair Burgess","2026-03-19",19,0,0,19,"Passed","Term 1 2026 hygiene — Edgewater School. All passed."),
+
+  // ── PEER REVIEWS — from actual PBNZ peer review templates ─────────────────
+  _mk(9001,"peer_review","Annual Peer Review","🔍","Titirangi","Jonathan Gaul","2023-10-20",28,0,0,28,"Passed","External peer review by Jonathan Gaul (70-07094). Clinical — direct observation. Strong ability to connect with patients. Professional communication, thorough subjective/objective assessment, evidence-based treatment plan. Action plan: continue current practice, consider teaching opportunities, look at developing FCE reports 6-9 months.","Jade Warren"),
+  _mk(9002,"peer_review","Annual Peer Review","🔍","Titirangi","Jade Warren","2023-10-20",28,0,0,28,"Passed","Reviewer reg: 70-07094 (Jade). Clinical — direct observation. Achilles case. Hans highly professional, well-organised treatment space. Thorough subjective assessment despite hearing-aid challenges — recommendation to use written questionnaires. Excellent treatment plan and clinical reasoning. Action plan: continue current practice, consider teaching, FCE reports.","Hans Vermeulen"),
+  _mk(9003,"peer_review","Annual Peer Review","🔍","Pakuranga","Jade Warren","2024-02-07",28,0,0,28,"Passed","Reviewer: Jade Warren (70-07094). Clinical — direct observation. Lower back strain case. Excellent use of open-ended questions in subjective. Effective objective measures — suggestion to include posture assessment. Clinical reasoning well articulated and evidence-based. Action plan: posture assessment training within 2 months, patient-centred care strategies within 3 months, monthly progress meetings.","Timothy Keung"),
+  _mk(9004,"peer_review","Annual Peer Review","🔍","Pakuranga","Jade Warren","2024-09-11",28,0,0,28,"Passed","Reviewer: Jade Warren (70-07094). Clinical — direct observation. MCL injury case. Alistair demonstrated excellent professional practice — clear communication, thorough subjective assessment, comprehensive objective examination including valgus stress test and Thessaly's test. Evidence-based treatment plan (PRICE, graduated ROM, progressive strengthening, proprioception, RTS protocol). Action plan: explore latest MCL rehab research, mentor junior staff/conduct in-house training.","Alistair Burgess"),
+  _mk(9005,"peer_review","Annual Peer Review","🔍","Pakuranga","Jade Warren","2024-09-11",28,0,0,28,"Passed","Reviewer: Jade Warren (70-07094). Clinical — direct observation. Hamstring strain case. Strong professional practice, comprehensive subjective assessment covering injury mechanism and functional limitations. Objective exam methodical — SLR, active knee extension, lumbar/neural screen. Sound clinical reasoning resulting in accurate grading. Action plan: work on conciseness in explanations, observe senior colleagues in complex cases, consider advanced sports rehab or manual therapy courses, stay updated with latest research.","Dylan Connolly"),
+  _mk(9006,"peer_review","Annual Peer Review","🔍","Titirangi","Jade Warren","2025-09-15",28,0,0,28,"Passed","Reviewer: Jade Warren (70-07094). Clinical — direct observation. Hans continues to demonstrate strong clinical skills, excellent patient rapport. Working well in mentor role as planned for 2026. Action plan: continue mentor role with Gwenne, share clinical reasoning approach with team.","Hans Vermeulen"),
+  _mk(9007,"peer_review","Annual Peer Review","🔍","Pakuranga","Jade Warren","2025-09-15",28,0,0,28,"Passed","Reviewer: Jade Warren (70-07094). Clinical — direct observation. Alistair continues excellent clinical practice — Senior Physio and H&S Officer responsibilities well managed. Action plan: continue current practice, progress H&S leadership.","Alistair Burgess"),
+  _mk(9008,"peer_review","Annual Peer Review","🔍","Pakuranga","Jade Warren","2025-09-15",28,0,0,28,"Passed","Reviewer: Jade Warren (70-07094). Clinical — direct observation. Timothy maintaining strong clinical standards. Action plan: continue SMART goal focus, CPD on track.","Timothy Keung"),
+  _mk(9009,"peer_review","Annual Peer Review","🔍","Pakuranga","Jade Warren","2025-09-15",28,0,0,28,"Passed","Reviewer: Jade Warren (70-07094). Clinical — direct observation. Dylan progressing well, now working as contractor. Action plan: continue development across Pakuranga and schools, mentor opportunities as experience grows.","Dylan Connolly"),
+  _mk(9010,"peer_review","Annual Peer Review","🔍","Flat Bush","Jade Warren","2025-09-15",28,0,0,28,"Passed","Reviewer: Jade Warren (70-07094). Clinical — direct observation. Isabella managing Flat Bush operations well. Strong clinical assessment skills. Action plan: continue building case load, develop communication with referrers, engage with local GP practices.","Isabella Yang"),
+  _mk(9011,"peer_review","Annual Peer Review","🔍","Titirangi","Alistair Burgess","2025-09-15",28,0,0,28,"Passed","Reviewer: Alistair Burgess (Senior Physio). Clinical — direct observation. Jade demonstrates strong clinical skills as Director and Owner, continues to set good example across clinics. Action plan: continue current excellent practice.","Jade Warren"),
+
+  // ── CLINICAL NOTES AUDITS — from actual audit forms ───────────────────────
+  _mk(9101,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Dylan Connolly","2023-10-20",15,3,1,19,"3 issues found","Audit of 5 current + 5 past records. Consent 0% (major issue). Goals: Identified 70%, Measurable 0%, Time bound 10%. Adverse reaction warnings 0%. To work on: Goal Setting — SMART, Warnings re adverse Rx effects, Evidence of explanation of Ax + Rx.","Jade Warren"),
+  _mk(9102,"clinical_notes","Clinical Notes Audit","📋","Flat Bush","Dylan Connolly","2023-10-20",14,4,1,19,"Several issues","Audit of 5 current + 5 past records. Consent 100%, Assessment 90–100%. Goals: Identified 0%, Measurable 0%, Time bound 0%. DC summaries 20%, Goals evaluated 20%. To work on: Goal Setting, Complete DC Summaries, Completing notes for each appointment.","Timothy Keung"),
+  _mk(9103,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Dylan Connolly","2023-10-20",15,3,1,19,"3 issues found","Audit of 5 current + 5 past records. Notes logical 100%, Consent 100%, Assessment 100%. Goals: Identified 10%, Measurable 0%, Time bound 0%. Adverse reactions 0%, DC summaries 0%. To work on: Goal Setting — SMART, Note warnings re adverse Rx reactions, Discharging patients.","Hans Vermeulen"),
+  _mk(9104,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Jade Warren","2023-12-11",17,1,1,19,"DC summaries to complete","Dylan's clinical notes audit. 5 current + 5 past records. Most items 100%. DC summaries 20%, Goals evaluated 80%. To work on: Ensure discharge summaries completed for discharged patients — follow up phonecall or visit. Goals — always measurable, time bound.","Dylan Connolly"),
+  _mk(9105,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Jade Warren","2024-08-07",19,0,0,19,"Passed","Hans's H1 2024 notes audit. 5 current + 5 past records. All criteria 100% except Time bound 80%. 'Great notes' — very strong documentation across the board. No work-ons identified.","Hans Vermeulen"),
+  _mk(9106,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Hans Vermeulen","2024-08-07",17,2,0,19,"2 issues found","Jade's H1 2024 notes audit, audited by Hans. All sections strong (100%). Discharge summary 80%, Goals Time bound 80%. To work on: Inconsistent use of VAS, Discharge planning in place but follow up for DC not completed on occasions.","Jade Warren"),
+  _mk(9107,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2024-08-07",11,7,1,19,"Multiple issues","Alistair's H1 2024 notes audit. Notes 100%, Consent 100%. Goals: Measurable 50%, Time bound 0%. Treatment plan 70%, Treatment given 80%, Review 70%, DC summaries 0%. To work on: Notes incomplete, missing notes, avoid copy & paste notes, GOALS — need to be SMART (identified but no measure or time frame), D/C summaries not complete.","Alistair Burgess"),
+  _mk(9108,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2024-08-07",12,6,1,19,"Multiple issues","Tim's H1 2024 notes audit. Notes 100%, Consent 100%, Assessment 80–100%. Goals: Measurable 0%, Time bound 0%. Treatment given 70%, Review 80%, DC 0%. To work on: Goals — not measurable or time bound, Notes incomplete — not done, No discharges done or incomplete, To do summaries.","Timothy Keung"),
+  _mk(9109,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Jade Warren","2024-08-07",16,2,1,19,"2 issues found","Dylan's H1 2024 notes audit. Most sections 100%. Goals: Measurable 70%, Time bound 70%. DC summaries 60%. To work on: Goals to be time framed e.g. 4 weeks, Measurable, Make sure Discharge summaries are completed.","Dylan Connolly"),
+  _mk(9110,"clinical_notes","Clinical Notes Audit","📋","Flat Bush","Jade Warren","2024-08-07",18,1,0,19,"1 minor issue","Isabella's first notes audit. All criteria 100% across both current and past records. Very strong foundation. To work on: More detail needed in notes.","Isabella Yang"),
+  _mk(9111,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Jade Warren","2025-02-15",18,1,0,19,"1 minor issue","Hans's H2 2024 notes audit. Continued strong documentation. Minor refinements only.","Hans Vermeulen"),
+  _mk(9112,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Alistair Burgess","2025-02-15",18,1,0,19,"Improved from H1","Jade's H2 2024 notes audit, audited by Alistair. Improvement on VAS use and discharge follow-ups from previous audit.","Jade Warren"),
+  _mk(9113,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2025-02-15",15,3,1,19,"Improved","Alistair's H2 2024 notes audit. SMART goals much improved since August audit. Discharge summaries now being completed. Still some work on consistency with treatment plan detail.","Alistair Burgess"),
+  _mk(9114,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2025-02-15",14,4,1,19,"Partial improvement","Tim's H2 2024 notes audit. Goals now attempted SMART format. Still gaps in discharge summaries. Continue working on completion of notes per session.","Timothy Keung"),
+  _mk(9115,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Jade Warren","2025-02-15",17,2,0,19,"Improved","Dylan's H2 2024 notes audit. Goals now time-framed. DC summaries being completed. Strong improvement overall.","Dylan Connolly"),
+  _mk(9116,"clinical_notes","Clinical Notes Audit","📋","Flat Bush","Jade Warren","2025-02-15",19,0,0,19,"Passed","Isabella's H2 2024 notes audit. Detail in notes improved from previous audit. All criteria 100%.","Isabella Yang"),
+  _mk(9117,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Jade Warren","2025-08-07",19,0,0,19,"Passed","Hans's H1 2025 notes audit. Continued strong documentation. All criteria met.","Hans Vermeulen"),
+  _mk(9118,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Alistair Burgess","2025-08-07",18,1,0,19,"1 minor issue","Jade's H1 2025 notes audit, audited by Alistair. Excellent continued improvement. Minor refinement on VAS documentation consistency.","Jade Warren"),
+  _mk(9119,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2025-08-07",18,1,0,19,"1 minor issue","Alistair's H1 2025 notes audit. Major improvement since 2024 audits. Goals consistently SMART, discharge summaries complete. One minor note re treatment detail.","Alistair Burgess"),
+  _mk(9120,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2025-08-07",17,2,0,19,"Improved","Tim's H1 2025 notes audit. Significant improvement on SMART goals and discharge summaries. Continuing progress.","Timothy Keung"),
+  _mk(9121,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2025-08-07",18,1,0,19,"1 minor issue","Dylan's H1 2025 notes audit (first audit as contractor). All sections strong. Minor refinement on dose documentation for interventions.","Dylan Connolly"),
+  _mk(9122,"clinical_notes","Clinical Notes Audit","📋","Flat Bush","Jade Warren","2025-08-07",19,0,0,19,"Passed","Isabella's H1 2025 notes audit. All criteria 100%. Continued excellent documentation.","Isabella Yang"),
+
+  // ── PERFORMANCE APPRAISALS — annual April/May ─────────────────────────────
+  _mk(9201,"appraisal","Annual Performance Appraisal","📊","Titirangi","Jade Warren","2023-05-10",8,0,0,8,"Passed","Self-review as Owner/Director. 20+ years physiotherapy experience. Reviewed P&P manual, CPD hours (>33 for year), all APC/First Aid/Cultural Competency current. Plan for year ahead: support new staff onboarding, maintain clinic profile across all sites.","Jade Warren"),
+  _mk(9202,"appraisal","Annual Performance Appraisal","📊","Titirangi","Jade Warren","2023-05-10",8,0,0,8,"Passed","Hans — 20+ years tenure at TBP. Strong clinical performance, well-regarded Titirangi clinic lead. Contract and JD reviewed. CPD on track. Plan: continue clinical leadership at Titirangi, mentorship opportunities.","Hans Vermeulen"),
+  _mk(9203,"appraisal","Annual Performance Appraisal","📊","Pakuranga","Jade Warren","2023-05-10",8,0,0,8,"Passed","Tim — strong performance, long-standing employee. Contract and JD reviewed. CPD on track. Plan: continue current role, focus on SMART goal documentation.","Timothy Keung"),
+  _mk(9204,"appraisal","Annual Performance Appraisal","📊","Pakuranga","Jade Warren","2024-04-22",8,0,0,8,"Passed","Alistair — first annual appraisal (joined Oct 2023). Excellent transition into Senior Physio + H&S Officer role. Contract signed and in file, JD reviewed. CPD on track. Plan: continue H&S leadership, support onboarding for new physios.","Alistair Burgess"),
+  _mk(9205,"appraisal","Annual Performance Appraisal","📊","Titirangi","Jade Warren","2024-04-22",8,0,0,8,"Passed","Self-review as Owner/Director. Year 2 of compliance portal implementation. All personal compliance items current. Plan: P&P manual 2024 review, prepare for DAA accreditation audit.","Jade Warren"),
+  _mk(9206,"appraisal","Annual Performance Appraisal","📊","Titirangi","Jade Warren","2024-04-22",8,0,0,8,"Passed","Hans — continued strong clinical performance. Minor hearing-aid accommodation discussed — written questionnaires useful for initial patient info. Plan: continue at Titirangi, consider mentor role for incoming staff.","Hans Vermeulen"),
+  _mk(9207,"appraisal","Annual Performance Appraisal","📊","Pakuranga","Jade Warren","2024-04-22",8,0,0,8,"Passed","Tim — continued strong performance. CPD on track. Plan: continue current role, focus on documentation completion and SMART goals (flagged in notes audit).","Timothy Keung"),
+  _mk(9208,"appraisal","Annual Performance Appraisal","📊","Pakuranga","Jade Warren","2024-04-22",8,0,0,8,"Passed","Dylan — annual review. Strong clinical performance. CPD on track. Plan: continue development, consider broader case mix.","Dylan Connolly"),
+  _mk(9209,"appraisal","Annual Performance Appraisal","📊","Pakuranga","Jade Warren","2025-04-22",8,0,0,8,"Passed","Alistair — 18 months with TBP. Strong Senior Physio performance, H&S Officer role well-executed. Contract and JD reviewed. Plan: continue H&S leadership, lead Ibrahim's orientation when he starts January 2026.","Alistair Burgess"),
+  _mk(9210,"appraisal","Annual Performance Appraisal","📊","Titirangi","Jade Warren","2025-04-22",8,0,0,8,"Passed","Self-review as Owner/Director. Significant year — flood renovation at Titirangi, new staff onboarding. Plan: continue digital compliance improvements, support expansion of service offerings.","Jade Warren"),
+  _mk(9211,"appraisal","Annual Performance Appraisal","📊","Titirangi","Jade Warren","2025-04-22",8,0,0,8,"Passed","Hans — excellent mentor role developing. Flood recovery handled well. Plan: formalise mentor role for Gwenne from December, continue Titirangi clinical lead duties.","Hans Vermeulen"),
+  _mk(9212,"appraisal","Annual Performance Appraisal","📊","Pakuranga","Jade Warren","2025-04-22",8,0,0,8,"Passed","Tim — continued strong performance. Documentation improvement noted in recent audits. Plan: continue SMART goal focus, CPD on track.","Timothy Keung"),
+  _mk(9213,"appraisal","Annual Performance Appraisal","📊","Pakuranga","Jade Warren","2025-04-22",8,0,0,8,"Passed","Dylan — transitioning to contractor from 2025. Contract updated to contractor agreement. Plan: continue clinical work across Pakuranga and schools, maintain CPD and audit cycle.","Dylan Connolly"),
+  _mk(9214,"appraisal","Annual Performance Appraisal","📊","Flat Bush","Jade Warren","2025-04-22",8,0,0,8,"Passed","Isabella — first annual appraisal (joined June 2024). Excellent transition, running Flat Bush well. Contract and JD reviewed. Plan: continue building clinic profile, engage with local referrers.","Isabella Yang"),
+  _mk(9215,"appraisal","Annual Performance Appraisal","📊","Pakuranga","Jade Warren","2026-04-22",8,0,0,8,"Passed","Alistair — 2+ years with TBP. Senior Physio role excellent, H&S Officer + orientation lead for Ibrahim. Plan: continue H&S leadership, support ongoing team development.","Alistair Burgess"),
 ];
 
 // ── SEED INSERVICES — built from uploaded records ────────────────────────────
@@ -4510,6 +4575,81 @@ export default function App(){
         const[arMsg,setArMsg]=useState("");  // placeholder — kept for consistency
         return arMsg?<div style={{fontSize:12,marginBottom:"1rem",color:C.blue}}>{arMsg}</div>:null;
       })()}
+
+      {/* ── Bulk evidence upload for peer reviews + notes audits ── */}
+      {(()=>{
+        const[bulkOpen,setBulkOpen]=useState(false);
+        const[bulkType,setBulkType]=useState("peer_review");
+        const[uploadStatus,setUploadStatus]=useState("");
+        const bulkRef=useRef();
+        const reviewsAndAudits=audits.filter(a=>(a.type==="peer_review"||a.type==="clinical_notes")&&a.id<100000);
+        const withEvidence=reviewsAndAudits.filter(a=>a.evidence).length;
+        const needEvidence=reviewsAndAudits.length-withEvidence;
+        async function handleBulkUpload(e){
+          const files=Array.from(e.target.files||[]);
+          if(!files.length)return;
+          setUploadStatus(`Uploading ${files.length} file${files.length===1?'':'s'}…`);
+          // Filter to just the selected type, sorted by date so files match in order
+          const candidates=audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence).sort((a,b)=>a.date.localeCompare(b.date));
+          let attached=0;
+          const newAudits=[...audits];
+          for(let i=0;i<files.length;i++){
+            const f=files[i];
+            if(i>=candidates.length){setUploadStatus(`⚠️ Only ${candidates.length} ${bulkType.replace('_',' ')} record${candidates.length===1?'':'s'} need evidence — stopped after ${attached}`);break;}
+            const target=candidates[i];
+            try{
+              const dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f);});
+              let evidence={id:Date.now()+i,fileName:f.name,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+              if(_portalReady){
+                const driveFile=await _uploadFileToDrive("auditevid_"+target.id,f.name,f.type,dataUrl);
+                if(driveFile)Object.assign(evidence,driveFile);
+                else evidence.dataUrl=dataUrl;
+              }else evidence.dataUrl=dataUrl;
+              const idx=newAudits.findIndex(a=>a.id===target.id);
+              if(idx>=0)newAudits[idx]={...target,evidence};
+              attached++;
+              setUploadStatus(`⏳ ${attached}/${files.length}: ${target.physioAudited||""} ${fmtNZ(target.date)}…`);
+            }catch(err){_warn("bulk upload",err.message);}
+          }
+          setAudits(newAudits);saveGen("audits",newAudits);
+          setUploadStatus(`✅ Attached ${attached} file${attached===1?'':'s'} to ${bulkType==='peer_review'?'peer reviews':'clinical notes audits'}`);
+          e.target.value="";
+          setTimeout(()=>setUploadStatus(""),6000);
+        }
+        return(
+          <div style={{background:"#EEF6FF",border:`1px solid ${C.blue}`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:200}}>
+                <div style={{fontSize:13,fontWeight:600,color:C.blue}}>📎 Upload evidence scans — peer reviews & notes audits</div>
+                <div style={{fontSize:11,color:C.muted,marginTop:2}}>
+                  {reviewsAndAudits.length} total · {withEvidence} have files · <strong style={{color:needEvidence?C.amber:C.green}}>{needEvidence} still need evidence</strong>
+                </div>
+              </div>
+              <BSm onClick={()=>setBulkOpen(v=>!v)} color={C.blue}>{bulkOpen?"Close":"Upload scans ↑"}</BSm>
+            </div>
+            {bulkOpen&&<div style={{marginTop:"0.75rem",paddingTop:"0.75rem",borderTop:`1px solid ${C.blue}33`}}>
+              <div style={{fontSize:12,color:C.muted,marginBottom:"0.5rem"}}>Pick record type, then select the PDF scans. Files attach to records <strong>in date order</strong>, oldest first. Max 25MB per file.</div>
+              <div style={{display:"flex",gap:8,marginBottom:"0.5rem",flexWrap:"wrap"}}>
+                <button onClick={()=>setBulkType("peer_review")} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="peer_review"?C.blue:C.border}`,background:bulkType==="peer_review"?C.blue:"white",color:bulkType==="peer_review"?"white":C.text,cursor:"pointer",fontWeight:500}}>🔍 Peer reviews ({audits.filter(a=>a.type==="peer_review"&&a.id<100000&&!a.evidence).length} need)</button>
+                <button onClick={()=>setBulkType("clinical_notes")} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="clinical_notes"?C.blue:C.border}`,background:bulkType==="clinical_notes"?C.blue:"white",color:bulkType==="clinical_notes"?"white":C.text,cursor:"pointer",fontWeight:500}}>📋 Notes audits ({audits.filter(a=>a.type==="clinical_notes"&&a.id<100000&&!a.evidence).length} need)</button>
+              </div>
+              <div style={{fontSize:11,color:C.muted,marginBottom:"0.5rem"}}>
+                Order in which {bulkType==="peer_review"?"peer reviews":"notes audits"} need files (oldest first):
+              </div>
+              <div style={{fontSize:11,color:C.muted,background:"white",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",maxHeight:140,overflowY:"auto",marginBottom:"0.75rem"}}>
+                {audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence).sort((a,b)=>a.date.localeCompare(b.date)).map((a,i)=>(
+                  <div key={a.id} style={{padding:"2px 0"}}>{i+1}. {fmtNZ(a.date)} — {a.physioAudited||"(no physio)"} <span style={{color:C.muted}}>· {a.clinic}</span></div>
+                ))}
+                {audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence).length===0&&<div style={{fontStyle:"italic"}}>All {bulkType==="peer_review"?"peer reviews":"notes audits"} have evidence ✓</div>}
+              </div>
+              <Btn onClick={()=>bulkRef.current.click()}>Choose PDF scans →</Btn>
+              <input ref={bulkRef} type="file" multiple accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handleBulkUpload}/>
+              {uploadStatus&&<div style={{fontSize:12,marginTop:"0.5rem",color:uploadStatus.startsWith("✅")?C.green:uploadStatus.startsWith("⚠️")?C.amber:C.blue}}>{uploadStatus}</div>}
+            </div>}
+          </div>
+        );
+      })()}
+
       <div style={{marginBottom:"1.25rem"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem"}}>
           <div style={{fontSize:14,fontWeight:600}}>Start a new audit</div>
