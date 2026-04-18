@@ -2090,7 +2090,22 @@ function FileViewer({file,onClose}){
       </div>
 
       {/* Content */}
-      <div style={{flex:1,display:"flex",alignItems:"stretch",justifyContent:"center",overflow:"hidden",background:"#2a2a2a"}}>
+      <div style={{flex:1,display:"flex",alignItems:"stretch",justifyContent:"center",overflow:"hidden",background:"#2a2a2a",position:"relative"}}>
+
+        {/* Floating close button — always tappable even when iframe captures touches */}
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            position:"absolute",top:12,right:12,zIndex:10,
+            background:"rgba(0,0,0,0.8)",border:"2px solid rgba(255,255,255,0.3)",
+            color:"white",width:44,height:44,borderRadius:"50%",
+            cursor:"pointer",fontSize:20,fontWeight:700,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            boxShadow:"0 2px 8px rgba(0,0,0,0.4)",
+            WebkitTapHighlightColor:"transparent",
+          }}
+        >✕</button>
 
         {/* ── Image viewer ── */}
         {isImg&&!imgError&&(
@@ -2143,12 +2158,19 @@ function FileViewer({file,onClose}){
         )}
       </div>
 
-      {/* Always-visible close bar */}
+      {/* Always-visible close bar at bottom — positioned with high z-index
+          so iframe can't overlap it on iOS Safari. */}
       <div
         onClick={onClose}
-        style={{background:"rgba(0,0,0,0.75)",borderTop:"1px solid rgba(255,255,255,0.12)",padding:"12px",textAlign:"center",cursor:"pointer",flexShrink:0}}
+        style={{
+          background:"rgba(0,0,0,0.85)",
+          borderTop:"1px solid rgba(255,255,255,0.15)",
+          padding:"14px",textAlign:"center",cursor:"pointer",
+          flexShrink:0,position:"relative",zIndex:10,
+          WebkitTapHighlightColor:"transparent",
+        }}
       >
-        <span style={{color:"rgba(255,255,255,0.7)",fontSize:13,fontWeight:500}}>✕  Tap to close</span>
+        <span style={{color:"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600}}>✕  Tap here to close</span>
       </div>
     </div>
   );
