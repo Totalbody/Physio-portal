@@ -2953,8 +2953,16 @@ function FENZFireDrillLoader({audits,setAudits}){
 function FireDrillLoader({audits,setAudits}){
   const[running,setRunning]=useState(false);
   const[status,setStatus]=useState("");
-  const targets=audits.filter(a=>a.type==="fire_drill"&&a.id<100000&&!a.evidence&&FIRE_DRILL_PDFS[a.id]);
-  if(targets.length===0)return null;
+  // All seeded fire drills that have an embedded FENZ PDF available
+  const allDrills=audits.filter(a=>a.type==="fire_drill"&&a.id<100000&&FIRE_DRILL_PDFS[a.id]);
+  // Ones that need the FENZ PDF attached (no evidence, OR evidence isn't already a FENZ PDF)
+  const needsFenz=allDrills.filter(a=>{
+    if(!a.evidence)return true;
+    const fn=(a.evidence.fileName||"").toLowerCase();
+    return !fn.startsWith("fire_drill_"); // not our FENZ PDF
+  });
+  if(allDrills.length===0)return null;
+  const allDone=needsFenz.length===0;
 
   function b64toBlob(b64,type){
     const bin=atob(b64);
@@ -2962,18 +2970,23 @@ function FireDrillLoader({audits,setAudits}){
     for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
     return new Blob([bytes],{type});
   }
-  async function loadAll(){
-    if(!window.confirm(`Attach FENZ-style evacuation report PDFs to ${targets.length} fire drill record${targets.length===1?'':'s'}?\n\nEach PDF is pre-filled with the clinic address, evacuation time, and assessment outcomes.`))return;
+  async function loadAll(forceAll){
+    const list = forceAll ? allDrills : needsFenz;
+    if(list.length===0){alert("No fire drills to update.");return;}
+    const msg = forceAll
+      ? `Re-attach FENZ Evacuation Report PDFs to ALL ${list.length} fire drills?\n\nThis will replace any existing evidence (including auto-generated HTML forms) with the pre-filled FENZ PDF.`
+      : `Attach FENZ-style evacuation report PDFs to ${list.length} fire drill record${list.length===1?'':'s'}?\n\nEach PDF is pre-filled with the clinic address, evacuation time, and assessment outcomes.`;
+    if(!window.confirm(msg))return;
     setRunning(true);
-    setStatus(`⏳ Preparing ${targets.length} PDFs…`);
+    setStatus(`⏳ Preparing ${list.length} PDFs…`);
     let attached=0;
     const newAudits=[...audits];
-    for(let i=0;i<targets.length;i++){
-      const target=targets[i];
+    for(let i=0;i<list.length;i++){
+      const target=list[i];
       const pdfData=FIRE_DRILL_PDFS[target.id];
       if(!pdfData)continue;
       try{
-        setStatus(`⏳ ${i+1}/${targets.length}: ${target.clinic} · ${fmtNZ(target.date)}…`);
+        setStatus(`⏳ ${i+1}/${list.length}: ${target.clinic} · ${fmtNZ(target.date)}…`);
         const blob=b64toBlob(pdfData.base64,'application/pdf');
         const dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);});
         let evidence={id:Date.now()+i,fileName:pdfData.filename,fileType:'application/pdf',uploadedDate:new Date().toLocaleDateString("en-NZ")};
@@ -2988,7 +3001,7 @@ function FireDrillLoader({audits,setAudits}){
       }catch(e){_warn('[FireDrill load]',e.message||e);}
     }
     setAudits(newAudits);saveGen("audits",newAudits);
-    setStatus(`✅ Attached ${attached} of ${targets.length} FENZ evacuation PDFs`);
+    setStatus(`✅ Attached ${attached} of ${list.length} FENZ evacuation PDFs`);
     setRunning(false);
     setTimeout(()=>setStatus(""),8000);
   }
@@ -2997,14 +3010,18 @@ function FireDrillLoader({audits,setAudits}){
     <div style={{background:"#FFF5F5",border:"1px solid #E8342E",borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:200}}>
-          <div style={{fontSize:13,fontWeight:600,color:"#1B2B5C"}}>🚨 FENZ Evacuation Report PDFs ready to attach</div>
+          <div style={{fontSize:13,fontWeight:600,color:"#1B2B5C"}}>🚨 FENZ Evacuation Report PDFs</div>
           <div style={{fontSize:11,color:C.muted,marginTop:2}}>
-            <strong>{targets.length}</strong> fire drill{targets.length===1?'':'s'} can have a pre-filled FENZ Evacuation Report PDF attached — matches the official Fire and Emergency NZ template, with clinic address, time, and assessment outcomes filled in.
+            {allDone
+              ? <>All <strong>{allDrills.length}</strong> fire drills have FENZ PDFs attached ✓ — tap Regenerate to re-create with the latest template.</>
+              : <><strong>{needsFenz.length}</strong> of {allDrills.length} fire drill{allDrills.length===1?'':'s'} still need{needsFenz.length===1?'s':''} a FENZ Evacuation Report — matches the official Fire and Emergency NZ template.</>
+            }
           </div>
         </div>
-        <Btn onClick={loadAll} style={{background:"#1B2B5C",borderColor:"#1B2B5C",opacity:running?0.5:1}}>
-          {running?"⏳ Loading…":`Attach ${targets.length} PDF${targets.length===1?'':'s'} →`}
-        </Btn>
+        {!allDone&&<Btn onClick={()=>loadAll(false)} style={{background:"#1B2B5C",borderColor:"#1B2B5C",opacity:running?0.5:1}}>
+          {running?"⏳":`Attach ${needsFenz.length} PDF${needsFenz.length===1?'':'s'} →`}
+        </Btn>}
+        <BSm outline onClick={()=>loadAll(true)} style={{opacity:running?0.5:1}}>{running?"⏳":`🔄 Regenerate all ${allDrills.length}`}</BSm>
       </div>
       {status&&<div style={{fontSize:12,marginTop:"0.5rem",color:status.startsWith("✅")?C.green:"#1B2B5C"}}>{status}</div>}
     </div>
@@ -3017,9 +3034,14 @@ function FireDrillLoader({audits,setAudits}){
 function PBNZPeerReviewLoader({audits,setAudits}){
   const[running,setRunning]=useState(false);
   const[status,setStatus]=useState("");
-  // Only show records that are peer reviews, seeded (id < 100000), and lack evidence
-  const targets=audits.filter(a=>a.type==="peer_review"&&a.id<100000&&!a.evidence&&PEER_REVIEW_PDFS[a.id]);
-  if(targets.length===0)return null;  // All attached already — hide panel
+  const allReviews=audits.filter(a=>a.type==="peer_review"&&a.id<100000&&PEER_REVIEW_PDFS[a.id]);
+  const needsPdf=allReviews.filter(a=>{
+    if(!a.evidence)return true;
+    const fn=(a.evidence.fileName||"").toLowerCase();
+    return !fn.startsWith("peer_review_");
+  });
+  if(allReviews.length===0)return null;
+  const allDone=needsPdf.length===0;
 
   function b64toBlob(b64,type){
     const bin=atob(b64);
@@ -3029,18 +3051,23 @@ function PBNZPeerReviewLoader({audits,setAudits}){
     return new Blob([bytes],{type});
   }
 
-  async function loadAll(){
-    if(!window.confirm(`Attach PBNZ-style peer review PDFs to ${targets.length} peer review record${targets.length===1?'':'s'}?\n\nEach PDF is pre-filled with the real reviewer comments, dates, and action plans from your uploaded forms.`))return;
+  async function loadAll(forceAll){
+    const list=forceAll?allReviews:needsPdf;
+    if(list.length===0){alert("No peer reviews to update.");return;}
+    const msg=forceAll
+      ? `Re-attach PBNZ-style peer review PDFs to ALL ${list.length} peer reviews?\n\nThis will replace any existing evidence (including auto-generated HTML forms) with the pre-filled PBNZ PDF.`
+      : `Attach PBNZ-style peer review PDFs to ${list.length} peer review record${list.length===1?'':'s'}?\n\nEach PDF is pre-filled with the real reviewer comments, dates, and action plans from your uploaded forms.`;
+    if(!window.confirm(msg))return;
     setRunning(true);
-    setStatus(`⏳ Preparing ${targets.length} PDFs…`);
+    setStatus(`⏳ Preparing ${list.length} PDFs…`);
     let attached=0;
     const newAudits=[...audits];
-    for(let i=0;i<targets.length;i++){
-      const target=targets[i];
+    for(let i=0;i<list.length;i++){
+      const target=list[i];
       const pdfData=PEER_REVIEW_PDFS[target.id];
       if(!pdfData)continue;
       try{
-        setStatus(`⏳ ${i+1}/${targets.length}: ${target.physioAudited} · ${fmtNZ(target.date)}…`);
+        setStatus(`⏳ ${i+1}/${list.length}: ${target.physioAudited} · ${fmtNZ(target.date)}…`);
         const blob=b64toBlob(pdfData.base64,'application/pdf');
         const dataUrl=await new Promise((res,rej)=>{
           const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;
@@ -3058,7 +3085,7 @@ function PBNZPeerReviewLoader({audits,setAudits}){
       }catch(e){_warn('[PBNZ load]',e.message||e);}
     }
     setAudits(newAudits);saveGen("audits",newAudits);
-    setStatus(`✅ Attached ${attached} of ${targets.length} PBNZ peer review PDFs`);
+    setStatus(`✅ Attached ${attached} of ${list.length} PBNZ peer review PDFs`);
     setRunning(false);
     setTimeout(()=>setStatus(""),8000);
   }
@@ -3067,14 +3094,18 @@ function PBNZPeerReviewLoader({audits,setAudits}){
     <div style={{background:"#F5F0FB",border:"1px solid #6B46C1",borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:200}}>
-          <div style={{fontSize:13,fontWeight:600,color:"#6B46C1"}}>🔍 PBNZ Peer Review PDFs ready to attach</div>
+          <div style={{fontSize:13,fontWeight:600,color:"#6B46C1"}}>🔍 PBNZ Peer Review PDFs</div>
           <div style={{fontSize:11,color:C.muted,marginTop:2}}>
-            <strong>{targets.length}</strong> peer review{targets.length===1?'':'s'} can have a pre-filled PBNZ-style PDF attached as evidence — with real reviewer comments, dates, and action plans from your actual forms.
+            {allDone
+              ? <>All <strong>{allReviews.length}</strong> peer reviews have PBNZ PDFs attached ✓ — tap Regenerate to re-create with the latest template.</>
+              : <><strong>{needsPdf.length}</strong> of {allReviews.length} peer review{allReviews.length===1?'':'s'} still need{needsPdf.length===1?'s':''} a PBNZ-style PDF — with real reviewer comments, dates, and action plans from your actual forms.</>
+            }
           </div>
         </div>
-        <Btn onClick={loadAll} style={{background:"#6B46C1",borderColor:"#6B46C1",opacity:running?0.5:1}}>
-          {running?"⏳ Loading…":`Attach ${targets.length} PDF${targets.length===1?'':'s'} →`}
-        </Btn>
+        {!allDone&&<Btn onClick={()=>loadAll(false)} style={{background:"#6B46C1",borderColor:"#6B46C1",opacity:running?0.5:1}}>
+          {running?"⏳":`Attach ${needsPdf.length} PDF${needsPdf.length===1?'':'s'} →`}
+        </Btn>}
+        <BSm outline onClick={()=>loadAll(true)} style={{opacity:running?0.5:1}}>{running?"⏳":`🔄 Regenerate all ${allReviews.length}`}</BSm>
       </div>
       {status&&<div style={{fontSize:12,marginTop:"0.5rem",color:status.startsWith("✅")?C.green:"#6B46C1"}}>{status}</div>}
     </div>
