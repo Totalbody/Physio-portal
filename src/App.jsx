@@ -2980,30 +2980,50 @@ function FireDrillLoader({audits,setAudits}){
     setRunning(true);
     setStatus(`⏳ Preparing ${list.length} PDFs…`);
     let attached=0;
+    const failed=[];
     const newAudits=[...audits];
     for(let i=0;i<list.length;i++){
       const target=list[i];
       const pdfData=FIRE_DRILL_PDFS[target.id];
-      if(!pdfData)continue;
-      try{
-        setStatus(`⏳ ${i+1}/${list.length}: ${target.clinic} · ${fmtNZ(target.date)}…`);
-        const blob=b64toBlob(pdfData.base64,'application/pdf');
-        const dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);});
-        let evidence={id:Date.now()+i,fileName:pdfData.filename,fileType:'application/pdf',uploadedDate:new Date().toLocaleDateString("en-NZ")};
-        if(_portalReady){
-          const driveFile=await _uploadFileToDrive("auditevid_"+target.id,pdfData.filename,'application/pdf',dataUrl);
-          if(driveFile)Object.assign(evidence,driveFile);
-          else evidence.dataUrl=dataUrl;
-        }else evidence.dataUrl=dataUrl;
-        const idx=newAudits.findIndex(a=>a.id===target.id);
-        if(idx>=0)newAudits[idx]={...target,evidence};
-        attached++;
-      }catch(e){_warn('[FireDrill load]',e.message||e);}
+      if(!pdfData){failed.push(`${target.clinic} ${fmtNZ(target.date)} (no PDF)`);continue;}
+      setStatus(`⏳ ${i+1}/${list.length}: ${target.clinic} · ${fmtNZ(target.date)}…`);
+      // Retry up to 3× for each file — Drive can hiccup under load
+      let success=false;
+      for(let attempt=1;attempt<=3&&!success;attempt++){
+        try{
+          const blob=b64toBlob(pdfData.base64,'application/pdf');
+          const dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob);});
+          let evidence={id:Date.now()+i,fileName:pdfData.filename,fileType:'application/pdf',uploadedDate:new Date().toLocaleDateString("en-NZ")};
+          if(_portalReady){
+            const driveFile=await _uploadFileToDrive("auditevid_"+target.id,pdfData.filename,'application/pdf',dataUrl);
+            if(driveFile)Object.assign(evidence,driveFile);
+            else evidence.dataUrl=dataUrl;
+          }else evidence.dataUrl=dataUrl;
+          const idx=newAudits.findIndex(a=>a.id===target.id);
+          if(idx>=0)newAudits[idx]={...target,evidence};
+          attached++;
+          success=true;
+          // Persist progress after each file so closing the tab doesn't lose everything
+          setAudits([...newAudits]);saveGen("audits",newAudits);
+        }catch(e){
+          _warn(`[FireDrill load] attempt ${attempt} failed`,target.id,e.message||e);
+          if(attempt<3){
+            setStatus(`⚠️ Retry ${attempt}/3 for ${target.clinic} ${fmtNZ(target.date)}…`);
+            await new Promise(r=>setTimeout(r,1500*attempt)); // 1.5s, 3s backoff
+          }else{
+            failed.push(`${target.clinic} ${fmtNZ(target.date)}`);
+          }
+        }
+      }
+      // Small pause between files — gives Drive API breathing room
+      if(i<list.length-1)await new Promise(r=>setTimeout(r,400));
     }
-    setAudits(newAudits);saveGen("audits",newAudits);
-    setStatus(`✅ Attached ${attached} of ${list.length} FENZ evacuation PDFs`);
+    const finalMsg = failed.length===0
+      ? `✅ Attached all ${attached} FENZ evacuation PDFs`
+      : `⚠️ Attached ${attached} of ${list.length} — ${failed.length} failed: ${failed.slice(0,3).join(", ")}${failed.length>3?"…":""}`;
+    setStatus(finalMsg);
     setRunning(false);
-    setTimeout(()=>setStatus(""),8000);
+    setTimeout(()=>setStatus(""),12000);
   }
 
   return(
@@ -3061,33 +3081,50 @@ function PBNZPeerReviewLoader({audits,setAudits}){
     setRunning(true);
     setStatus(`⏳ Preparing ${list.length} PDFs…`);
     let attached=0;
+    const failed=[];
     const newAudits=[...audits];
     for(let i=0;i<list.length;i++){
       const target=list[i];
       const pdfData=PEER_REVIEW_PDFS[target.id];
-      if(!pdfData)continue;
-      try{
-        setStatus(`⏳ ${i+1}/${list.length}: ${target.physioAudited} · ${fmtNZ(target.date)}…`);
-        const blob=b64toBlob(pdfData.base64,'application/pdf');
-        const dataUrl=await new Promise((res,rej)=>{
-          const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;
-          r.readAsDataURL(blob);
-        });
-        let evidence={id:Date.now()+i,fileName:pdfData.filename,fileType:'application/pdf',uploadedDate:new Date().toLocaleDateString("en-NZ")};
-        if(_portalReady){
-          const driveFile=await _uploadFileToDrive("auditevid_"+target.id,pdfData.filename,'application/pdf',dataUrl);
-          if(driveFile)Object.assign(evidence,driveFile);
-          else evidence.dataUrl=dataUrl;
-        }else evidence.dataUrl=dataUrl;
-        const idx=newAudits.findIndex(a=>a.id===target.id);
-        if(idx>=0)newAudits[idx]={...target,evidence};
-        attached++;
-      }catch(e){_warn('[PBNZ load]',e.message||e);}
+      if(!pdfData){failed.push(`${target.physioAudited} ${fmtNZ(target.date)} (no PDF)`);continue;}
+      setStatus(`⏳ ${i+1}/${list.length}: ${target.physioAudited} · ${fmtNZ(target.date)}…`);
+      let success=false;
+      for(let attempt=1;attempt<=3&&!success;attempt++){
+        try{
+          const blob=b64toBlob(pdfData.base64,'application/pdf');
+          const dataUrl=await new Promise((res,rej)=>{
+            const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;
+            r.readAsDataURL(blob);
+          });
+          let evidence={id:Date.now()+i,fileName:pdfData.filename,fileType:'application/pdf',uploadedDate:new Date().toLocaleDateString("en-NZ")};
+          if(_portalReady){
+            const driveFile=await _uploadFileToDrive("auditevid_"+target.id,pdfData.filename,'application/pdf',dataUrl);
+            if(driveFile)Object.assign(evidence,driveFile);
+            else evidence.dataUrl=dataUrl;
+          }else evidence.dataUrl=dataUrl;
+          const idx=newAudits.findIndex(a=>a.id===target.id);
+          if(idx>=0)newAudits[idx]={...target,evidence};
+          attached++;
+          success=true;
+          setAudits([...newAudits]);saveGen("audits",newAudits);
+        }catch(e){
+          _warn(`[PBNZ load] attempt ${attempt} failed`,target.id,e.message||e);
+          if(attempt<3){
+            setStatus(`⚠️ Retry ${attempt}/3 for ${target.physioAudited} ${fmtNZ(target.date)}…`);
+            await new Promise(r=>setTimeout(r,1500*attempt));
+          }else{
+            failed.push(`${target.physioAudited} ${fmtNZ(target.date)}`);
+          }
+        }
+      }
+      if(i<list.length-1)await new Promise(r=>setTimeout(r,400));
     }
-    setAudits(newAudits);saveGen("audits",newAudits);
-    setStatus(`✅ Attached ${attached} of ${list.length} PBNZ peer review PDFs`);
+    const finalMsg = failed.length===0
+      ? `✅ Attached all ${attached} PBNZ peer review PDFs`
+      : `⚠️ Attached ${attached} of ${list.length} — ${failed.length} failed: ${failed.slice(0,3).join(", ")}${failed.length>3?"…":""}`;
+    setStatus(finalMsg);
     setRunning(false);
-    setTimeout(()=>setStatus(""),8000);
+    setTimeout(()=>setStatus(""),12000);
   }
 
   return(
