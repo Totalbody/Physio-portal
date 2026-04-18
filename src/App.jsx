@@ -2882,72 +2882,6 @@ function AuditEvidenceBtn({audit,audits,setAudits,onView}){
 // Bulk evidence uploader for peer reviews + clinical notes audits.
 // Staged-files workflow: user picks multiple PDFs, each gets a dropdown to
 // assign to a record, then a single "Upload" commits them all.
-// One-click button to load FENZ-style evacuation report PDFs as evidence
-// on seeded fire drill records.
-function FENZFireDrillLoader({audits,setAudits}){
-  const[running,setRunning]=useState(false);
-  const[status,setStatus]=useState("");
-  const targets=audits.filter(a=>a.type==="fire_drill"&&a.id<100000&&!a.evidence&&FIRE_DRILL_PDFS[a.id]);
-  if(targets.length===0)return null;
-
-  function b64toBlob(b64,type){
-    const bin=atob(b64);const len=bin.length;const bytes=new Uint8Array(len);
-    for(let i=0;i<len;i++)bytes[i]=bin.charCodeAt(i);
-    return new Blob([bytes],{type});
-  }
-
-  async function loadAll(){
-    if(!window.confirm(`Attach FENZ-style evacuation report PDFs to ${targets.length} fire drill record${targets.length===1?'':'s'}?\n\nEach PDF is pre-filled with the clinic address, date, times, and assessment answers — styled like the official Fire and Emergency NZ template.`))return;
-    setRunning(true);
-    setStatus(`⏳ Preparing ${targets.length} PDFs…`);
-    let attached=0;
-    const newAudits=[...audits];
-    for(let i=0;i<targets.length;i++){
-      const target=targets[i];
-      const pdfData=FIRE_DRILL_PDFS[target.id];
-      if(!pdfData)continue;
-      try{
-        setStatus(`⏳ ${i+1}/${targets.length}: ${target.clinic} · ${fmtNZ(target.date)}…`);
-        const blob=b64toBlob(pdfData.base64,'application/pdf');
-        const dataUrl=await new Promise((res,rej)=>{
-          const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;
-          r.readAsDataURL(blob);
-        });
-        let evidence={id:Date.now()+i,fileName:pdfData.filename,fileType:'application/pdf',uploadedDate:new Date().toLocaleDateString("en-NZ")};
-        if(_portalReady){
-          const driveFile=await _uploadFileToDrive("auditevid_"+target.id,pdfData.filename,'application/pdf',dataUrl);
-          if(driveFile)Object.assign(evidence,driveFile);
-          else evidence.dataUrl=dataUrl;
-        }else evidence.dataUrl=dataUrl;
-        const idx=newAudits.findIndex(a=>a.id===target.id);
-        if(idx>=0)newAudits[idx]={...target,evidence};
-        attached++;
-      }catch(e){_warn('[FENZ load]',e.message||e);}
-    }
-    setAudits(newAudits);saveGen("audits",newAudits);
-    setStatus(`✅ Attached ${attached} of ${targets.length} FENZ evacuation report PDFs`);
-    setRunning(false);
-    setTimeout(()=>setStatus(""),8000);
-  }
-
-  return(
-    <div style={{background:"#FDEEEE",border:"1px solid #E2231A",borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-        <div style={{flex:1,minWidth:200}}>
-          <div style={{fontSize:13,fontWeight:600,color:"#1C2C5A"}}>🔥 FENZ Evacuation Report PDFs ready to attach</div>
-          <div style={{fontSize:11,color:C.muted,marginTop:2}}>
-            <strong>{targets.length}</strong> fire drill{targets.length===1?'':'s'} can have a pre-filled FENZ-style PDF attached — clinic address, date, evacuation times, and Jade's signature — styled like the official Fire and Emergency NZ template.
-          </div>
-        </div>
-        <Btn onClick={loadAll} style={{background:"#E2231A",borderColor:"#E2231A",opacity:running?0.5:1}}>
-          {running?"⏳ Loading…":`Attach ${targets.length} PDF${targets.length===1?'':'s'} →`}
-        </Btn>
-      </div>
-      {status&&<div style={{fontSize:12,marginTop:"0.5rem",color:status.startsWith("✅")?C.green:"#1C2C5A"}}>{status}</div>}
-    </div>
-  );
-}
-
 // One-click button to load FENZ-style fire drill (evacuation report) PDFs as
 // evidence on all seeded fire_drill records.
 function FireDrillLoader({audits,setAudits}){
@@ -3003,8 +2937,8 @@ function FireDrillLoader({audits,setAudits}){
           if(idx>=0)newAudits[idx]={...target,evidence};
           attached++;
           success=true;
-          // Persist progress after each file so closing the tab doesn't lose everything
-          setAudits([...newAudits]);saveGen("audits",newAudits);
+          // Persist to portal store each iteration (no React re-render); final setAudits at end
+          saveGen("audits",newAudits);
         }catch(e){
           _warn(`[FireDrill load] attempt ${attempt} failed`,target.id,e.message||e);
           if(attempt<3){
@@ -3106,7 +3040,7 @@ function PBNZPeerReviewLoader({audits,setAudits}){
           if(idx>=0)newAudits[idx]={...target,evidence};
           attached++;
           success=true;
-          setAudits([...newAudits]);saveGen("audits",newAudits);
+          saveGen("audits",newAudits);
         }catch(e){
           _warn(`[PBNZ load] attempt ${attempt} failed`,target.id,e.message||e);
           if(attempt<3){
