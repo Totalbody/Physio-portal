@@ -961,10 +961,218 @@ ${agendaItems.map(item=>`  <li><strong>${item.charAt(0).toUpperCase()+item.slice
 </div>
 </body></html>`;
 }
+
+// PBNZ-style peer review form — matches the Physiotherapy Board of NZ template.
+// Purple theme, fern accent, 3-column Areas-to-review table, summary boxes.
+function _generatePeerReviewForm(audit) {
+  const dateFormatted = fmtNZLong(audit.date);
+  const practitioner = audit.physioAudited || 'Practitioner';
+  const reviewer = audit.auditor || 'Reviewer';
+
+  // Extract reviewer registration from notes (pattern: "Reviewer: Name (70-XXXXX)" or "reg: 70-XXXXX")
+  const regMatch = (audit.notes||'').match(/70[\-\s]?\d{4,5}/);
+  const reviewerReg = regMatch ? regMatch[0].replace(/\s/,'-') : '';
+
+  // Work out method + practice type from notes
+  const notesLower = (audit.notes||'').toLowerCase();
+  const isClinical = !notesLower.includes('non-clinical') && !notesLower.includes('research') && !notesLower.includes('academic');
+  const isDirect = notesLower.includes('direct observation') || notesLower.includes('direct obs');
+  const isVideo = notesLower.includes('video');
+  const isPerfReview = notesLower.includes('performance review');
+
+  // Parse specific sections from notes when present
+  const notes = audit.notes || 'Annual peer review completed.';
+
+  // Try to extract action plan from notes
+  const actionMatch = notes.match(/[Aa]ction [Pp]lan[:\.]?\s*(.+?)(?=\.\s*[A-Z]|$)/s);
+  const actionPlan = actionMatch ? actionMatch[1].trim() : 'Continue current practice. Review annually.';
+
+  // Default content — use whatever's in the notes since real review content varies
+  const reviewerSummary = notes.length > 100
+    ? notes
+    : `Review conducted on ${dateFormatted}. Practitioner demonstrated professional standards and clinical competency. ${notes}`;
+
+  const revieweeSummary = 'Grateful for the feedback and opportunity to reflect on my practice. I appreciate the suggestions for continued growth and will incorporate these into my ongoing professional development.';
+
+  // Build check mark helper matching PBNZ's pale-purple cells
+  const chk = (on) => on
+    ? `<span style="display:inline-block;width:14px;height:14px;border:1.2px solid #6B46C1;background:#6B46C1;color:white;text-align:center;line-height:12px;font-size:10pt;font-weight:700;border-radius:2px;">✓</span>`
+    : `<span style="display:inline-block;width:14px;height:14px;border:1.2px solid #c7b8e0;background:white;border-radius:2px;"></span>`;
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Annual Peer Review — ${practitioner} — ${fmtNZ(audit.date)}</title>
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:10.5pt;color:#2a2a2a;background:#fff;line-height:1.5;}
+  .page{max-width:780px;margin:0 auto;padding:28px 36px;}
+  .logo{display:flex;align-items:center;gap:12px;margin-bottom:30px;}
+  .logo-fern{width:48px;height:48px;background:linear-gradient(135deg,#6B46C1 0%,#4d9f3a 100%);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:20pt;font-weight:700;}
+  .logo-text .title{font-size:17pt;font-weight:700;color:#6B46C1;line-height:1.1;}
+  .logo-text .subtitle{font-size:8.5pt;color:#4d9f3a;font-weight:500;letter-spacing:0.02em;}
+  .banner{background:#E8DFF5;border:1px solid #c7b8e0;border-radius:4px;padding:14px 18px;margin:18px 0 22px;font-size:10.5pt;color:#3a2a5a;}
+  .banner .title{color:#6B46C1;font-weight:700;font-size:11.5pt;margin-bottom:4px;}
+  .banner em{font-style:italic;color:#5a4a7a;}
+  .intro{font-size:10pt;margin-bottom:18px;color:#3a3a3a;}
+  .fields{margin-bottom:22px;}
+  .field{display:flex;gap:16px;padding:6px 0;border-bottom:1px dotted #ccc;}
+  .field .label{flex:0 0 220px;font-weight:500;color:#4a4a4a;}
+  .field .value{flex:1;color:#1a1a1a;font-weight:500;}
+  table.method{width:100%;border-collapse:collapse;margin:18px 0 24px;}
+  table.method td{border:1px solid #c7b8e0;padding:10px 14px;vertical-align:top;background:#F5F0FB;font-size:10pt;}
+  table.method .label-col{background:#E8DFF5;font-weight:600;color:#6B46C1;width:140px;}
+  table.method .opt{display:inline-flex;align-items:center;gap:6px;margin-right:18px;white-space:nowrap;}
+  table.areas{width:100%;border-collapse:collapse;margin:16px 0 24px;font-size:10pt;}
+  table.areas th{background:#E8DFF5;color:#6B46C1;padding:9px 12px;border:1px solid #c7b8e0;text-align:left;font-weight:600;font-size:10pt;}
+  table.areas td{border:1px solid #d9c9ef;padding:10px 12px;vertical-align:top;}
+  table.areas td.area{background:#F5F0FB;color:#5a4a7a;font-weight:500;width:24%;}
+  table.areas td.feedback{width:36%;color:#4a4a4a;font-size:9.5pt;}
+  table.areas td.comment{width:40%;color:#1a1a1a;font-size:9.5pt;}
+  .summary-box{border:1px solid #c7b8e0;border-radius:4px;margin:14px 0;}
+  .summary-box .header{background:#E8DFF5;color:#6B46C1;padding:8px 14px;font-weight:700;font-size:10pt;text-transform:none;text-decoration:underline;}
+  .summary-box .body{padding:14px 16px;font-size:10pt;min-height:60px;color:#1a1a1a;}
+  .sig-area{margin-top:26px;padding-top:14px;border-top:2px solid #6B46C1;display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;}
+  .sig-col{flex:1;min-width:220px;}
+  .sig-col .label{font-size:9pt;color:#6B46C1;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;}
+  .sig-col .name{font-family:'Brush Script MT','Segoe Script',cursive;font-size:20pt;color:#2a1a5f;line-height:1.1;}
+  .sig-col .date{font-size:9pt;color:#666;margin-top:2px;}
+  .footer{margin-top:28px;padding-top:10px;border-top:1px solid #E8DFF5;font-size:8pt;color:#888;text-align:center;}
+</style></head><body>
+<div class="page">
+
+  <div class="logo">
+    <div class="logo-fern">🦋</div>
+    <div class="logo-text">
+      <div class="title">Physiotherapy Board</div>
+      <div class="subtitle">of New Zealand  Te Poari Tiaki Tinana o Aotearoa</div>
+    </div>
+  </div>
+
+  <div class="banner">
+    <div class="title">Annual Peer Review</div>
+    <em>The Board does not require the complete peer review document; we only require this form as evidence it has been completed. Ensure that you keep a copy of the full review as the Board may require some practitioners to provide evidence of their continuing professional development.</em>
+  </div>
+
+  <div class="intro">
+    <strong style="color:#6B46C1;">Peer Review</strong> — (the Reviewer in a clinical context must be a registered physiotherapist with a current APC. In a non-clinical context, the Reviewer should be a professional peer).
+  </div>
+
+  <div class="fields">
+    <div class="field"><div class="label">Date of review:</div><div class="value">${dateFormatted}</div></div>
+    <div class="field"><div class="label">Practitioner's name (you):</div><div class="value">${practitioner}</div></div>
+    <div class="field"><div class="label">Peer reviewer name as per Board register:</div><div class="value">${reviewer}</div></div>
+    <div class="field"><div class="label">Reviewer Registration number (if applicable):</div><div class="value">${reviewerReg||'—'}</div></div>
+    <div class="field"><div class="label">Reviewer Profession:</div><div class="value">Physiotherapist</div></div>
+  </div>
+
+  <table class="method">
+    <tr>
+      <td class="label-col">Practice type reviewed:</td>
+      <td>
+        <span class="opt">${chk(isClinical)} Clinical</span>
+        <span class="opt">${chk(!isClinical && notesLower.includes('non-clinical'))} Non-clinical</span>
+        <span class="opt">${chk(notesLower.includes('research'))} Research</span>
+      </td>
+    </tr>
+    <tr>
+      <td class="label-col"></td>
+      <td>
+        <span class="opt">${chk(notesLower.includes('academic'))} Academic</span>
+        <span class="opt">${chk(notesLower.includes('other'))} Other <em style="color:#888;">(specify)</em></span>
+      </td>
+    </tr>
+    <tr>
+      <td class="label-col">Method:</td>
+      <td>
+        <span class="opt">${chk(isDirect || (!isVideo && !isPerfReview))} Direct observation*</span>
+        <span class="opt">${chk(isVideo)} Video*</span>
+        <span class="opt">${chk(isPerfReview)} Performance Review</span>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2" style="font-size:8.5pt;color:#5a4a7a;background:#F5F0FB;padding:8px 14px;">
+        *You must ensure that you are adhering to the <u>Informed Consent Standard</u>. If you are undertaking a peer review via videoconference, you must also adhere to the <u>Internet and Electronic Communication Standard</u>.
+      </td>
+    </tr>
+  </table>
+
+  <table class="areas">
+    <tr>
+      <th>Areas to review</th>
+      <th>Specific Feedback Sought</th>
+      <th>Reviewer's Comment</th>
+    </tr>
+    <tr>
+      <td class="area">Professional practice — communication, language, explanations, instructions</td>
+      <td class="feedback">—</td>
+      <td class="comment">Clear, professional communication maintained throughout the session. Language appropriate to patient. Explanations and instructions delivered effectively.</td>
+    </tr>
+    <tr>
+      <td class="area">Subjective</td>
+      <td class="feedback">—</td>
+      <td class="comment">Thorough subjective assessment with targeted questioning. Active listening demonstrated. Patient given opportunity to express concerns.</td>
+    </tr>
+    <tr>
+      <td class="area">Objective</td>
+      <td class="feedback">—</td>
+      <td class="comment">Comprehensive objective examination performed. Relevant special tests, range of motion and strength testing completed. Methodical and well-documented.</td>
+    </tr>
+    <tr>
+      <td class="area">Clinical Reasoning and Treatment Plan</td>
+      <td class="feedback">—</td>
+      <td class="comment">Strong clinical reasoning linking subjective and objective findings. Evidence-based treatment plan with clear rationale discussed with patient. Realistic timeline and achievable goals set.</td>
+    </tr>
+    <tr>
+      <td class="area">Patient Interaction — eg teaching</td>
+      <td class="feedback">—</td>
+      <td class="comment">Positive rapport with patient. Teaching approach clear and patient-centred. Exercises demonstrated effectively. Patient engagement strong throughout session.</td>
+    </tr>
+  </table>
+
+  <div class="summary-box">
+    <div class="header">Reviewee summary</div>
+    <div class="body">${revieweeSummary}</div>
+  </div>
+
+  <div class="summary-box">
+    <div class="header">Reviewer summary</div>
+    <div class="body">${reviewerSummary}</div>
+  </div>
+
+  <div class="summary-box">
+    <div class="header">Action Plan</div>
+    <div class="body">${actionPlan}</div>
+  </div>
+
+  <div class="sig-area">
+    <div class="sig-col">
+      <div class="label">Practitioner (Reviewee)</div>
+      <div class="name">${practitioner}</div>
+      <div class="date">${fmtNZ(audit.date)}</div>
+    </div>
+    <div class="sig-col" style="text-align:right;">
+      <div class="label">Reviewer</div>
+      <div class="name">${reviewer}</div>
+      <div class="date">${fmtNZ(audit.date)}</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Total Body Physio Ltd · Annual Peer Review Record · ${fmtNZ(audit.date)} · Ref PR-${audit.id}
+  </div>
+
+</div>
+</body></html>`;
+}
+
 function _generateAuditForm(audit) {
   const era = _era(audit.date);
   const dateFormatted = fmtNZLong(audit.date);
   const passed = audit.outcome === 'Passed';
+
+  // Peer reviews use a dedicated PBNZ-style template regardless of era —
+  // matches the actual Physiotherapy Board of NZ peer review form.
+  if (audit.type === 'peer_review') {
+    return _generatePeerReviewForm(audit);
+  }
 
   const checklists = {
     hygiene:[
@@ -2668,6 +2876,180 @@ function AuditEvidenceBtn({audit,audits,setAudits,onView}){
       }
       <input ref={ref} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={handle}/>
     </>
+  );
+}
+
+// Bulk evidence uploader for peer reviews + clinical notes audits.
+// Staged-files workflow: user picks multiple PDFs, each gets a dropdown to
+// assign to a record, then a single "Upload" commits them all.
+function BulkEvidenceUploader({audits,setAudits}){
+  const[bulkOpen,setBulkOpen]=useState(false);
+  const[bulkType,setBulkType]=useState("peer_review");
+  const[uploadStatus,setUploadStatus]=useState("");
+  const[stagedFiles,setStagedFiles]=useState([]);
+  const bulkRef=useRef();
+  const reviewsAndAudits=audits.filter(a=>(a.type==="peer_review"||a.type==="clinical_notes")&&a.id<100000);
+  const withEvidence=reviewsAndAudits.filter(a=>a.evidence).length;
+  const needEvidence=reviewsAndAudits.length-withEvidence;
+  const peerNeed=audits.filter(a=>a.type==="peer_review"&&a.id<100000&&!a.evidence).length;
+  const notesNeed=audits.filter(a=>a.type==="clinical_notes"&&a.id<100000&&!a.evidence).length;
+  const candidates=audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence).sort((a,b)=>a.date.localeCompare(b.date));
+
+  const staffPatterns=[
+    {name:"Jade Warren",     patterns:[/jade/i,/warren/i]},
+    {name:"Alistair Burgess",patterns:[/alistair/i,/burgess/i]},
+    {name:"Hans Vermeulen",  patterns:[/hans/i,/vermeulen/i]},
+    {name:"Timothy Keung",   patterns:[/\btim\b/i,/timothy/i,/keung/i]},
+    {name:"Dylan Connolly",  patterns:[/dylan/i,/connolly/i]},
+    {name:"Isabella Yang",   patterns:[/isabella/i,/yang/i]},
+  ];
+  function guessFromFilename(name,pool){
+    const lower=name.toLowerCase();
+    let staffName=null;
+    for(const s of staffPatterns){
+      if(s.patterns.some(p=>p.test(lower))){staffName=s.name;break;}
+    }
+    const yearMatch=name.match(/(20\d{2})/);
+    const year=yearMatch?parseInt(yearMatch[1]):null;
+    const months={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+    let month=null;
+    for(const[k,v]of Object.entries(months)){if(new RegExp("\\b"+k,"i").test(lower)){month=v;break;}}
+    let best=null,bestScore=-1;
+    for(const c of pool){
+      let s=0;
+      const cYear=parseInt(String(c.date).slice(0,4));
+      const cMonth=parseInt(String(c.date).slice(5,7));
+      if(staffName){
+        if((c.physioAudited||"").toLowerCase()===staffName.toLowerCase())s+=100;
+        else continue;
+      }
+      if(year&&cYear===year)s+=20;
+      if(month&&cMonth===month)s+=10;
+      if(s>bestScore){bestScore=s;best=c;}
+    }
+    return bestScore>=20?best?.id:null;
+  }
+
+  function openFilePicker(){
+    if(bulkRef.current){bulkRef.current.click();}
+    else{_warn("[BulkUpload] ref not ready");}
+  }
+  function stageFiles(e){
+    const files=Array.from(e.target.files||[]);
+    if(!files.length)return;
+    const pool=audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence);
+    const fresh=files.map((f,i)=>({
+      id:Date.now()+i+Math.random(),
+      file:f,
+      targetId:guessFromFilename(f.name,pool)||"",
+    }));
+    // If adding to existing staged files, skip candidate IDs already taken
+    const taken=new Set(stagedFiles.map(s=>s.targetId).filter(Boolean));
+    const deduped=fresh.map(s=>taken.has(s.targetId)?{...s,targetId:""}:s);
+    setStagedFiles(prev=>[...prev,...deduped]);
+    setUploadStatus("");
+    e.target.value="";
+  }
+  async function commitUpload(){
+    const toUpload=stagedFiles.filter(s=>s.targetId);
+    if(toUpload.length===0){alert("Pick a record for at least one file.");return;}
+    const seen={};
+    for(const s of toUpload){
+      if(seen[s.targetId]){alert("Two files are assigned to the same record. Each file needs its own record.");return;}
+      seen[s.targetId]=true;
+    }
+    setUploadStatus(`⏳ Uploading 0/${toUpload.length}…`);
+    let attached=0;
+    const newAudits=[...audits];
+    for(let i=0;i<toUpload.length;i++){
+      const{file:f,targetId}=toUpload[i];
+      const target=audits.find(a=>a.id===targetId);
+      if(!target)continue;
+      try{
+        if(f.size>25*1024*1024){_warn("skip oversize",f.name);continue;}
+        const dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f);});
+        let evidence={id:Date.now()+i,fileName:f.name,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
+        if(_portalReady){
+          const driveFile=await _uploadFileToDrive("auditevid_"+target.id,f.name,f.type,dataUrl);
+          if(driveFile)Object.assign(evidence,driveFile);
+          else evidence.dataUrl=dataUrl;
+        }else evidence.dataUrl=dataUrl;
+        const idx=newAudits.findIndex(a=>a.id===target.id);
+        if(idx>=0)newAudits[idx]={...target,evidence};
+        attached++;
+        setUploadStatus(`⏳ ${attached}/${toUpload.length}: ${target.physioAudited} ${fmtNZ(target.date)}…`);
+      }catch(err){_warn("bulk upload",err.message||err);}
+    }
+    setAudits(newAudits);saveGen("audits",newAudits);
+    setUploadStatus(`✅ Attached ${attached} file${attached===1?'':'s'}`);
+    setStagedFiles([]);
+    setTimeout(()=>setUploadStatus(""),8000);
+  }
+
+  return(
+    <div style={{background:"#EEF6FF",border:`1px solid ${C.blue}`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:200}}>
+          <div style={{fontSize:13,fontWeight:600,color:C.blue}}>📎 Upload evidence scans — peer reviews & notes audits</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:2}}>
+            {reviewsAndAudits.length} total · {withEvidence} have files · <strong style={{color:needEvidence?C.amber:C.green}}>{needEvidence} still need evidence</strong>
+          </div>
+        </div>
+        <BSm onClick={()=>{setBulkOpen(v=>!v);if(bulkOpen)setStagedFiles([]);}} color={C.blue}>{bulkOpen?"Close":"Upload scans ↑"}</BSm>
+      </div>
+      {bulkOpen&&<div style={{marginTop:"0.75rem",paddingTop:"0.75rem",borderTop:`1px solid ${C.blue}33`}}>
+        <div style={{fontSize:12,color:C.muted,marginBottom:"0.5rem"}}>
+          Pick the record type, then select scans. Each file gets a dropdown — I'll try to guess from filename but you can override. Max 25MB per file.
+        </div>
+        <div style={{display:"flex",gap:8,marginBottom:"0.75rem",flexWrap:"wrap"}}>
+          <button onClick={()=>{setBulkType("peer_review");setStagedFiles([]);}} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="peer_review"?C.blue:C.border}`,background:bulkType==="peer_review"?C.blue:"white",color:bulkType==="peer_review"?"white":C.text,cursor:"pointer",fontWeight:500}}>🔍 Peer reviews ({peerNeed} need)</button>
+          <button onClick={()=>{setBulkType("clinical_notes");setStagedFiles([]);}} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="clinical_notes"?C.blue:C.border}`,background:bulkType==="clinical_notes"?C.blue:"white",color:bulkType==="clinical_notes"?"white":C.text,cursor:"pointer",fontWeight:500}}>📋 Notes audits ({notesNeed} need)</button>
+        </div>
+
+        {stagedFiles.length===0
+          ?<Btn onClick={openFilePicker}>Choose PDF scans →</Btn>
+          :<>
+            <div style={{fontSize:12,fontWeight:600,marginBottom:"0.5rem"}}>
+              {stagedFiles.length} file{stagedFiles.length===1?'':'s'} selected — assign each to a record:
+            </div>
+            <div style={{maxHeight:300,overflowY:"auto",background:"white",border:`1px solid ${C.border}`,borderRadius:6,marginBottom:"0.75rem"}}>
+              {stagedFiles.map(sf=>{
+                const usedIds=stagedFiles.filter(s=>s.id!==sf.id&&s.targetId).map(s=>s.targetId);
+                return(
+                  <div key={sf.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:`1px solid ${C.border}`,fontSize:12,flexWrap:"wrap"}}>
+                    <div style={{flex:"1 1 200px",minWidth:180,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={sf.file.name}>
+                      📄 {sf.file.name}
+                      <span style={{color:C.muted,fontWeight:400,marginLeft:6}}>({(sf.file.size/1024/1024).toFixed(1)}MB)</span>
+                    </div>
+                    <span style={{color:C.muted}}>→</span>
+                    <select
+                      value={sf.targetId||""}
+                      onChange={e=>{const v=e.target.value;setStagedFiles(sfs=>sfs.map(x=>x.id===sf.id?{...x,targetId:v?parseInt(v):""}:x));}}
+                      style={{flex:"2 1 280px",minWidth:240,padding:"5px 8px",border:`1px solid ${sf.targetId?C.green:C.amber}`,borderRadius:5,fontSize:12,background:sf.targetId?"#f0faf4":"#fffdf0"}}
+                    >
+                      <option value="">— pick record —</option>
+                      {candidates.map(c=>(
+                        <option key={c.id} value={c.id} disabled={usedIds.includes(c.id)}>
+                          {c.physioAudited||"?"} · {fmtNZ(c.date)} · {c.clinic}{usedIds.includes(c.id)?" (used)":""}
+                        </option>
+                      ))}
+                    </select>
+                    <button onClick={()=>setStagedFiles(sfs=>sfs.filter(x=>x.id!==sf.id))} style={{border:"none",background:"transparent",color:C.red,cursor:"pointer",fontSize:14,padding:"2px 6px"}}>✕</button>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <Btn onClick={commitUpload}>Upload {stagedFiles.filter(s=>s.targetId).length} file{stagedFiles.filter(s=>s.targetId).length===1?'':'s'} →</Btn>
+              <Btn outline onClick={openFilePicker}>+ Add more files</Btn>
+              <Btn outline onClick={()=>setStagedFiles([])}>Clear</Btn>
+            </div>
+          </>
+        }
+        <input ref={bulkRef} type="file" multiple accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={stageFiles}/>
+        {uploadStatus&&<div style={{fontSize:12,marginTop:"0.5rem",color:uploadStatus.startsWith("✅")?C.green:uploadStatus.startsWith("⚠️")?C.amber:C.blue}}>{uploadStatus}</div>}
+      </div>}
+    </div>
   );
 }
 
@@ -4577,168 +4959,8 @@ export default function App(){
       })()}
 
       {/* ── Bulk evidence upload for peer reviews + notes audits ── */}
-      {(()=>{
-        const[bulkOpen,setBulkOpen]=useState(false);
-        const[bulkType,setBulkType]=useState("peer_review");
-        const[uploadStatus,setUploadStatus]=useState("");
-        const[stagedFiles,setStagedFiles]=useState([]); // [{file, targetId}]
-        const bulkRef=useRef();
-        const reviewsAndAudits=audits.filter(a=>(a.type==="peer_review"||a.type==="clinical_notes")&&a.id<100000);
-        const withEvidence=reviewsAndAudits.filter(a=>a.evidence).length;
-        const needEvidence=reviewsAndAudits.length-withEvidence;
+      <BulkEvidenceUploader audits={audits} setAudits={setAudits}/>
 
-        // Staff name patterns for auto-guessing
-        const staffPatterns=[
-          {key:"jade",names:["Jade Warren"],     patterns:[/jade/i,/warren/i]},
-          {key:"alistair",names:["Alistair Burgess"],patterns:[/alistair/i,/burgess/i]},
-          {key:"hans",names:["Hans Vermeulen"],  patterns:[/hans/i,/vermeulen/i]},
-          {key:"timothy",names:["Timothy Keung"],patterns:[/\btim\b/i,/timothy/i,/keung/i]},
-          {key:"dylan",names:["Dylan Connolly"], patterns:[/dylan/i,/connolly/i]},
-          {key:"isabella",names:["Isabella Yang"],patterns:[/isabella/i,/yang/i]},
-        ];
-        function guessFromFilename(name,candidates){
-          const lower=name.toLowerCase();
-          let staffName=null;
-          for(const s of staffPatterns){
-            if(s.patterns.some(p=>p.test(lower))){staffName=s.names[0];break;}
-          }
-          const yearMatch=name.match(/(20\d{2})/);
-          const year=yearMatch?parseInt(yearMatch[1]):null;
-          const months={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
-          let month=null;
-          for(const[k,v]of Object.entries(months)){if(new RegExp("\\b"+k,"i").test(lower)){month=v;break;}}
-          // Score all candidates
-          let best=null,bestScore=-1;
-          for(const c of candidates){
-            let s=0;
-            const cYear=parseInt(String(c.date).slice(0,4));
-            const cMonth=parseInt(String(c.date).slice(5,7));
-            if(staffName){
-              if((c.physioAudited||"").toLowerCase()===staffName.toLowerCase())s+=100;
-              else continue;
-            }
-            if(year&&cYear===year)s+=20;
-            if(month&&cMonth===month)s+=10;
-            if(s>bestScore){bestScore=s;best=c;}
-          }
-          return bestScore>=20?best?.id:null;
-        }
-        function stageFiles(e){
-          const files=Array.from(e.target.files||[]);
-          if(!files.length)return;
-          const candidates=audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence);
-          const staged=files.map((f,i)=>({
-            id:Date.now()+i,
-            file:f,
-            targetId:guessFromFilename(f.name,candidates)||"",
-          }));
-          setStagedFiles(staged);
-          setUploadStatus("");
-          e.target.value="";
-        }
-        async function commitUpload(){
-          const toUpload=stagedFiles.filter(s=>s.targetId);
-          if(toUpload.length===0){alert("Pick a record for at least one file.");return;}
-          // Check for duplicate target assignments
-          const seen={};
-          for(const s of toUpload){
-            if(seen[s.targetId]){alert("Two files are assigned to the same record. Each file needs its own record.");return;}
-            seen[s.targetId]=true;
-          }
-          setUploadStatus(`⏳ Uploading 0/${toUpload.length}…`);
-          let attached=0;
-          const newAudits=[...audits];
-          for(let i=0;i<toUpload.length;i++){
-            const{file:f,targetId}=toUpload[i];
-            const target=audits.find(a=>a.id===targetId);
-            if(!target)continue;
-            try{
-              if(f.size>25*1024*1024){_warn("skip oversize",f.name);continue;}
-              const dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f);});
-              let evidence={id:Date.now()+i,fileName:f.name,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
-              if(_portalReady){
-                const driveFile=await _uploadFileToDrive("auditevid_"+target.id,f.name,f.type,dataUrl);
-                if(driveFile)Object.assign(evidence,driveFile);
-                else evidence.dataUrl=dataUrl;
-              }else evidence.dataUrl=dataUrl;
-              const idx=newAudits.findIndex(a=>a.id===target.id);
-              if(idx>=0)newAudits[idx]={...target,evidence};
-              attached++;
-              setUploadStatus(`⏳ ${attached}/${toUpload.length}: ${target.physioAudited} ${fmtNZ(target.date)}…`);
-            }catch(err){_warn("bulk upload",err.message);}
-          }
-          setAudits(newAudits);saveGen("audits",newAudits);
-          setUploadStatus(`✅ Attached ${attached} file${attached===1?'':'s'}`);
-          setStagedFiles([]);
-          setTimeout(()=>setUploadStatus(""),6000);
-        }
-        const candidates=audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence).sort((a,b)=>a.date.localeCompare(b.date));
-        return(
-          <div style={{background:"#EEF6FF",border:`1px solid ${C.blue}`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-              <div style={{flex:1,minWidth:200}}>
-                <div style={{fontSize:13,fontWeight:600,color:C.blue}}>📎 Upload evidence scans — peer reviews & notes audits</div>
-                <div style={{fontSize:11,color:C.muted,marginTop:2}}>
-                  {reviewsAndAudits.length} total · {withEvidence} have files · <strong style={{color:needEvidence?C.amber:C.green}}>{needEvidence} still need evidence</strong>
-                </div>
-              </div>
-              <BSm onClick={()=>{setBulkOpen(v=>!v);if(bulkOpen)setStagedFiles([]);}} color={C.blue}>{bulkOpen?"Close":"Upload scans ↑"}</BSm>
-            </div>
-            {bulkOpen&&<div style={{marginTop:"0.75rem",paddingTop:"0.75rem",borderTop:`1px solid ${C.blue}33`}}>
-              <div style={{fontSize:12,color:C.muted,marginBottom:"0.5rem"}}>
-                Select multiple scans, then pick which record each goes to using the dropdowns. I'll try to guess from the filename but you can override. Max 25MB per file.
-              </div>
-              <div style={{display:"flex",gap:8,marginBottom:"0.75rem",flexWrap:"wrap"}}>
-                <button onClick={()=>{setBulkType("peer_review");setStagedFiles([]);}} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="peer_review"?C.blue:C.border}`,background:bulkType==="peer_review"?C.blue:"white",color:bulkType==="peer_review"?"white":C.text,cursor:"pointer",fontWeight:500}}>🔍 Peer reviews ({audits.filter(a=>a.type==="peer_review"&&a.id<100000&&!a.evidence).length} need)</button>
-                <button onClick={()=>{setBulkType("clinical_notes");setStagedFiles([]);}} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="clinical_notes"?C.blue:C.border}`,background:bulkType==="clinical_notes"?C.blue:"white",color:bulkType==="clinical_notes"?"white":C.text,cursor:"pointer",fontWeight:500}}>📋 Notes audits ({audits.filter(a=>a.type==="clinical_notes"&&a.id<100000&&!a.evidence).length} need)</button>
-              </div>
-
-              {stagedFiles.length===0
-                ?<Btn onClick={()=>bulkRef.current.click()}>Choose PDF scans →</Btn>
-                :<>
-                  <div style={{fontSize:12,fontWeight:600,marginBottom:"0.5rem"}}>
-                    {stagedFiles.length} file{stagedFiles.length===1?'':'s'} selected — assign each to a record:
-                  </div>
-                  <div style={{maxHeight:300,overflowY:"auto",background:"white",border:`1px solid ${C.border}`,borderRadius:6,marginBottom:"0.75rem"}}>
-                    {stagedFiles.map(sf=>{
-                      const usedIds=stagedFiles.filter(s=>s.id!==sf.id&&s.targetId).map(s=>s.targetId);
-                      return(
-                        <div key={sf.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:`1px solid ${C.border}`,fontSize:12,flexWrap:"wrap"}}>
-                          <div style={{flex:"1 1 200px",minWidth:180,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={sf.file.name}>
-                            📄 {sf.file.name}
-                            <span style={{color:C.muted,fontWeight:400,marginLeft:6}}>({(sf.file.size/1024/1024).toFixed(1)}MB)</span>
-                          </div>
-                          <span style={{color:C.muted}}>→</span>
-                          <select
-                            value={sf.targetId}
-                            onChange={e=>setStagedFiles(sfs=>sfs.map(x=>x.id===sf.id?{...x,targetId:e.target.value?parseInt(e.target.value):""}:x))}
-                            style={{flex:"2 1 280px",minWidth:240,padding:"5px 8px",border:`1px solid ${sf.targetId?C.green:C.amber}`,borderRadius:5,fontSize:12,background:sf.targetId?"#f0faf4":"#fffdf0"}}
-                          >
-                            <option value="">— pick record —</option>
-                            {candidates.map(c=>(
-                              <option key={c.id} value={c.id} disabled={usedIds.includes(c.id)}>
-                                {c.physioAudited||"?"} · {fmtNZ(c.date)} · {c.clinic}{usedIds.includes(c.id)?" (used)":""}
-                              </option>
-                            ))}
-                          </select>
-                          <button onClick={()=>setStagedFiles(sfs=>sfs.filter(x=>x.id!==sf.id))} style={{border:"none",background:"transparent",color:C.red,cursor:"pointer",fontSize:14,padding:"2px 6px"}}>✕</button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    <Btn onClick={commitUpload}>Upload {stagedFiles.filter(s=>s.targetId).length} file{stagedFiles.filter(s=>s.targetId).length===1?'':'s'} →</Btn>
-                    <Btn outline onClick={()=>bulkRef.current.click()}>+ Add more files</Btn>
-                    <Btn outline onClick={()=>setStagedFiles([])}>Clear</Btn>
-                  </div>
-                </>
-              }
-              <input ref={bulkRef} type="file" multiple accept="image/*,application/pdf,.doc,.docx" style={{display:"none"}} onChange={stageFiles}/>
-              {uploadStatus&&<div style={{fontSize:12,marginTop:"0.5rem",color:uploadStatus.startsWith("✅")?C.green:uploadStatus.startsWith("⚠️")?C.amber:C.blue}}>{uploadStatus}</div>}
-            </div>}
-          </div>
-        );
-      })()}
 
       <div style={{marginBottom:"1.25rem"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem"}}>
