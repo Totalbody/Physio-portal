@@ -551,7 +551,29 @@ async function _saveDriveState() {
       }
     }
     _log('[Drive] State saved');
+    // Mirror key shared arrays to Vercel so non-owner staff (who can't read
+    // from the owner's Drive folder) always see up-to-date data via Vercel.
+    _mirrorStateToVercel();
   } catch(e) { _err('[Drive state save]', e.message); }
+}
+
+// Push selected state arrays to Vercel's /store endpoint so KPI staff see them.
+// Runs fire-and-forget — failures are logged but don't block the Drive save.
+let _vercelMirrorTimer = null;
+function _mirrorStateToVercel() {
+  clearTimeout(_vercelMirrorTimer);
+  _vercelMirrorTimer = setTimeout(() => {
+    const MIRROR_KEYS = ['inservices', 'audits', 'meetings', 'ppDocs', 'ppReviews', 'deletedInserviceIds', 'deletedAuditIds'];
+    MIRROR_KEYS.forEach(k => {
+      const val = _portalStore.data?.[k];
+      if (val === undefined || val === null) return;
+      fetch(PORTAL_API + '/store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Portal-Secret': PORTAL_SECRET },
+        body: JSON.stringify({ key: k, value: val }),
+      }).catch(e => _warn('[Vercel mirror]', k, e.message || e));
+    });
+  }, 500);
 }
 
 // Load portal-state.json from the root folder into _portalStore
