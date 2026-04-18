@@ -12182,9 +12182,6 @@ export default function App(){
       {/* ── Load PBNZ-style peer review PDFs (one-click evidence) ── */}
       <PBNZPeerReviewLoader audits={audits} setAudits={setAudits}/>
 
-      {/* ── Load FENZ-style fire drill PDFs (one-click evidence) ── */}
-      <FENZFireDrillLoader audits={audits} setAudits={setAudits}/>
-
       {/* ── Bulk evidence upload for peer reviews + notes audits ── */}
       <BulkEvidenceUploader audits={audits} setAudits={setAudits}/>
 
