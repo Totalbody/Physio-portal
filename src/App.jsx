@@ -2923,9 +2923,11 @@ function FireDrillLoader({audits,setAudits}){
   const allDrills=audits.filter(a=>a.type==="fire_drill"&&a.id<100000&&FIRE_DRILL_PDFS[a.id]);
   const needsFenz=allDrills.filter(a=>{
     if(!a.evidence)return true;
-    // Has a driveId AND correct filename pattern = good FENZ PDF on Drive
+    // Has a driveId AND FENZ PDF filename AND is actually a PDF
+    // (not a regenerated HTML audit form that happens to share the filename prefix)
     const fn=(a.evidence.fileName||"").toLowerCase();
-    if(a.evidence.driveId&&fn.startsWith("fire_drill_"))return false;
+    const isPdf=a.evidence.fileType==='application/pdf'||fn.endsWith('.pdf');
+    if(a.evidence.driveId&&fn.startsWith("fire_drill_")&&isPdf)return false;
     return true;
   });
   // Check for deleted seed fire drills — ones with embedded PDFs but not in audits
@@ -3051,7 +3053,8 @@ function PBNZPeerReviewLoader({audits,setAudits}){
   const needsPdf=allReviews.filter(a=>{
     if(!a.evidence)return true;
     const fn=(a.evidence.fileName||"").toLowerCase();
-    if(a.evidence.driveId&&fn.startsWith("peer_review_"))return false;
+    const isPdf=a.evidence.fileType==='application/pdf'||fn.endsWith('.pdf');
+    if(a.evidence.driveId&&fn.startsWith("peer_review_")&&isPdf)return false;
     return true;
   });
   if(allReviews.length===0)return null;
@@ -12195,7 +12198,7 @@ export default function App(){
           if(!window.confirm("Regenerate ALL audit form HTML files with the current templates?\n\nThis re-creates the saved forms using the latest era-based styles. Existing ones will be replaced."))return;
           setAuditRegen({running:true,msg:"Starting…"});
           try{
-            const targets=audits.map((a,i)=>({a,i})).filter(({a})=>a.id<100000);
+            const targets=audits.map((a,i)=>({a,i})).filter(({a})=>a.id<100000&&a.type!=='fire_drill'&&a.type!=='peer_review');
             let done=0;const total=targets.length;
             const updated=[...audits];
             for(const{a,i}of targets){
@@ -12221,7 +12224,7 @@ export default function App(){
           <div style={{background:"#F7F5EE",border:`1px solid ${C.border}`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             <div style={{flex:1,minWidth:180}}>
               <div style={{fontSize:13,fontWeight:600}}>🎨 Audit form templates</div>
-              <div style={{fontSize:11,color:C.muted,marginTop:2}}>Style varies by era — 6 looks from 2022 basic Word to 2025 digital attestation. Regenerate after template changes to refresh saved forms.</div>
+              <div style={{fontSize:11,color:C.muted,marginTop:2}}>Style varies by era — 6 looks from 2022 basic Word to 2025 digital attestation. Regenerate after template changes to refresh saved forms. <strong>Skips fire drills and peer reviews</strong> — those use dedicated FENZ/PBNZ PDFs.</div>
             </div>
             <Btn onClick={regenAllAudits} style={{opacity:auditRegen.running?0.5:1}}>{auditRegen.running?"⏳ Regenerating…":"Regenerate all audit forms"}</Btn>
           </div>
