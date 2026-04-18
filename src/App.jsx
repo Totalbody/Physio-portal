@@ -2017,30 +2017,67 @@ function GenerateDocsTool({portalConnected,audits,meetings,setAudits,setMeetings
 function FileViewer({file,onClose}){
   if(!file)return null;
   const isImg=file.fileType?.startsWith("image/");
+  const isHtml=file.fileType==="text/html"||/\.html?$/i.test(file.fileName||"");
   const isDrive=!!file.driveId;
   const[imgLoaded,setImgLoaded]=useState(false);
   const[imgError,setImgError]=useState(false);
   const[iframeError,setIframeError]=useState(false);
+  const[htmlBlobUrl,setHtmlBlobUrl]=useState(null);
+  const[htmlLoading,setHtmlLoading]=useState(false);
 
-  // Drive thumbnail is fast and reliable for images (no iframe needed)
+  // Drive's /preview renders HTML as source text instead of rendering it.
+  // Workaround: fetch the raw HTML via Drive API, create a text/html blob URL,
+  // and iframe that — the browser renders it properly.
+  useEffect(()=>{
+    if(!isHtml||!file.driveId)return;
+    let cancelled=false; let createdUrl=null;
+    (async()=>{
+      setHtmlLoading(true);
+      try{
+        // Prefer authenticated API fetch if we have a token
+        let text=null;
+        if(_driveToken){
+          const resp=await fetch(`https://www.googleapis.com/drive/v3/files/${file.driveId}?alt=media`,
+            {headers:{Authorization:`Bearer ${_driveToken}`}});
+          if(resp.ok) text=await resp.text();
+        }
+        // Fallback: public URL (works if file is shared) for staff without Drive token
+        if(!text){
+          const resp=await fetch(`https://drive.google.com/uc?export=download&id=${file.driveId}`);
+          if(resp.ok) text=await resp.text();
+        }
+        if(cancelled||!text)return;
+        const blob=new Blob([text],{type:'text/html'});
+        createdUrl=URL.createObjectURL(blob);
+        setHtmlBlobUrl(createdUrl);
+      }catch(e){_warn('[FileViewer HTML fetch]',e.message);}
+      finally{if(!cancelled)setHtmlLoading(false);}
+    })();
+    return()=>{cancelled=true;if(createdUrl)URL.revokeObjectURL(createdUrl);};
+  },[file?.driveId,isHtml]);
+
+  // Drive thumbnail is fast and reliable for images
   const imgSrc = isDrive
     ? `https://drive.google.com/thumbnail?id=${file.driveId}&sz=w1200`
     : (file.blobUrl||file.dataUrl);
 
-  // Drive preview embed — works inline for PDF, HTML, DOCX, PPTX, XLSX
+  // Drive preview embed — works inline for PDF, DOCX, PPTX, XLSX (NOT html)
   const previewUrl = file.driveId
     ? `https://drive.google.com/file/d/${file.driveId}/preview`
     : null;
 
-  // "Open in new tab" fallback URL
+  // "Open in new tab" fallback
   const openUrl = file.driveId
     ? `https://drive.google.com/file/d/${file.driveId}/view`
     : (file.driveUrl||file.blobUrl||file.dataUrl);
 
-  // For non-image files: prefer inline iframe embed if we have a preview URL,
-  // otherwise fall back to dataUrl (which most browsers can also render inline).
-  const canEmbed = !isImg && (previewUrl || file.dataUrl || file.blobUrl);
-  const embedSrc = previewUrl || file.dataUrl || file.blobUrl;
+  // What to actually embed:
+  //   HTML → prefer our fetched blob URL (renders properly), fall back to dataUrl
+  //   Other → Drive preview URL, then dataUrl/blobUrl
+  const embedSrc = isHtml
+    ? (htmlBlobUrl || file.dataUrl || file.blobUrl)
+    : (previewUrl || file.dataUrl || file.blobUrl);
+  const canEmbed = !isImg && !!embedSrc;
 
   return(
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.92)",zIndex:600,display:"flex",flexDirection:"column"}}>
@@ -2072,8 +2109,15 @@ function FileViewer({file,onClose}){
           </div>
         )}
 
-        {/* ── Inline iframe embed for PDFs/HTML/docs — no extra click needed ── */}
-        {canEmbed&&!iframeError&&(
+        {/* ── HTML loading state ── */}
+        {isHtml&&htmlLoading&&!htmlBlobUrl&&(
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:14}}>
+            <div>⏳ Loading document…</div>
+          </div>
+        )}
+
+        {/* ── Inline iframe embed — renders HTML/PDF/docs ── */}
+        {canEmbed&&!iframeError&&(!isHtml||!htmlLoading)&&(
           <iframe
             src={embedSrc}
             title={file.fileName}
@@ -2083,20 +2127,15 @@ function FileViewer({file,onClose}){
           />
         )}
 
-        {/* ── Fallback: open-in-Drive card (only if embed fails or no source) ── */}
-        {(!isImg||imgError)&&(!canEmbed||iframeError)&&(
+        {/* ── Fallback card ── */}
+        {(!isImg||imgError)&&(!canEmbed||iframeError)&&!htmlLoading&&(
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:"100%",padding:"1.5rem"}}>
             <div style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:16,padding:"2.5rem 2rem",textAlign:"center",maxWidth:360,width:"100%"}}>
               <div style={{fontSize:56,marginBottom:"1rem"}}>{file.fileType==="application/pdf"?"📄":"📎"}</div>
               <div style={{color:"white",fontWeight:600,fontSize:16,marginBottom:6,wordBreak:"break-word"}}>{file.fileName}</div>
               {file.uploadedDate&&<div style={{color:"rgba(255,255,255,0.5)",fontSize:12,marginBottom:"2rem"}}>Uploaded {file.uploadedDate}</div>}
               {openUrl
-                ?<a
-                  href={openUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{display:"inline-block",background:C.teal,color:"white",padding:"12px 28px",borderRadius:10,fontWeight:600,fontSize:15,textDecoration:"none"}}
-                >↗ Open in Google Drive</a>
+                ?<a href={openUrl} target="_blank" rel="noreferrer" style={{display:"inline-block",background:C.teal,color:"white",padding:"12px 28px",borderRadius:10,fontWeight:600,fontSize:15,textDecoration:"none"}}>↗ Open in Google Drive</a>
                 :<div style={{color:"rgba(255,255,255,0.4)",fontSize:13}}>No preview available</div>
               }
             </div>
@@ -2104,7 +2143,7 @@ function FileViewer({file,onClose}){
         )}
       </div>
 
-      {/* Always-visible close bar — works even when content is unresponsive */}
+      {/* Always-visible close bar */}
       <div
         onClick={onClose}
         style={{background:"rgba(0,0,0,0.75)",borderTop:"1px solid rgba(255,255,255,0.12)",padding:"12px",textAlign:"center",cursor:"pointer",flexShrink:0}}
