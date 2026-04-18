@@ -409,30 +409,31 @@ async function _initGapi() {
   });
 }
 
-// ── Token cache — persists across page loads within the session ──
-// Google access tokens last ~1h. Caching kills the "reconnect every time" friction.
-const _DRIVE_TOKEN_CACHE_KEY = 'tbp_drive_token_v1';
+// ── Token cache — persists across page loads within the token's 1hr life ──
+// Google access tokens last ~1h. localStorage caching means no popup within
+// that window, even across tab reopens or full browser restarts.
+const _DRIVE_TOKEN_CACHE_KEY = 'tbp_drive_token_v2';
 function _getCachedToken() {
   try {
-    const raw = sessionStorage.getItem(_DRIVE_TOKEN_CACHE_KEY);
+    const raw = localStorage.getItem(_DRIVE_TOKEN_CACHE_KEY);
     if (!raw) return null;
     const { token, expiresAt } = JSON.parse(raw);
     // Require at least 60 seconds of life remaining
     if (token && expiresAt && expiresAt - Date.now() > 60000) return token;
-    sessionStorage.removeItem(_DRIVE_TOKEN_CACHE_KEY);
+    localStorage.removeItem(_DRIVE_TOKEN_CACHE_KEY);
   } catch {}
   return null;
 }
 function _cacheToken(token, expiresInSec) {
   try {
-    sessionStorage.setItem(_DRIVE_TOKEN_CACHE_KEY, JSON.stringify({
+    localStorage.setItem(_DRIVE_TOKEN_CACHE_KEY, JSON.stringify({
       token,
       expiresAt: Date.now() + ((Number(expiresInSec) || 3600) * 1000),
     }));
   } catch {}
 }
 function _clearTokenCache() {
-  try { sessionStorage.removeItem(_DRIVE_TOKEN_CACHE_KEY); } catch {}
+  try { localStorage.removeItem(_DRIVE_TOKEN_CACHE_KEY); } catch {}
 }
 
 function _requestToken(prompt = 'none') {
@@ -3660,10 +3661,13 @@ export default function App(){
       const rec={...ni,id:Date.now(),year:parseInt(ni.date.slice(0,4))};
       const updated=[...inservices,rec];
       setInservices(updated);
-      // Preserve KPI's personal_cpd entries that were filtered out on load
+      // Merge-by-ID with whatever is currently in _portalStore so nothing is lost,
+      // including KPI's personal_cpd entries and any records added by other apps
+      // between our last load and this save.
       const raw=(_portalStore?.data?.["inservices"])||[];
-      const personalCpd=raw.filter(e=>e?.type==="personal_cpd");
-      saveGen("inservices",[...updated,...personalCpd]);
+      const updatedIds=new Set(updated.map(r=>String(r?.id)));
+      const preserved=raw.filter(e=>!updatedIds.has(String(e?.id)));
+      saveGen("inservices",[...updated,...preserved]);
       setNi({date:"",clinic:"All clinics",topic:"",presenter:"",attendees:"",notes:""});
       setShowForm(false);
     }
