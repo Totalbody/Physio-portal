@@ -3,9 +3,29 @@ import { useState, useRef, useEffect, useCallback } from "react";
 const PORTAL_API = "https://tbp-cliniko-proxy-j6f9.vercel.app/api/portal";
 const PORTAL_SECRET = "LSLYXuABMuqYUAJ7BeF4oHhnKh0xvBlogog99ipQ";
 const _isDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-const _log  = (...a) => { if (_isDev) console.log(...a); };
-const _warn = (...a) => { if (_isDev) console.warn(...a); };
-const _err  = (...a) => { if (_isDev) console.error(...a); };
+
+// ── IN-APP DEBUG LOG ─────────────────────────────────────────────
+// iPad / iPhone Safari doesn't give you DevTools, so every _log/_warn/_err
+// call is mirrored into this buffer and surfaced in the floating "🐛 Debug"
+// panel at the bottom-right of the screen. Tap it to see what's happened.
+const _debugLog = [];
+const _DEBUG_MAX = 500;
+const _debugListeners = new Set();
+function _debugAdd(level, args) {
+  const ts = new Date().toLocaleTimeString('en-NZ', { hour12:false });
+  const msg = args.map(a => {
+    if (typeof a === 'string') return a;
+    if (a instanceof Error) return a.message;
+    if (a && typeof a === 'object') { try { return JSON.stringify(a); } catch { return String(a); } }
+    return String(a);
+  }).join(' ');
+  _debugLog.push({ ts, level, msg });
+  if (_debugLog.length > _DEBUG_MAX) _debugLog.shift();
+  _debugListeners.forEach(fn => { try { fn(); } catch {} });
+}
+const _log  = (...a) => { _debugAdd('log',  a); if (_isDev) console.log(...a); };
+const _warn = (...a) => { _debugAdd('warn', a); if (_isDev) console.warn(...a); };
+const _err  = (...a) => { _debugAdd('err',  a); if (_isDev) console.error(...a); };
 const _apiHeaders = { "Content-Type": "application/json", "X-Portal-Secret": PORTAL_SECRET };
 
 // ── NZ DATE FORMATTING ────────────────────────────────────────
@@ -506,19 +526,35 @@ async function _signInToDrive() {
 }
 
 // Upload a file directly to Drive; returns { driveId, blobUrl, driveUrl, fileName, fileType }
-async function _uploadFileToDrive(fileKey, fileName, fileType, dataUrl) {
+async function _uploadFileToDrive(fileKey, fileName, fileType, dataUrl, _isRetry=false) {
   try {
     const folderId = _folderForKey(fileKey); // instant — no API call
     const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), c => c.charCodeAt(0));
     const form = new FormData();
     form.append('metadata', new Blob([JSON.stringify({ name: fileName, parents: [folderId] })], { type:'application/json' }));
     form.append('file', new Blob([bytes], { type: fileType }));
+    const t0 = Date.now();
     const resp = await fetch(
       'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',
       { method:'POST', headers:{ Authorization:`Bearer ${_driveToken}` }, body: form }
     );
+    // Token expired? Refresh and retry once.
+    if (resp.status === 401 && !_isRetry) {
+      _warn('[Drive upload] 401 — refreshing token and retrying', fileName);
+      _clearTokenCache();
+      try { await _requestToken('none'); } catch {
+        try { await _requestToken(''); } catch(e) { _err('[Drive upload] token refresh failed', e.message||e); return null; }
+      }
+      return _uploadFileToDrive(fileKey, fileName, fileType, dataUrl, true);
+    }
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => resp.statusText);
+      _err('[Drive upload]', resp.status, fileName, errText.slice(0, 200));
+      return null;
+    }
     const r = await resp.json();
-    if (!r.id) throw new Error(JSON.stringify(r));
+    if (!r.id) { _err('[Drive upload] no file id in response', fileName, JSON.stringify(r).slice(0,200)); return null; }
+    _log(`[Drive upload] ✓ ${fileName} (${(bytes.length/1024).toFixed(0)}KB in ${Date.now()-t0}ms) id=${r.id}`);
     // Link-share (anyone with link can view — needed for inline display in portal)
     await fetch(`https://www.googleapis.com/drive/v3/files/${r.id}/permissions`, {
       method:'POST',
@@ -531,7 +567,7 @@ async function _uploadFileToDrive(fileKey, fileName, fileType, dataUrl) {
       blobUrl: `https://drive.google.com/uc?export=view&id=${r.id}`,
       fileName, fileType,
     };
-  } catch(e) { _err('[Drive upload]', e.message); return null; }
+  } catch(e) { _err('[Drive upload] exception', fileName, e.message||String(e)); return null; }
 }
 
 async function _deleteFromDrive(driveId) {
@@ -543,10 +579,11 @@ async function _deleteFromDrive(driveId) {
 }
 
 // Save portal-state.json into the root portal folder (debounced)
-async function _saveDriveState() {
+async function _saveDriveState(_isRetry=false) {
   if (!_portalReady || !_driveToken) throw new Error('Drive not ready');
   const payload = JSON.stringify({ ..._portalStore.data, _files: _portalStore.files });
-  _log(`[Drive] Saving state (${(payload.length/1024).toFixed(0)}KB)…`);
+  _log(`[Drive] Saving state (${(payload.length/1024).toFixed(0)}KB, ${Object.keys(_portalStore.data).length} keys, ${Object.keys(_portalStore.files).length} files)…`);
+  const t0 = Date.now();
   try {
     if (_driveStateFileId) {
       const resp = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${_driveStateFileId}?uploadType=media`, {
@@ -554,6 +591,20 @@ async function _saveDriveState() {
         headers:{ Authorization:`Bearer ${_driveToken}`, 'Content-Type':'application/json' },
         body: payload,
       });
+      // Token expired? Refresh and retry once.
+      if (resp.status === 401 && !_isRetry) {
+        _warn('[Drive state save] 401 — refreshing token and retrying');
+        _clearTokenCache();
+        try { await _requestToken('none'); } catch { await _requestToken(''); }
+        return _saveDriveState(true);
+      }
+      // State file was deleted/moved? Clear the stale ID and try creating a new one.
+      if (resp.status === 404 && !_isRetry) {
+        _warn('[Drive state save] 404 — state file gone, creating a new one');
+        _driveStateFileId = null;
+        try { localStorage.removeItem('tbp_state_file_id'); } catch {}
+        return _saveDriveState(true);
+      }
       if (!resp.ok) {
         const errText = await resp.text().catch(()=>resp.statusText);
         throw new Error(`Drive PATCH failed: ${resp.status} ${errText.slice(0,200)}`);
@@ -572,6 +623,12 @@ async function _saveDriveState() {
         'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
         { method:'POST', headers:{ Authorization:`Bearer ${_driveToken}` }, body: form }
       );
+      if (resp.status === 401 && !_isRetry) {
+        _warn('[Drive state create] 401 — refreshing token and retrying');
+        _clearTokenCache();
+        try { await _requestToken('none'); } catch { await _requestToken(''); }
+        return _saveDriveState(true);
+      }
       if (!resp.ok) {
         const errText = await resp.text().catch(()=>resp.statusText);
         throw new Error(`Drive create failed: ${resp.status} ${errText.slice(0,200)}`);
@@ -587,7 +644,7 @@ async function _saveDriveState() {
         }).catch(()=>{});
       }
     }
-    _log('[Drive] State saved successfully');
+    _log(`[Drive] State saved ✓ (${Date.now()-t0}ms)`);
     _mirrorStateToVercel();
   } catch(e) {
     _err('[Drive state save]', e.message);
@@ -2970,14 +3027,19 @@ function FireDrillLoader({audits,setAudits}){
       : `Upload FENZ-style evacuation report PDFs to Drive for ${list.length} fire drill record${list.length===1?'':'s'}?`;
     if(!window.confirm(msg))return;
     setRunning(true);
-    const newAudits=[...audits];
+    let newAudits=[...audits];
     let uploaded=0;
+    let lastSavedAt=0;
     const failed=[];
+    _log(`[FireDrill] Starting batch — ${list.length} PDFs to upload`);
     for(let i=0;i<list.length;i++){
       const target=list[i];
       const pdfData=FIRE_DRILL_PDFS[target.id];
-      if(!pdfData){failed.push(`${target.clinic} ${fmtNZ(target.date)}`);continue;}
-      setStatus(`⏳ ${i+1}/${list.length}: ${target.clinic} · ${fmtNZ(target.date)} — uploading to Drive…`);
+      if(!pdfData){
+        _warn(`[FireDrill] No PDF data for id ${target.id}`);
+        failed.push(`${target.clinic} ${fmtNZ(target.date)}`);continue;
+      }
+      setStatus(`⏳ ${i+1}/${list.length}: ${target.clinic} · ${fmtNZ(target.date)} — uploading… (${uploaded} ok, ${failed.length} failed so far)`);
       try{
         const dataUrl='data:application/pdf;base64,'+pdfData.base64;
         const driveFile=await _uploadFileToDrive("auditevid_"+target.id,pdfData.filename,'application/pdf',dataUrl);
@@ -2990,11 +3052,21 @@ function FireDrillLoader({audits,setAudits}){
           fileName:pdfData.filename,
           fileType:'application/pdf',
           uploadedDate:new Date().toLocaleDateString("en-NZ"),
-          ...driveFile,  // driveId, driveUrl, blobUrl from Drive upload
+          ...driveFile,
         };
         const idx=newAudits.findIndex(a=>a.id===target.id);
         if(idx>=0)newAudits[idx]={...target,evidence};
         uploaded++;
+        // ── Incremental save: every 3 successful uploads, save state so a crash
+        //    or tab-background mid-batch doesn't lose progress. Without this,
+        //    partial batches on slow/unstable connections lose all work.
+        if(uploaded-lastSavedAt>=3){
+          setStatus(`💾 Checkpoint: saving progress (${uploaded}/${list.length})…`);
+          _log(`[FireDrill] Checkpoint save at ${uploaded}/${list.length}`);
+          const sr=await saveGenImmediate("audits",newAudits);
+          if(sr.ok){ lastSavedAt=uploaded; _log(`[FireDrill] Checkpoint ✓`); }
+          else{ _err(`[FireDrill] Checkpoint save FAILED at ${uploaded}: ${sr.error}`); }
+        }
       }catch(e){
         _warn('[FireDrill upload]',target.id,e.message||e);
         failed.push(`${target.clinic} ${fmtNZ(target.date)}`);
@@ -3002,18 +3074,20 @@ function FireDrillLoader({audits,setAudits}){
       // Small pause between uploads to not hammer Drive API
       if(i<list.length-1)await new Promise(r=>setTimeout(r,300));
     }
-    setStatus(`💾 Saving audit refs to Drive state…`);
+    setStatus(`💾 Final save (${uploaded} uploaded, ${failed.length} failed)…`);
     setAudits(newAudits);
     // State file is now TINY because evidence just has driveId, not inlined PDF
     const result=await saveGenImmediate("audits",newAudits);
+    _log(`[FireDrill] Batch complete: uploaded=${uploaded} failed=${failed.length} saveOk=${result.ok}`);
     const finalMsg = !result.ok
-      ? `❌ State save failed: ${(result.error||'unknown').slice(0,100)}`
+      ? `❌ State save failed: ${(result.error||'unknown').slice(0,100)} — tap 🐛 Debug to see details`
       : failed.length===0
-        ? `✅ All ${uploaded} FENZ PDFs uploaded to Drive — refresh any device to see them`
+        ? `✅ All ${uploaded} FENZ PDFs uploaded & saved — refresh any device to see them`
         : `⚠️ ${uploaded} of ${list.length} uploaded — ${failed.length} failed: ${failed.slice(0,2).join(", ")}${failed.length>2?"…":""}`;
     setStatus(finalMsg);
     setRunning(false);
-    setTimeout(()=>setStatus(""),25000);
+    // Keep the final message up for 60s (was 25s) so you can actually read it
+    setTimeout(()=>setStatus(""),60000);
   }
 
   return(
@@ -11409,6 +11483,103 @@ const INIT_INSERVICES = [
   {id:8,date:"2026-02-18",clinic:"All clinics",topic:"MSK Paediatrics & Growing Pains — introduction",presenter:"",attendees:"Jade, Alistair, Dylan, Hans",type:"inservice",hours:1,loggedTo:["jade","alistair","dylan","hans"],notes:"Introduction to paediatric MSK presentations. Growing pains vs pathological causes. Differentials and when to refer. File: An_Introduction_to_MSK_Paeds_and_Growing_Pains.pptx",year:2026},
 ];
 
+// ── DEBUG PANEL ──────────────────────────────────────────────────
+// Floating bottom-right button that opens a log viewer. Essential for
+// iPad/mobile where browser DevTools aren't accessible. Shows every
+// _log/_warn/_err call with timestamps; lets you copy the whole log
+// to clipboard so you can paste it back to support.
+function DebugPanel(){
+  const[open,setOpen]=useState(false);
+  const[,setTick]=useState(0);
+  const[filter,setFilter]=useState("all"); // all | warn+err
+  useEffect(()=>{
+    const fn=()=>setTick(n=>n+1);
+    _debugListeners.add(fn);
+    return()=>_debugListeners.delete(fn);
+  },[]);
+  const errCount=_debugLog.filter(e=>e.level==='err').length;
+  const warnCount=_debugLog.filter(e=>e.level==='warn').length;
+  const entries=filter==='all'?_debugLog:_debugLog.filter(e=>e.level==='warn'||e.level==='err');
+  const levelColor={err:'#E24B4A',warn:'#BA7517',log:'#888'};
+  const levelBg={err:'#FEECEC',warn:'#FDF6E6',log:'transparent'};
+  const copyAll=()=>{
+    const text=_debugLog.map(e=>`[${e.ts}] ${e.level.toUpperCase().padEnd(4,' ')} ${e.msg}`).join('\n');
+    const fallback=()=>{
+      const ta=document.createElement('textarea');
+      ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+      document.body.appendChild(ta);ta.select();
+      try{document.execCommand('copy');}catch{}
+      document.body.removeChild(ta);
+    };
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).catch(fallback);
+    } else fallback();
+    alert(`Copied ${_debugLog.length} lines to clipboard`);
+  };
+  return(
+    <>
+      <button onClick={()=>setOpen(true)} style={{
+        position:'fixed',bottom:12,right:12,zIndex:9999,
+        background:errCount>0?'#E24B4A':warnCount>0?'#BA7517':'#1a1a1a',
+        color:'white',border:'none',borderRadius:20,padding:'8px 14px',
+        fontSize:12,fontWeight:600,cursor:'pointer',
+        boxShadow:'0 4px 12px rgba(0,0,0,0.25)',
+        display:'flex',alignItems:'center',gap:6,
+      }}>
+        🐛 Debug
+        {(errCount+warnCount)>0&&<span style={{background:'rgba(255,255,255,0.25)',borderRadius:10,padding:'1px 7px',fontSize:10,fontWeight:700}}>{errCount+warnCount}</span>}
+      </button>
+      {open&&(
+        <div onClick={e=>{if(e.target===e.currentTarget)setOpen(false);}} style={{
+          position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',
+          zIndex:10000,display:'flex',alignItems:'flex-end',justifyContent:'center',
+        }}>
+          <div style={{
+            background:'white',width:'100%',maxWidth:760,height:'85vh',
+            borderRadius:'12px 12px 0 0',display:'flex',flexDirection:'column',
+            boxShadow:'0 -8px 30px rgba(0,0,0,0.3)',
+          }}>
+            <div style={{padding:'12px 16px',borderBottom:'1px solid #e2e0d8',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <div style={{flex:1,fontSize:14,fontWeight:600,minWidth:140}}>
+                Debug log
+                <span style={{fontWeight:400,color:'#888',fontSize:12,marginLeft:8}}>
+                  {_debugLog.length} lines · {errCount} err · {warnCount} warn
+                </span>
+              </div>
+              <div style={{display:'flex',gap:4}}>
+                <button onClick={()=>setFilter('all')} style={{fontSize:11,padding:'4px 10px',border:'1px solid #e2e0d8',borderRadius:4,background:filter==='all'?'#1a1a1a':'white',color:filter==='all'?'white':'#333',cursor:'pointer'}}>All</button>
+                <button onClick={()=>setFilter('warn+err')} style={{fontSize:11,padding:'4px 10px',border:'1px solid #e2e0d8',borderRadius:4,background:filter==='warn+err'?'#1a1a1a':'white',color:filter==='warn+err'?'white':'#333',cursor:'pointer'}}>Errors only</button>
+              </div>
+              <button onClick={copyAll} style={{fontSize:11,padding:'4px 10px',border:'1px solid #e2e0d8',borderRadius:4,background:'#EAF3DE',cursor:'pointer'}}>📋 Copy all</button>
+              <button onClick={()=>{_debugLog.length=0;setTick(n=>n+1);}} style={{fontSize:11,padding:'4px 10px',border:'1px solid #e2e0d8',borderRadius:4,background:'white',cursor:'pointer'}}>Clear</button>
+              <button onClick={()=>setOpen(false)} style={{fontSize:20,background:'none',border:'none',cursor:'pointer',padding:'0 4px',lineHeight:1}}>✕</button>
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'8px 12px',fontFamily:'ui-monospace,Menlo,monospace',fontSize:11,lineHeight:1.5,background:'#fafaf8'}}>
+              {entries.length===0&&<div style={{color:'#888',padding:30,textAlign:'center'}}>No entries{filter!=='all'?' matching filter':''}.</div>}
+              {entries.map((e,i)=>(
+                <div key={i} style={{
+                  borderLeft:`3px solid ${levelColor[e.level]||'#ccc'}`,
+                  padding:'3px 8px',marginBottom:2,
+                  background:levelBg[e.level]||'transparent',
+                  color:e.level==='err'?'#8B1A1A':'#222',
+                  wordBreak:'break-word',whiteSpace:'pre-wrap',
+                }}>
+                  <span style={{color:'#888',marginRight:6}}>{e.ts}</span>
+                  <span style={{color:levelColor[e.level]||'#888',fontWeight:600,marginRight:6,textTransform:'uppercase',fontSize:9}}>{e.level}</span>
+                  {e.msg}
+                </div>
+              ))}
+            </div>
+            <div style={{padding:'8px 12px',borderTop:'1px solid #e2e0d8',background:'#f5f3ee',fontSize:10,color:'#666'}}>
+              Tip: reproduce the problem with this open, then tap <strong>Copy all</strong> and paste it into a support message.
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function App(){
   const[page,setPage]=useState("dashboard");const[profile,setProfile]=useState(null);const[role,setRole]=useState("owner");
   const[portalLoading,setPortalLoading]=useState(true);
@@ -12752,6 +12923,7 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
       {activeAudit&&<AuditModal type={activeAudit} onClose={()=>setActiveAudit(null)} onComplete={r=>{setAudits(p=>{const updated=[...p,r];saveGen("audits",updated);return updated;});setActiveAudit(null);setPage("management");setMgmtTab("audits");}}/>}
       {eavf&&<FileViewer file={eavf} onClose={()=>setEavf(null)}/>}
       {vf&&<FileViewer file={vf} onClose={()=>setVf(null)}/>}
+      <DebugPanel/>
     </div>
   );
 }
