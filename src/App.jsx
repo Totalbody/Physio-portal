@@ -4588,16 +4588,113 @@ export default function App(){
         async function handleBulkUpload(e){
           const files=Array.from(e.target.files||[]);
           if(!files.length)return;
-          setUploadStatus(`Uploading ${files.length} file${files.length===1?'':'s'}…`);
-          // Filter to just the selected type, sorted by date so files match in order
-          const candidates=audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence).sort((a,b)=>a.date.localeCompare(b.date));
+          setUploadStatus(`Matching ${files.length} file${files.length===1?'':'s'}…`);
+
+          // Staff name patterns to search in filenames
+          const staffPatterns = [
+            {key:"jade",     patterns:[/jade/i, /warren/i]},
+            {key:"alistair", patterns:[/alistair/i, /burgess/i, /al[_\-\s]/i]},
+            {key:"hans",     patterns:[/hans/i, /vermeulen/i]},
+            {key:"timothy",  patterns:[/tim\b/i, /timothy/i, /keung/i]},
+            {key:"dylan",    patterns:[/dylan/i, /connolly/i]},
+            {key:"isabella", patterns:[/isabella/i, /yang/i]},
+            {key:"gwenne",   patterns:[/gwenne/i, /manares/i]},
+            {key:"ibrahim",  patterns:[/ibrahim/i, /jumaily/i]},
+            {key:"komal",    patterns:[/komal/i, /kaur/i]},
+          ];
+          const staffIdToName={jade:"Jade Warren",alistair:"Alistair Burgess",hans:"Hans Vermeulen",timothy:"Timothy Keung",dylan:"Dylan Connolly",isabella:"Isabella Yang",gwenne:"Gwenne Manares",ibrahim:"Ibrahim Al-Jumaily",komal:"Komal Preet Kaur"};
+
+          // Parse a filename and extract: staff key, year, month (if present)
+          function parseFilename(name){
+            const lower=name.toLowerCase();
+            let staffKey=null;
+            for(const s of staffPatterns){
+              if(s.patterns.some(p=>p.test(lower))){staffKey=s.key;break;}
+            }
+            // Year: 2022-2026
+            const yearMatch=name.match(/(20\d{2})/);
+            const year=yearMatch?parseInt(yearMatch[1]):null;
+            // Month: named or numeric
+            const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
+            let month=null;
+            for(const[k,v]of Object.entries(months)){if(new RegExp("\\b"+k+"\\b","i").test(lower)){month=v;break;}}
+            // Numeric date like 20-10-2023 or 2023-10-20 or 20/10/23
+            if(!month){const dm=name.match(/(\d{1,2})[\/\-_](\d{1,2})[\/\-_](\d{2,4})/);if(dm){month=parseInt(dm[2]);}}
+            return{staffKey,year,month};
+          }
+
+          // Build candidate pool of records of the chosen type that need evidence
+          const candidates=audits.filter(a=>a.type===bulkType&&a.id<100000&&!a.evidence);
+
+          // Score each (file, candidate) pair — higher score = better match
+          function score(parsed, candidate){
+            let s=0;
+            const cDate=String(candidate.date||"");
+            const cYear=parseInt(cDate.slice(0,4));
+            const cMonth=parseInt(cDate.slice(5,7));
+            const cStaff=(candidate.physioAudited||"").toLowerCase();
+            // Staff match is the strongest signal
+            if(parsed.staffKey){
+              const expectedName=(staffIdToName[parsed.staffKey]||"").toLowerCase();
+              if(cStaff===expectedName)s+=100;
+              else if(cStaff.includes(parsed.staffKey))s+=100;
+              else return -1; // wrong staff — disqualify
+            }
+            if(parsed.year&&cYear===parsed.year)s+=20;
+            else if(parsed.year&&Math.abs(cYear-parsed.year)<=1)s+=5; // near miss
+            if(parsed.month&&cMonth===parsed.month)s+=10;
+            else if(parsed.month&&Math.abs(cMonth-parsed.month)<=2)s+=3;
+            return s;
+          }
+
+          // Match files to candidates greedily (best score first), one-to-one
+          const filesWithParsed=files.map(f=>({file:f,parsed:parseFilename(f.name)}));
+          const usedCandidateIds=new Set();
+          const matches=[]; // {file, candidate, confidence}
+          const unmatched=[];
+          // Sort files so well-parsed ones (with staff + year) go first
+          filesWithParsed.sort((a,b)=>{
+            const ap=(a.parsed.staffKey?1:0)+(a.parsed.year?1:0);
+            const bp=(b.parsed.staffKey?1:0)+(b.parsed.year?1:0);
+            return bp-ap;
+          });
+          for(const fp of filesWithParsed){
+            let best=null,bestScore=-1;
+            for(const c of candidates){
+              if(usedCandidateIds.has(c.id))continue;
+              const sc=score(fp.parsed,c);
+              if(sc>bestScore){bestScore=sc;best=c;}
+            }
+            if(best&&bestScore>=20){ // require staff match OR strong year match
+              usedCandidateIds.add(best.id);
+              matches.push({file:fp.file,candidate:best,confidence:bestScore});
+            }else{
+              unmatched.push(fp.file);
+            }
+          }
+
+          if(matches.length===0){
+            setUploadStatus(`❌ Couldn't match any of ${files.length} file${files.length===1?'':'s'} to records — check filenames contain staff name + year`);
+            e.target.value="";
+            return;
+          }
+
+          // Preview confirmation so user can see what's happening
+          const previewLines=matches.map(m=>`  • ${m.file.name}\n     → ${m.candidate.physioAudited} · ${fmtNZ(m.candidate.date)}`).join("\n");
+          const unmatchedText=unmatched.length>0?`\n\n⚠️ ${unmatched.length} file${unmatched.length===1?"":"s"} couldn't be matched:\n${unmatched.map(f=>"  • "+f.name).join("\n")}`:"";
+          if(!window.confirm(`Matched ${matches.length} of ${files.length} file${files.length===1?"":"s"}:\n\n${previewLines}${unmatchedText}\n\nProceed with upload?`)){
+            setUploadStatus("");
+            e.target.value="";
+            return;
+          }
+
+          // Upload matched files
           let attached=0;
           const newAudits=[...audits];
-          for(let i=0;i<files.length;i++){
-            const f=files[i];
-            if(i>=candidates.length){setUploadStatus(`⚠️ Only ${candidates.length} ${bulkType.replace('_',' ')} record${candidates.length===1?'':'s'} need evidence — stopped after ${attached}`);break;}
-            const target=candidates[i];
+          for(let i=0;i<matches.length;i++){
+            const{file:f,candidate:target}=matches[i];
             try{
+              if(f.size>25*1024*1024){_warn("skip oversize",f.name);continue;}
               const dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f);});
               let evidence={id:Date.now()+i,fileName:f.name,fileType:f.type,uploadedDate:new Date().toLocaleDateString("en-NZ")};
               if(_portalReady){
@@ -4608,13 +4705,14 @@ export default function App(){
               const idx=newAudits.findIndex(a=>a.id===target.id);
               if(idx>=0)newAudits[idx]={...target,evidence};
               attached++;
-              setUploadStatus(`⏳ ${attached}/${files.length}: ${target.physioAudited||""} ${fmtNZ(target.date)}…`);
+              setUploadStatus(`⏳ ${attached}/${matches.length}: ${target.physioAudited} ${fmtNZ(target.date)}…`);
             }catch(err){_warn("bulk upload",err.message);}
           }
           setAudits(newAudits);saveGen("audits",newAudits);
-          setUploadStatus(`✅ Attached ${attached} file${attached===1?'':'s'} to ${bulkType==='peer_review'?'peer reviews':'clinical notes audits'}`);
+          const unmatchedMsg=unmatched.length>0?` · ${unmatched.length} unmatched`:"";
+          setUploadStatus(`✅ Attached ${attached} of ${files.length} file${files.length===1?'':'s'}${unmatchedMsg}`);
           e.target.value="";
-          setTimeout(()=>setUploadStatus(""),6000);
+          setTimeout(()=>setUploadStatus(""),8000);
         }
         return(
           <div style={{background:"#EEF6FF",border:`1px solid ${C.blue}`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem"}}>
@@ -4628,7 +4726,12 @@ export default function App(){
               <BSm onClick={()=>setBulkOpen(v=>!v)} color={C.blue}>{bulkOpen?"Close":"Upload scans ↑"}</BSm>
             </div>
             {bulkOpen&&<div style={{marginTop:"0.75rem",paddingTop:"0.75rem",borderTop:`1px solid ${C.blue}33`}}>
-              <div style={{fontSize:12,color:C.muted,marginBottom:"0.5rem"}}>Pick record type, then select the PDF scans. Files attach to records <strong>in date order</strong>, oldest first. Max 25MB per file.</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:"0.5rem"}}>
+                Select multiple PDF scans. Files are <strong>auto-matched to records</strong> by staff name + date in the filename. A preview will show matches before uploading so you can confirm. Max 25MB per file.
+              </div>
+              <div style={{fontSize:11,color:C.muted,marginBottom:"0.5rem",background:"white",padding:"6px 10px",borderRadius:6,border:`1px solid ${C.border}`}}>
+                💡 <strong>Tip:</strong> Filenames like <code>Peer_Review_Tim_Feb_2024.pdf</code> or <code>Notes_Audit_Hans_Aug_2024.pdf</code> match perfectly. Generic names like <code>scan001.pdf</code> won't match — rename first or do one at a time.
+              </div>
               <div style={{display:"flex",gap:8,marginBottom:"0.5rem",flexWrap:"wrap"}}>
                 <button onClick={()=>setBulkType("peer_review")} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="peer_review"?C.blue:C.border}`,background:bulkType==="peer_review"?C.blue:"white",color:bulkType==="peer_review"?"white":C.text,cursor:"pointer",fontWeight:500}}>🔍 Peer reviews ({audits.filter(a=>a.type==="peer_review"&&a.id<100000&&!a.evidence).length} need)</button>
                 <button onClick={()=>setBulkType("clinical_notes")} style={{padding:"5px 12px",fontSize:12,borderRadius:6,border:`1px solid ${bulkType==="clinical_notes"?C.blue:C.border}`,background:bulkType==="clinical_notes"?C.blue:"white",color:bulkType==="clinical_notes"?"white":C.text,cursor:"pointer",fontWeight:500}}>📋 Notes audits ({audits.filter(a=>a.type==="clinical_notes"&&a.id<100000&&!a.evidence).length} need)</button>
