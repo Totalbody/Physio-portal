@@ -409,8 +409,44 @@ async function _initGapi() {
   });
 }
 
+// ── Token cache — persists across page loads within the session ──
+// Google access tokens last ~1h. Caching kills the "reconnect every time" friction.
+const _DRIVE_TOKEN_CACHE_KEY = 'tbp_drive_token_v1';
+function _getCachedToken() {
+  try {
+    const raw = sessionStorage.getItem(_DRIVE_TOKEN_CACHE_KEY);
+    if (!raw) return null;
+    const { token, expiresAt } = JSON.parse(raw);
+    // Require at least 60 seconds of life remaining
+    if (token && expiresAt && expiresAt - Date.now() > 60000) return token;
+    sessionStorage.removeItem(_DRIVE_TOKEN_CACHE_KEY);
+  } catch {}
+  return null;
+}
+function _cacheToken(token, expiresInSec) {
+  try {
+    sessionStorage.setItem(_DRIVE_TOKEN_CACHE_KEY, JSON.stringify({
+      token,
+      expiresAt: Date.now() + ((Number(expiresInSec) || 3600) * 1000),
+    }));
+  } catch {}
+}
+function _clearTokenCache() {
+  try { sessionStorage.removeItem(_DRIVE_TOKEN_CACHE_KEY); } catch {}
+}
+
 function _requestToken(prompt = 'none') {
   return new Promise((resolve, reject) => {
+    // Try cached token first on silent requests — skip OAuth entirely
+    if (prompt === 'none') {
+      const cached = _getCachedToken();
+      if (cached) {
+        _driveToken = cached;
+        if (window.gapi?.client) window.gapi.client.setToken({ access_token: cached });
+        resolve(cached);
+        return;
+      }
+    }
     if (!window.google?.accounts?.oauth2) { reject('GIS not loaded'); return; }
     window.google.accounts.oauth2.initTokenClient({
       client_id: GDRIVE_CLIENT_ID,
@@ -419,6 +455,7 @@ function _requestToken(prompt = 'none') {
         if (resp.error) { reject(resp.error); return; }
         _driveToken = resp.access_token;
         window.gapi.client.setToken({ access_token: _driveToken });
+        _cacheToken(resp.access_token, resp.expires_in);
         resolve(resp.access_token);
       },
     }).requestAccessToken({ prompt });
@@ -1229,13 +1266,26 @@ async function _loadStore() {
     return false;
   }
   // iOS Safari blocks third-party cookies so silent OAuth never fires.
-  // On mobile we skip silent auth entirely — user taps "Connect Google Drive"
-  // in the sidebar when they want to link Drive. This makes the app load
-  // instantly on iPhone/iPad without hanging.
+  // BUT if we have a cached token from earlier in the session, use it — no popup.
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (isIOS) {
-    _warn('[Drive] iOS detected — skipping silent auth, use Connect button');
+    const cached = _getCachedToken();
+    if (cached) {
+      try {
+        await _loadGoogleScripts();
+        await _initGapi();
+        _driveToken = cached;
+        window.gapi.client.setToken({ access_token: cached });
+        _portalReady = true;
+        await _loadDriveData();
+        return true;
+      } catch (e) {
+        _warn('[Drive] Cached token invalid on iOS — reverting to Connect button');
+        _clearTokenCache();
+      }
+    }
+    _warn('[Drive] iOS — tap Connect Google Drive to link');
     return false;
   }
   // Desktop: try silent auth with a 6-second safety timeout
@@ -2717,13 +2767,15 @@ function PPPage({setPage,setActiveAudit,ppDocs,setPpDocs,ppReviews,setPpReviews}
       // First add with dataUrl so it's viewable immediately
       const updated=[...ppDocs,rec];setPpDocs(updated);
       setPpLabel("");setShowPpUpload(false);
-      // Then upload to blob for proper multi-page viewing
-      const blobFile=await _uploadToBlob("ppdoc_"+id,f.name,f.type,ev.target.result);
-      if(blobFile){
-        const withBlob=updated.map(d=>d.id===id?{...d,blobUrl:blobFile.blobUrl,dataUrl:undefined}:d);
-        setPpDocs(withBlob);saveGen("ppDocs",withBlob);
+      // Then upload to Google Drive for persistent storage
+      const driveFile=await _uploadFileToDrive("ppdoc_"+id,f.name,f.type,ev.target.result);
+      if(driveFile){
+        const withDrive=updated.map(d=>d.id===id?{...d,driveId:driveFile.driveId,driveUrl:driveFile.driveUrl,blobUrl:driveFile.blobUrl,dataUrl:undefined}:d);
+        setPpDocs(withDrive);saveGen("ppDocs",withDrive);
       } else {
-        saveGen("ppDocs",updated);
+        // Drive upload failed — keep viewable locally but don't bloat state file with dataUrl
+        alert("Couldn't save to Google Drive. Check your connection and try re-uploading.");
+        saveGen("ppDocs",updated.map(d=>d.id===id?{...d,dataUrl:undefined}:d));
       }
     };
     r.readAsDataURL(f);e.target.value="";
@@ -3251,7 +3303,15 @@ export default function App(){
         saveGen("audits",   newAudits);
         saveGen("meetings", newMeetings);
 
-        if(d["inservices"]&&d["inservices"].length)setInservices(d["inservices"]);
+        if(d["inservices"]&&d["inservices"].length){
+          // The inservices array is shared with the KPI app, which also stores
+          // personal_cpd entries and broadcast inservices (no clinic field).
+          // Filter to inservices only + give KPI broadcasts a default clinic so they display.
+          const cleaned=d["inservices"]
+            .filter(e=>!e.type||e.type==="inservice")
+            .map(e=>({...e,clinic:e.clinic||"All clinics",year:e.year||parseInt((e.date||"").slice(0,4))||new Date().getFullYear()}));
+          setInservices(cleaned);
+        }
         if(d["extAudits"]&&d["extAudits"].length)setExtAudits(d["extAudits"]);
         if(d["ppDocs"])setPpDocs(d["ppDocs"]||[]);
         if(d["ppReviews"])setPpReviews(d["ppReviews"]||{});
@@ -3319,7 +3379,6 @@ export default function App(){
     return(
       <div>
         <PH title="Good morning, Jade 👋" sub={"Total Body Physio — Compliance & HR Portal · April 2026" + (portalConnected ? " · 📁 Google Drive connected" : " · ⚠️ Connect Google Drive in sidebar")}/>
-        <MigrationTool portalConnected={portalConnected} onDone={()=>fu(n=>n+1)}/>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.75rem",marginBottom:"1rem"}}>
           {[[String(Object.keys(STAFF).length),"Staff",C.teal],[`${pct}%`,"Compliance",pct>=80?C.teal:pct>50?C.amber:C.red],[String(urgentCount),"Due/overdue",urgentCount>0?C.red:C.teal],[String(audits.length),"Audit records",C.blue]].map(([n,l,c])=>(
             <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"1rem",textAlign:"center"}}>
@@ -3600,7 +3659,11 @@ export default function App(){
       if(!ni.date||!ni.topic){alert("Date and topic required.");return;}
       const rec={...ni,id:Date.now(),year:parseInt(ni.date.slice(0,4))};
       const updated=[...inservices,rec];
-      setInservices(updated);saveGen("inservices",updated);
+      setInservices(updated);
+      // Preserve KPI's personal_cpd entries that were filtered out on load
+      const raw=(_portalStore?.data?.["inservices"])||[];
+      const personalCpd=raw.filter(e=>e?.type==="personal_cpd");
+      saveGen("inservices",[...updated,...personalCpd]);
       setNi({date:"",clinic:"All clinics",topic:"",presenter:"",attendees:"",notes:""});
       setShowForm(false);
     }
@@ -3788,49 +3851,36 @@ export default function App(){
         ))}
       </div></div>
       <Divider/>
-      {/* ── Reconnect audit evidence from Google Drive ── */}
+      {/* ── Auto-relink audit evidence on load (silent) ── */}
       {(()=>{
-        const[relinkStatus,setRelinkStatus]=useState('idle');
-        const[relinkProgress,setRelinkProgress]=useState('');
-        const[relinkResult,setRelinkResult]=useState(null);
+        const[autoRelinkDone,setAutoRelinkDone]=useState(false);
+        const[autoRelinkMsg,setAutoRelinkMsg]=useState('');
         const withEvidence=audits.filter(a=>a.evidence&&a.id<100000).length;
         const withoutEvidence=audits.filter(a=>!a.evidence&&a.id<100000).length;
-        const totalSeeded=audits.filter(a=>a.id<100000).length;
-        async function runAuditRelink(){
-          setRelinkStatus('running');setRelinkProgress('Scanning Google Drive audit folders…');
-          try{
-            const res=await _relinkExistingDocs(audits,meetings,msg=>setRelinkProgress(msg));
-            setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);
-            setRelinkResult({done:res.relinked,failed:0});setRelinkStatus('done');
-          }catch(e){setRelinkProgress(e.message);setRelinkStatus('error');}
-        }
-        async function runForceRelink(){
-          setRelinkStatus('running');setRelinkProgress('Force-reconnecting all audit evidence…');
-          try{
-            const cleared=audits.map(a=>a.id<100000?{...a,evidence:undefined}:a);
-            const res=await _relinkExistingDocs(cleared,meetings,msg=>setRelinkProgress(msg));
-            setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);
-            setRelinkResult({done:res.relinked,failed:0});setRelinkStatus('done');
-          }catch(e){setRelinkProgress(e.message);setRelinkStatus('error');}
-        }
+        useEffect(()=>{
+          if(autoRelinkDone||!portalConnected||withoutEvidence===0)return;
+          let cancelled=false;
+          (async()=>{
+            try{
+              const res=await _relinkExistingDocs(audits,meetings,()=>{});
+              if(cancelled)return;
+              if(res.relinked>0){
+                setAudits(res.updatedAudits);
+                setMeetings(res.updatedMeetings);
+                setAutoRelinkMsg(`Auto-linked ${res.relinked} evidence document${res.relinked===1?'':'s'} from Drive`);
+              }
+            }catch{}
+            setAutoRelinkDone(true);
+          })();
+          return()=>{cancelled=true;};
+        },[portalConnected,withoutEvidence]);
+        if(withEvidence===0&&withoutEvidence===0)return null;
         return(
-          <div style={{background:C.amberL,border:`1px solid ${C.amber}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"1rem"}}>
-            <div style={{fontSize:13,fontWeight:600,color:C.amber,marginBottom:3}}>📎 Audit evidence documents</div>
-            <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem"}}>
-              {withEvidence>0&&<span style={{color:C.green}}>✓ {withEvidence}/{totalSeeded} audits have evidence linked. </span>}
-              {withoutEvidence>0&&<span>{withoutEvidence} missing evidence links.</span>}
-              {withoutEvidence===0&&withEvidence>0&&<span>All audit evidence linked.</span>}
-            </div>
-            {relinkStatus==='idle'&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <Btn onClick={runAuditRelink}>🔗 Reconnect from Drive</Btn>
-              <Btn outline onClick={runForceRelink}>🔄 Force reconnect all</Btn>
-            </div>}
-            {relinkStatus==='running'&&<div style={{fontSize:12,color:C.amber,lineHeight:1.8}}>⏳ {relinkProgress||'Starting…'}</div>}
-            {relinkStatus==='done'&&<div style={{fontSize:12,color:C.green,fontWeight:500}}>
-              ✅ {relinkResult?.done||0} evidence link{relinkResult?.done===1?'':'s'} reconnected.
-              <span onClick={()=>setRelinkStatus('idle')} style={{marginLeft:12,color:C.blue,cursor:'pointer',textDecoration:'underline'}}>Done</span>
-            </div>}
-            {relinkStatus==='error'&&<div style={{fontSize:12,color:C.red}}>❌ {relinkProgress} <span onClick={()=>setRelinkStatus('idle')} style={{marginLeft:8,cursor:'pointer',textDecoration:'underline'}}>Retry</span></div>}
+          <div style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem",fontSize:12,color:C.muted}}>
+            📎 {withEvidence>0&&<span style={{color:C.green}}>{withEvidence}/{withEvidence+withoutEvidence} audits have evidence linked. </span>}
+            {withoutEvidence>0&&!autoRelinkDone&&<span>Checking Drive for remaining links…</span>}
+            {withoutEvidence>0&&autoRelinkDone&&<span>{withoutEvidence} audit{withoutEvidence===1?'':'s'} still missing evidence.</span>}
+            {autoRelinkMsg&&<span style={{color:C.green,marginLeft:6}}>✓ {autoRelinkMsg}</span>}
           </div>
         );
       })()}
@@ -3958,7 +4008,7 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
       return <div>
         <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly per clinic. {meetings.length} meeting{meetings.length!==1?"s":""} logged.</Alert>
 
-        {/* ── Generate meeting minutes documents ── */}
+        {/* ── Meeting documents status (auto-linked on load) ── */}
         {(()=>{
           const[genStatus,setGenStatus]=useState('idle');
           const[genProgress,setGenProgress]=useState('');
@@ -3973,41 +4023,15 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
               setGenResult(res);setGenStatus('done');
             }catch(e){setGenProgress(e.message);setGenStatus('error');}
           }
-          async function runRelink(){
-            setGenStatus('running');setGenProgress('Scanning Google Drive for existing documents…');
-            try{
-              const res=await _relinkExistingDocs(audits,meetings,msg=>setGenProgress(msg));
-              setAudits(res.updatedAudits);setMeetings(res.updatedMeetings);
-              setGenResult({done:res.relinked,failed:0});setGenStatus('done');
-            }catch(e){setGenProgress(e.message);setGenStatus('error');}
-          }
-          const mid2025Count=meetings.filter(m=>m.date>='2025-07-01'&&m.id<100000).length;
-          async function runRegen2025(){
-            setGenStatus('running');
-            try{
-              const res=await _regenerateMid2025Meetings(meetings,msg=>setGenProgress(msg));
-              setMeetings(res.updatedMeetings);
-              setGenResult(res);setGenStatus('done');
-            }catch(e){setGenProgress(e.message);setGenStatus('error');}
-          }
+          if(withDoc===0&&pendingMeetings===0)return null;
           return(
-            <div style={{background:C.blueL,border:`1px solid ${C.blue}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"1rem"}}>
-              <div style={{fontSize:13,fontWeight:600,color:C.blue,marginBottom:3}}>📄 Meeting minutes documents</div>
-              <div style={{fontSize:12,color:C.muted,marginBottom:"0.75rem"}}>
-                {withDoc>0&&<span style={{color:C.green}}>✓ {withDoc} meeting{withDoc!==1?'s':''} have documents attached. </span>}
-                {pendingMeetings>0?`${pendingMeetings} still need documents.`:'All seeded meetings have documents.'}
-              </div>
-              {genStatus==='idle'&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                <Btn onClick={runRelink}>🔗 Relink existing Drive files</Btn>
-                {pendingMeetings>0&&<Btn outline onClick={runMeetingGen}>Generate {pendingMeetings} missing →</Btn>}
-                {mid2025Count>0&&<Btn outline onClick={runRegen2025}>🔄 Regenerate mid-2025+ ({mid2025Count})</Btn>}
-              </div>}
-              {genStatus==='running'&&<div style={{fontSize:12,color:C.blue,lineHeight:1.8}}>⏳ {genProgress||'Starting…'}</div>}
-              {genStatus==='done'&&<div style={{fontSize:12,color:C.green,fontWeight:500}}>
-                ✅ {genResult?.done} {genResult?.done===0?'nothing new to link — all already linked or no Drive files found':genResult?.done===1?'document linked':'documents linked'}.
-                <span onClick={()=>setGenStatus('idle')} style={{marginLeft:12,color:C.blue,cursor:'pointer',textDecoration:'underline'}}>Done</span>
-              </div>}
-              {genStatus==='error'&&<div style={{fontSize:12,color:C.red}}>❌ {genProgress} <span onClick={()=>setGenStatus('idle')} style={{marginLeft:8,cursor:'pointer',textDecoration:'underline'}}>Retry</span></div>}
+            <div style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem",fontSize:12,color:C.muted}}>
+              📄 {withDoc>0&&<span style={{color:C.green}}>{withDoc} meeting{withDoc!==1?'s':''} linked to Drive. </span>}
+              {pendingMeetings>0&&<span>{pendingMeetings} still need documents. </span>}
+              {pendingMeetings>0&&genStatus==='idle'&&<span onClick={runMeetingGen} style={{color:C.blue,cursor:'pointer',textDecoration:'underline',marginLeft:4}}>Generate missing →</span>}
+              {genStatus==='running'&&<span style={{color:C.blue,marginLeft:6}}>⏳ {genProgress||'Starting…'}</span>}
+              {genStatus==='done'&&<span style={{color:C.green,marginLeft:6}}>✓ Done</span>}
+              {genStatus==='error'&&<span style={{color:C.red,marginLeft:6}}>❌ {genProgress}</span>}
             </div>
           );
         })()}
@@ -4128,7 +4152,18 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
         {t:"Clinical notes audits — 6-monthly",s:[...audits].filter(a=>a.type==="clinical_notes").length>0?"ok":"pending",d:"10 records per physio (5 current + 5 past) — P&P §1.5.1",action:()=>{setMgmtTab("audits");setActiveAudit("clinical_notes");}},
         {t:"Peer reviews — annual",s:[...audits].filter(a=>a.type==="peer_review").length>0?"ok":"pending",d:"At least annually per physio — observation, notes review, feedback — P&P §7.8",action:()=>{setMgmtTab("audits");setActiveAudit("peer_review");}},
         {t:"Orientation — all staff",s:Object.keys(STAFF).every(id=>loadFile(id,"orientation"))?"ok":"pending",d:"Complete digital checklist for each staff member — P&P §7.1",action:()=>setPage("staff")},
-        {t:"P&P annual review",s:Object.keys(ppReviews||{}).length>=(PP_SECTIONS?.length||8)?"ok":"pending",d:"Due April — P&P §1.1",action:()=>{setPage("pp");}},
+        (()=>{
+          // Only count reviews dated this calendar year
+          const yr=new Date().getFullYear();
+          const reviewedThisYr=Object.values(ppReviews||{}).filter(r=>{
+            if(!r?.reviewedAt)return false;
+            try{return new Date(r.reviewedAt).getFullYear()===yr;}catch{return false;}
+          }).length;
+          const total=PP_SECTIONS?.length||8;
+          const status=reviewedThisYr>=total?"ok":"pending";
+          const label=status==="ok"?"Compliant ✓":`${reviewedThisYr}/${total} reviewed this year`;
+          return{t:"P&P annual review",s:status,label,d:"Due April — P&P §1.1",action:()=>{setPage("pp");}};
+        })(),
         {t:"In-service training",s:inservices.some(i=>String(i.year||i.date?.slice(0,4)||"")===String(new Date().getFullYear()))?"ok":"pending",d:"At least one per clinic per year — P&P §7.7.3",action:()=>setPage("inservice")},
         {t:"H&S audits — quarterly",s:[...audits].filter(a=>a.type==="hs_audit").length>0?"ok":"pending",d:"Records in audit history — P&P §1.5.2",action:()=>{setMgmtTab("audits");}},
         {t:"Fire drills — annual",s:[...audits].filter(a=>a.type==="fire_drill").length>0?"ok":"pending",d:"Annual requirement — P&P §3.1.2",action:()=>{setMgmtTab("audits");}},
@@ -4136,13 +4171,13 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
         {t:"Equipment servicing — annual",s:[...audits].filter(a=>a.type==="equipment").length>0?"ok":"pending",d:"Annual service and test/tag — P&P §3.1.15",action:()=>setMgmtTab("equipment")},
         {t:"Hygiene audits — quarterly",s:[...audits].filter(a=>a.type==="hygiene").length>0?"ok":"pending",d:"Quarterly per clinic — P&P §1.5.2",action:()=>{setMgmtTab("audits");}},
         {t:"Client satisfaction survey",s:"pending",d:"Via website or forms — P&P §1.5.3",action:null},
-      ].map(({t,s,d,action})=>(
+      ].map(({t,s,d,action,label})=>(
         <div key={t} onClick={action||undefined} style={{background:C.card,border:`1px solid ${s==="ok"?C.teal:C.border}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"0.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:action?"pointer":"default"}} onMouseEnter={e=>{if(action)e.currentTarget.style.boxShadow="0 2px 12px rgba(15,110,86,0.08)";}} onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
           <div style={{flex:1}}>
             <div style={{fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6}}>{t}{action&&<span style={{fontSize:10,color:C.teal}}>→</span>}</div>
             <div style={{fontSize:12,color:C.muted,marginTop:2}}>{d}</div>
           </div>
-          <Pill s={s} label={s==="ok"?"Compliant ✓":"Action needed"}/>
+          <Pill s={s} label={label||(s==="ok"?"Compliant ✓":"Action needed")}/>
         </div>
       ))}
     </div>}
