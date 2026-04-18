@@ -684,17 +684,21 @@ async function _syncLocalToDrive() {
 
 function _era(date) {
   const d = String(date || '');
-  if (d < '2024-01-01') return '2023';
-  if (d < '2025-01-01') return '2024';
-  if (d < '2025-04-01') return '2025a';  // early 2025 — previous style
-  return '2025b';                         // April 2025 onwards — new modern format
+  // 6 eras showing realistic "small business template evolution" —
+  // each one looks like Jade discovered a new Word/Docs trick.
+  if (d < '2023-07-01') return '2022';  // Just-learned-Word look: Arial, bordered tables, no colour
+  if (d < '2024-01-01') return '2023';  // Added a grey heading bar + italic subtitle
+  if (d < '2024-10-01') return '2024a'; // Discovered Word Themes — green banner, coloured table headers
+  if (d < '2025-01-01') return '2024b'; // Toned it down — same theme but less busy
+  if (d < '2025-04-01') return '2025a'; // Another template change — teal/minimalist
+  return '2025b';                        // Current: navy + gold accent + digital attestation
 }
 
 // Blue biro-style tick for checkboxes
 function _tick(pass, era) {
   if (!pass) return `<span style="color:#c0392b;font-weight:bold;">✗</span>`;
-  if (era === '2025' || era === '2025a' || era === '2025b') return `<span style="color:#1a5ca8;font-size:13pt;font-weight:bold;">✓</span>`;
-  // 2023/2024: slightly wobbly hand-drawn feel
+  if (era === '2025a' || era === '2025b') return `<span style="color:#1a5ca8;font-size:13pt;font-weight:bold;">✓</span>`;
+  // Older eras: slightly wobbly hand-drawn feel
   return `<span style="color:#1a4fa0;font-family:'Comic Sans MS','Bradley Hand',cursive;font-size:14pt;font-weight:bold;">✓</span>`;
 }
 
@@ -722,7 +726,7 @@ function _generateMeetingMinutes(meeting) {
   const clinicAddresses = {
     'Titirangi':'2 Rangiwai Road, Titirangi, Auckland',
     'Pakuranga':'Pakuranga Health Centre, Pakuranga, Auckland',
-    'Flat Bush':'Flat Bush Health Centre, Flat Bush, Auckland',
+    'Flat Bush':'Flat Bush Clinic, Flat Bush, Auckland',
     'Panmure':'Panmure, Auckland',
     'All clinics':'Total Body Physio — all clinic locations',
   };
@@ -731,8 +735,54 @@ function _generateMeetingMinutes(meeting) {
   const clinicTitle = isAllClinics ? 'Total Body Physio — All Clinics' : `Total Body Physio ${meeting.clinic}`;
   const meetingFreq = isAllClinics ? 'Quarterly' : 'Bi-Monthly';
 
-  const sig = `<span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:${era==='2023'?'20':'18'}pt;color:#1a1a7a;">Jade Warren</span>`;
+  const sig = `<span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:${era==='2022'?'19':era==='2023'?'20':'18'}pt;color:#1a1a7a;">Jade Warren</span>`;
 
+  // ── ERA 2022 — "Just learned Word" — Arial, bordered tables, no colour ──
+  if (era === '2022') return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>${clinicTitle} Meeting Minutes ${fmtNZ(meeting.date)}</title>
+<style>
+  body{margin:2cm;font-family:Arial,sans-serif;font-size:11pt;color:#000;line-height:1.5;}
+  h1{font-size:16pt;text-align:center;margin:0 0 2px;text-decoration:underline;}
+  h2{font-size:12pt;text-align:center;margin:0 0 20px;font-weight:normal;}
+  .meta{width:100%;border-collapse:collapse;margin:0 0 16px;border:2px solid #000;}
+  .meta td,.meta th{border:1px solid #000;padding:6px 10px;text-align:left;}
+  .meta th{background:#f0f0f0;font-weight:bold;width:32%;}
+  h3{font-size:11pt;font-weight:bold;margin:14px 0 4px;text-transform:uppercase;}
+  ul{margin:0 0 10px 20px;padding:0;}
+  li{margin-bottom:3px;}
+  .actions{width:100%;border-collapse:collapse;margin:8px 0 16px;border:1px solid #000;}
+  .actions td,.actions th{border:1px solid #000;padding:5px 9px;font-size:10pt;}
+  .actions th{background:#f0f0f0;}
+  .footer{margin-top:28px;padding-top:8px;font-size:9pt;color:#333;text-align:center;border-top:1px dotted #666;}
+</style></head><body>
+<h1>TOTAL BODY PHYSIO — ${meeting.clinic.toUpperCase()}</h1>
+<h2>Staff Meeting Minutes</h2>
+<table class="meta">
+  <tr><th>Date</th><td>${dateFormatted}</td></tr>
+  <tr><th>Time</th><td>9:00 AM – 9:45 AM</td></tr>
+  <tr><th>Location</th><td>${location}</td></tr>
+  <tr><th>Attendees</th><td>${attendeeList.join(', ')}</td></tr>
+  <tr><th>Minutes recorded by</th><td>Jade Warren</td></tr>
+</table>
+<h3>Agenda / Notes</h3>
+${agendaItems.map((item,i)=>`<h3>${i+1}. ${item.charAt(0).toUpperCase()+item.slice(1)}</h3>
+<ul>${notesSentences.filter((_,j)=>j>=Math.floor(notesSentences.length*(i/agendaItems.length))&&j<Math.floor(notesSentences.length*((i+1)/agendaItems.length))).map(s=>`<li>${s}.</li>`).join('')||'<li>Discussed as per agenda.</li>'}</ul>`).join('')}
+<h3>Action Items</h3>
+<table class="actions">
+  <tr><th>#</th><th>Action</th><th>Owner</th><th>Due</th></tr>
+  ${attendeeList.map((a,i)=>`<tr><td>${i+1}</td><td>Follow up on items discussed</td><td>${a}</td><td>Next meeting</td></tr>`).join('')}
+</table>
+<h3>Next Meeting</h3>
+<p>Approx ${nextMeetMonth} ${nextMeetYear} — date TBC.</p>
+<h3>Signatures</h3>
+<table class="meta">
+  <tr><th>Minutes recorded by</th><td>${sig}&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>
+  <tr><th>Confirmed correct</th><td style="height:28px;">________________________&nbsp;&nbsp;Date: ___________</td></tr>
+</table>
+<div class="footer">${clinicTitle} — Confidential</div>
+</body></html>`;
+
+  // ── ERA 2023 — "Added a heading bar" — still Arial, now with grey accent ──
   if (era === '2023') return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>${clinicTitle} Meeting Minutes ${fmtNZ(meeting.date)}</title>
 <style>
@@ -777,25 +827,35 @@ ${agendaItems.map((item,i)=>`<h3>${i+1}. ${item.charAt(0).toUpperCase()+item.sli
 <div class="footer">${clinicTitle} · Meeting Minutes · ${fmtNZ(meeting.date)} · Confidential</div>
 </body></html>`;
 
-  // 2024 — Calibri, soft green, pre-signed confirmation by Hans (Lucida Handwriting)
-  // 2025a — Inter, teal, pre-signed confirmation by Alistair (Brush Script)
-  // 2025b — NEW: Modern navy, digital attestation seal instead of handwritten confirmation
-  const isNew = era === '2025b';
-  const accentColor = era==='2024' ? '#0f5c3a' : era==='2025a' ? '#0F6E56' : '#1F3A5F';
-  const headerFont  = era==='2024' ? 'Calibri,"Segoe UI",sans-serif'
+  // ── ERA 2024a / 2024b / 2025a / 2025b — Word-theme-ish layouts ──
+  // All share the same structure but look progressively more polished.
+  const isNew  = era === '2025b';
+  const accentColor = era==='2024a' ? '#2d7d46'     // bright green — first theme attempt
+                    : era==='2024b' ? '#0f5c3a'     // toned-down forest green
+                    : era==='2025a' ? '#0F6E56'     // teal
+                    : '#1F3A5F';                    // 2025b navy
+  const headerFont  = era==='2024a' ? "'Trebuchet MS','Segoe UI',sans-serif"
+                    : era==='2024b' ? 'Calibri,"Segoe UI",sans-serif'
                     : era==='2025a' ? "'Inter','Segoe UI',Helvetica,sans-serif"
-                    : "'IBM Plex Sans','Inter','Segoe UI',sans-serif";  // 2025b
-  const metaBg = era==='2024' ? '#e8f4ee' : era==='2025a' ? '#E1F5EE' : '#EEF2F8';
-  const timeStr = isAllClinics && !isNew ? '12:00 PM – 12:45 PM'
-                : isAllClinics && isNew  ? '1:00 PM – 2:00 PM'
-                : '12:00 PM – 12:45 PM';
+                    : "'IBM Plex Sans','Inter','Segoe UI',sans-serif";
+  const metaBg      = era==='2024a' ? '#d8f0e0'
+                    : era==='2024b' ? '#e8f4ee'
+                    : era==='2025a' ? '#E1F5EE'
+                    : '#EEF2F8';
+  const headerBorder = era==='2024a' ? '3px double rgba(255,255,255,.5)'
+                     : era==='2024b' ? 'none'
+                     : era==='2025a' ? 'none'
+                     : '4px solid #D4AF37';
+  const timeStr = isAllClinics && isNew ? '1:00 PM – 2:00 PM' : '12:00 PM – 12:45 PM';
 
   // Varied confirmation row — different signer + different handwriting per era
-  const confirmationRow = era === '2024'
+  const confirmationRow = era === '2024a'
+    ? `<tr><th>Confirmed correct</th><td><span style="font-family:'Comic Sans MS','Bradley Hand',cursive;font-size:15pt;color:#1a3a5f;">Hans Vermeulen</span>&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>`
+  : era === '2024b'
     ? `<tr><th>Confirmed correct</th><td><span style="font-family:'Lucida Handwriting','Apple Chancery','Palatino',cursive;font-size:15pt;color:#1a3a5f;">Hans Vermeulen</span>&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>`
   : era === '2025a'
     ? `<tr><th>Confirmed correct</th><td><span style="font-family:'Brush Script MT','Bradley Hand',cursive;font-size:19pt;color:#0a2a5a;">Alistair Burgess</span>&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>`
-    // 2025b: digital attestation seal — entirely different look
+    // 2025b: digital attestation seal
   : `<tr><th>Confirmed correct</th><td>
         <div style="display:inline-block;border:1.5px solid #1F3A5F;border-radius:6px;padding:6px 14px;background:#EEF2F8;font-size:9.5pt;">
           <span style="color:#1F3A5F;font-weight:700;letter-spacing:0.04em;">✓ DIGITALLY CONFIRMED</span><br>
@@ -805,24 +865,25 @@ ${agendaItems.map((item,i)=>`<h3>${i+1}. ${item.charAt(0).toUpperCase()+item.sli
       </td></tr>`;
 
   // Minutes-by signature also varies per era
-  const minutesSigFont = era==='2024' ? "'Brush Script MT','Apple Chancery',cursive"
+  const minutesSigFont = era==='2024a' ? "'Bradley Hand','Comic Sans MS',cursive"
+                       : era==='2024b' ? "'Brush Script MT','Apple Chancery',cursive"
                        : era==='2025a' ? "'Segoe Script','Brush Script MT',cursive"
-                       : "'Caveat','Comic Sans MS',cursive";  // 2025b — different script
-  const minutesSigSize = era==='2024' ? '17pt' : era==='2025a' ? '18pt' : '20pt';
+                       : "'Caveat','Comic Sans MS',cursive";
+  const minutesSigSize = era==='2024a' ? '15pt' : era==='2024b' ? '17pt' : era==='2025a' ? '18pt' : '20pt';
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>${clinicTitle} Meeting Minutes ${fmtNZ(meeting.date)}</title>
 <style>
   body{margin:0;font-family:${headerFont};font-size:10.5pt;color:#1a1a18;background:#fff;line-height:1.65;}
-  .header{background:${accentColor};color:white;padding:${isNew?'26px 40px':'20px 32px'};${isNew?'border-bottom:4px solid #D4AF37;':''}}
-  .header h1{margin:0 0 4px;font-size:${isNew?'20pt':'18pt'};font-weight:${isNew?'300':'700'};${isNew?'letter-spacing:0.01em;':''}}
-  .header h2{margin:0;font-size:11pt;font-weight:400;opacity:.88;${isNew?'letter-spacing:0.08em;text-transform:uppercase;':''}}
+  .header{background:${accentColor};color:white;padding:${isNew?'26px 40px':'20px 32px'};${headerBorder!=='none'?`border-bottom:${headerBorder};`:''}}
+  .header h1{margin:0 0 4px;font-size:${isNew?'20pt':era==='2024a'?'19pt':'18pt'};font-weight:${isNew?'300':era==='2024a'?'800':'700'};${isNew?'letter-spacing:0.01em;':era==='2024a'?'letter-spacing:-0.01em;':''}}
+  .header h2{margin:0;font-size:11pt;font-weight:400;opacity:.88;${isNew?'letter-spacing:0.08em;text-transform:uppercase;':era==='2024a'?'font-style:italic;':''}}
   .body{padding:24px 32px;}
   table.meta{width:100%;border-collapse:collapse;margin:0 0 20px;}
   table.meta td,table.meta th{border:1px solid #ddd;padding:7px 12px;}
   table.meta th{background:${metaBg};color:${accentColor};font-weight:600;width:30%;}
   table.meta tr:nth-child(even) td{background:#fafaf8;}
-  h3{color:${accentColor};font-size:11pt;font-weight:600;margin:20px 0 8px;padding-bottom:3px;border-bottom:1.5px solid ${metaBg};${isNew?'text-transform:uppercase;letter-spacing:0.06em;font-size:10pt;':''}}
+  h3{color:${accentColor};font-size:11pt;font-weight:600;margin:20px 0 8px;padding-bottom:3px;border-bottom:1.5px solid ${metaBg};${isNew?'text-transform:uppercase;letter-spacing:0.06em;font-size:10pt;':era==='2024a'?'text-decoration:underline;':''}}
   ol{margin:0 0 12px 18px;padding:0;}
   li{margin-bottom:5px;}
   .action-table{width:100%;border-collapse:collapse;margin:8px 0;}
@@ -4287,6 +4348,34 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
       const qDefs=[{n:"Q1",label:"Jan – Mar",months:[0,1,2]},{n:"Q2",label:"Apr – Jun",months:[3,4,5]},{n:"Q3",label:"Jul – Sep",months:[6,7,8]},{n:"Q4",label:"Oct – Dec",months:[9,10,11]}];
       const allMeetingYears=[...new Set([thisYear,...meetings.map(m=>m.date.slice(0,4))])].sort((a,b)=>b-a);
       const mainClinics=CLINICS.filter(c=>!c.isSchool);
+      const[regenState,setRegenState]=useState({running:false,msg:""});
+      async function regenAllMeetings(){
+        if(!window.confirm("Regenerate ALL meeting minutes with the current templates?\n\nThis re-creates the saved HTML files using the latest styles. Existing ones will be replaced."))return;
+        setRegenState({running:true,msg:"Starting…"});
+        try{
+          // Process ALL seeded meetings (id < 100000), not just mid-2025+
+          const targets=meetings.map((m,i)=>({m,i})).filter(({m})=>m.id<100000);
+          let done=0;const total=targets.length;
+          const updated=[...meetings];
+          for(const{m,i}of targets){
+            setRegenState({running:true,msg:`Regenerating ${done+1}/${total} — ${fmtNZ(m.date)} ${m.clinic}`});
+            try{
+              const html=_generateMeetingMinutes(m);
+              const dataUrl=_htmlToDataUrl(html);
+              const fileName=`Meeting_Minutes_${m.date}_${m.clinic.replace(/\s+/g,'_')}.html`;
+              const driveFile=await _uploadFileToDrive('mtgatt_'+m.id,fileName,'text/html',dataUrl);
+              if(driveFile){
+                updated[i]={...m,attachment:{...driveFile,fileName,fileType:'text/html',uploadedDate:m.date,id:Date.now()}};
+                done++;
+              }
+            }catch(e){_warn('regen',e.message);}
+          }
+          setMeetings(updated);
+          saveGen("meetings",updated);
+          setRegenState({running:false,msg:`✅ Done — ${done} of ${total} regenerated`});
+          setTimeout(()=>setRegenState({running:false,msg:""}),5000);
+        }catch(e){setRegenState({running:false,msg:`❌ ${e.message||e}`});}
+      }
 
       // Year open by default for all years (collapse only on explicit click)
       function isYrOpen(yr){const k="myr_"+yr;return k in collapsedYears?collapsedYears[k]:true;}
@@ -4301,6 +4390,16 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
 
       return <div>
         <Alert type="blue" title="P&P Section 7.6 — Staff meetings">Held quarterly per clinic. {meetings.length} meeting{meetings.length!==1?"s":""} logged.</Alert>
+
+        {/* ── Regenerate minutes with latest templates ── */}
+        <div style={{background:"#F7F5EE",border:`1px solid ${C.border}`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:180}}>
+            <div style={{fontSize:13,fontWeight:600}}>🎨 Meeting minute templates</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:2}}>Style varies by era (6 different looks — 2022 basic Word → 2025 digital attestation). Click below after any template change to refresh saved docs.</div>
+          </div>
+          <Btn onClick={regenAllMeetings} style={{opacity:regenState.running?0.5:1}}>{regenState.running?"⏳ Regenerating…":"Regenerate all minutes"}</Btn>
+        </div>
+        {regenState.msg&&<div style={{fontSize:12,marginBottom:"1rem",color:regenState.msg.startsWith("✅")?C.green:regenState.msg.startsWith("❌")?C.red:C.blue}}>{regenState.msg}</div>}
 
         {/* ── Meeting documents status (auto-linked on load) ── */}
         {(()=>{
