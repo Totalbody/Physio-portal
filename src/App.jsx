@@ -578,11 +578,52 @@ async function _deleteFromDrive(driveId) {
   } catch(e) { _err('[Drive delete]', e.message); }
 }
 
+// ── SAVE SERIALIZATION ───────────────────────────────────────────
+// Root cause of the "evidence reverts on refresh" bug:
+// multiple components trigger state saves in quick succession.
+// Each save PATCHes the full 8MB state file and takes 6–20s.
+// With concurrent PATCHes, Google Drive applies them in the order
+// they *arrive*, which is not necessarily the order they were
+// started — so a stale-snapshot save can complete LAST and clobber
+// fresher data. This queue ensures only one save is ever in flight;
+// if another save is requested while one is running, we do exactly
+// one more save after the current one completes, which picks up
+// the latest _portalStore.data and guarantees the final write wins.
+let _saveInFlight  = null;
+let _saveRequested = false;
+// Shared lock across FireDrillLoader + PBNZPeerReviewLoader + any other
+// bulk-upload component. Prevents two long-running batches from racing
+// each other on _portalStore.data and writing stale snapshots.
+let _batchRunning = false;
+async function _saveDriveState() {
+  if (_saveInFlight) {
+    _saveRequested = true;
+    try { await _saveInFlight; } catch {}
+    if (!_saveRequested) return; // another waiter already triggered a follow-up
+  }
+  _saveRequested = false;
+  const p = _saveDriveStateImpl();
+  _saveInFlight = p;
+  try {
+    await p;
+  } finally {
+    _saveInFlight = null;
+    if (_saveRequested) {
+      _saveRequested = false;
+      _saveDriveState().catch(e => _warn('[Drive] follow-up save failed:', e.message||String(e)));
+    }
+  }
+}
+
 // Save portal-state.json into the root portal folder (debounced)
-async function _saveDriveState(_isRetry=false) {
+async function _saveDriveStateImpl(_isRetry=false) {
   if (!_portalReady || !_driveToken) throw new Error('Drive not ready');
+  // Diagnostic: show how many fire drill records have PDF evidence in this snapshot
+  const _aud = _portalStore.data?.audits || [];
+  const _fdTot = _aud.filter(a=>a?.type==='fire_drill').length;
+  const _fdEv  = _aud.filter(a=>a?.type==='fire_drill' && a?.evidence?.driveId).length;
   const payload = JSON.stringify({ ..._portalStore.data, _files: _portalStore.files });
-  _log(`[Drive] Saving state (${(payload.length/1024).toFixed(0)}KB, ${Object.keys(_portalStore.data).length} keys, ${Object.keys(_portalStore.files).length} files)…`);
+  _log(`[Drive] Saving state (${(payload.length/1024).toFixed(0)}KB, ${Object.keys(_portalStore.data).length} keys, ${Object.keys(_portalStore.files).length} files, fire drill evidence ${_fdEv}/${_fdTot})…`);
   const t0 = Date.now();
   try {
     if (_driveStateFileId) {
@@ -596,14 +637,14 @@ async function _saveDriveState(_isRetry=false) {
         _warn('[Drive state save] 401 — refreshing token and retrying');
         _clearTokenCache();
         try { await _requestToken('none'); } catch { await _requestToken(''); }
-        return _saveDriveState(true);
+        return _saveDriveStateImpl(true);
       }
       // State file was deleted/moved? Clear the stale ID and try creating a new one.
       if (resp.status === 404 && !_isRetry) {
         _warn('[Drive state save] 404 — state file gone, creating a new one');
         _driveStateFileId = null;
         try { localStorage.removeItem('tbp_state_file_id'); } catch {}
-        return _saveDriveState(true);
+        return _saveDriveStateImpl(true);
       }
       if (!resp.ok) {
         const errText = await resp.text().catch(()=>resp.statusText);
@@ -627,7 +668,7 @@ async function _saveDriveState(_isRetry=false) {
         _warn('[Drive state create] 401 — refreshing token and retrying');
         _clearTokenCache();
         try { await _requestToken('none'); } catch { await _requestToken(''); }
-        return _saveDriveState(true);
+        return _saveDriveStateImpl(true);
       }
       if (!resp.ok) {
         const errText = await resp.text().catch(()=>resp.statusText);
@@ -681,8 +722,8 @@ async function _loadDriveData() {
       // Cache for KPI's public URL fallback
       try { localStorage.setItem('tbp_state_file_id', _driveStateFileId); } catch {}
       const resp = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${_driveStateFileId}?alt=media`,
-        { headers:{ Authorization:`Bearer ${_driveToken}` } }
+        `https://www.googleapis.com/drive/v3/files/${_driveStateFileId}?alt=media&_cb=${Date.now()}`,
+        { headers:{ Authorization:`Bearer ${_driveToken}`, 'Cache-Control':'no-cache', 'Pragma':'no-cache' } }
       );
       const data = await resp.json();
       const files = data._files || {};
@@ -3020,13 +3061,19 @@ function FireDrillLoader({audits,setAudits}){
     }
   }
   async function loadAll(forceAll){
+    if (_batchRunning) {
+      alert("Another bulk upload is still running. Wait for it to finish (watch the 🐛 Debug panel) and try again.");
+      return;
+    }
     const list = forceAll ? allDrills : needsFenz;
     if(list.length===0){alert("No fire drills to update.");return;}
     const msg = forceAll
       ? `Upload FENZ Evacuation Report PDFs to Drive for ALL ${list.length} fire drills?`
       : `Upload FENZ-style evacuation report PDFs to Drive for ${list.length} fire drill record${list.length===1?'':'s'}?`;
     if(!window.confirm(msg))return;
+    _batchRunning = true;
     setRunning(true);
+    try {
     let newAudits=[...audits];
     let uploaded=0;
     let lastSavedAt=0;
@@ -3058,11 +3105,12 @@ function FireDrillLoader({audits,setAudits}){
         if(idx>=0)newAudits[idx]={...target,evidence};
         uploaded++;
         // ── Incremental save: every 3 successful uploads, save state so a crash
-        //    or tab-background mid-batch doesn't lose progress. Without this,
-        //    partial batches on slow/unstable connections lose all work.
+        //    or tab-background mid-batch doesn't lose progress. We also sync
+        //    React state (setAudits) so the UI and other components see progress.
         if(uploaded-lastSavedAt>=3){
           setStatus(`💾 Checkpoint: saving progress (${uploaded}/${list.length})…`);
           _log(`[FireDrill] Checkpoint save at ${uploaded}/${list.length}`);
+          setAudits([...newAudits]); // sync React state — so needsFenz reflects progress
           const sr=await saveGenImmediate("audits",newAudits);
           if(sr.ok){ lastSavedAt=uploaded; _log(`[FireDrill] Checkpoint ✓`); }
           else{ _err(`[FireDrill] Checkpoint save FAILED at ${uploaded}: ${sr.error}`); }
@@ -3085,9 +3133,12 @@ function FireDrillLoader({audits,setAudits}){
         ? `✅ All ${uploaded} FENZ PDFs uploaded & saved — refresh any device to see them`
         : `⚠️ ${uploaded} of ${list.length} uploaded — ${failed.length} failed: ${failed.slice(0,2).join(", ")}${failed.length>2?"…":""}`;
     setStatus(finalMsg);
-    setRunning(false);
     // Keep the final message up for 60s (was 25s) so you can actually read it
     setTimeout(()=>setStatus(""),60000);
+    } finally {
+      _batchRunning = false;
+      setRunning(false);
+    }
   }
 
   return(
@@ -3143,16 +3194,24 @@ function PBNZPeerReviewLoader({audits,setAudits}){
   }
 
   async function loadAll(forceAll){
+    if (_batchRunning) {
+      alert("Another bulk upload is still running. Wait for it to finish (watch the 🐛 Debug panel) and try again.");
+      return;
+    }
     const list=forceAll?allReviews:needsPdf;
     if(list.length===0){alert("No peer reviews to update.");return;}
     const msg=forceAll
       ? `Upload PBNZ-style peer review PDFs to Drive for ALL ${list.length} peer reviews?`
       : `Upload PBNZ-style peer review PDFs to Drive for ${list.length} peer review record${list.length===1?'':'s'}?`;
     if(!window.confirm(msg))return;
+    _batchRunning = true;
     setRunning(true);
-    const newAudits=[...audits];
+    try {
+    let newAudits=[...audits];
     let uploaded=0;
+    let lastSavedAt=0;
     const failed=[];
+    _log(`[PBNZ] Starting batch — ${list.length} PDFs to upload`);
     for(let i=0;i<list.length;i++){
       const target=list[i];
       const pdfData=PEER_REVIEW_PDFS[target.id];
@@ -3175,23 +3234,35 @@ function PBNZPeerReviewLoader({audits,setAudits}){
         const idx=newAudits.findIndex(a=>a.id===target.id);
         if(idx>=0)newAudits[idx]={...target,evidence};
         uploaded++;
+        if(uploaded-lastSavedAt>=3){
+          setStatus(`💾 Checkpoint: saving progress (${uploaded}/${list.length})…`);
+          _log(`[PBNZ] Checkpoint save at ${uploaded}/${list.length}`);
+          setAudits([...newAudits]);
+          const sr=await saveGenImmediate("audits",newAudits);
+          if(sr.ok){ lastSavedAt=uploaded; _log(`[PBNZ] Checkpoint ✓`); }
+          else{ _err(`[PBNZ] Checkpoint save FAILED at ${uploaded}: ${sr.error}`); }
+        }
       }catch(e){
         _warn('[PBNZ upload]',target.id,e.message||e);
         failed.push(`${target.physioAudited} ${fmtNZ(target.date)}`);
       }
       if(i<list.length-1)await new Promise(r=>setTimeout(r,300));
     }
-    setStatus(`💾 Saving audit refs…`);
+    setStatus(`💾 Final save…`);
     setAudits(newAudits);
     const result=await saveGenImmediate("audits",newAudits);
+    _log(`[PBNZ] Batch complete: uploaded=${uploaded} failed=${failed.length} saveOk=${result.ok}`);
     const finalMsg = !result.ok
       ? `❌ State save failed: ${(result.error||'unknown').slice(0,100)}`
       : failed.length===0
         ? `✅ All ${uploaded} PBNZ PDFs uploaded to Drive`
         : `⚠️ ${uploaded} of ${list.length} uploaded — ${failed.length} failed`;
     setStatus(finalMsg);
-    setRunning(false);
-    setTimeout(()=>setStatus(""),25000);
+    setTimeout(()=>setStatus(""),60000);
+    } finally {
+      _batchRunning = false;
+      setRunning(false);
+    }
   }
 
   return(
