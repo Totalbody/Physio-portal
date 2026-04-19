@@ -2554,7 +2554,23 @@ function CertCard({staffId,cert,role,onView}){
   // For JD: also check the Documents tab storage as a fallback
   const docJdFiles = cert.key === "jd" ? (loadGen("jd_" + staffId) || []) : [];
   const docJdFile = Array.isArray(docJdFiles) && docJdFiles.length > 0 ? docJdFiles[docJdFiles.length - 1] : null;
-  const effectiveFile = file || docJdFile;
+  // For peerreview / clinicalnotes: fall back to the most recent matching audit record's evidence
+  let auditEvidenceFile = null;
+  let auditEvidenceDate = null;
+  if (!file && (cert.key === "peerreview" || cert.key === "clinicalnotes")) {
+    const staffName = STAFF[staffId]?.name || "";
+    const auditType = cert.key === "peerreview" ? "peer_review" : "clinical_notes";
+    const auditList = _portalStore.data?.audits || [];
+    const matches = auditList
+      .filter(a => a.type === auditType && a.physioAudited === staffName && a.evidence)
+      .sort((a,b) => (b.date || "").localeCompare(a.date || ""));
+    if (matches.length) {
+      const top = matches[0];
+      auditEvidenceFile = { ...top.evidence, _fromAudit: true, _auditId: top.id, _auditDate: top.date };
+      auditEvidenceDate = top.date;
+    }
+  }
+  const effectiveFile = file || docJdFile || auditEvidenceFile;
   const canSee=!cert.ownerOnly||(role==="owner"||role===staffId);
   const[scanning,setScanning]=useState(false);const[showHist,setShowHist]=useState(false);
   function handle(e){
@@ -2569,6 +2585,11 @@ function CertCard({staffId,cert,role,onView}){
       if(saveFile(staffId,cert.key,d)){
         setFile(d);
         _scheduleForceUpdate();
+        // Skip expiry detection for review-type certs (peer review, appraisal):
+        // these don't carry an expiry date — they just renew annually.
+        // Scanning dates on the doc (e.g. review period or signature date) caused
+        // false "Expired" statuses.
+        if (_REVIEW_CERTS.has(cert.key)) return;
         setScanning(true);
         detectExpiryDate(ev.target.result,cert.label).then(result=>{
           const expiry=result.expiry||null;const issued=result.issued||null;
@@ -2588,7 +2609,10 @@ function CertCard({staffId,cert,role,onView}){
   }
   if(!canSee)return <div style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:6,display:"flex",alignItems:"center",justifyContent:"space-between"}}><div style={{fontWeight:500,fontSize:13,color:C.muted}}>🔒 {cert.label}</div><Pill s={effectiveFile?"ok":"pending"} label={effectiveFile?"On file":"Needed"}/></div>;
   const expiryData=_portalReady?(_portalStore.data["expiry_"+sKey(staffId,cert.key)]||null):null;
-  const certExpiry=effectiveFile?.expiry||expiryData?.expiry||null;
+  // Review certs (peer review, appraisal) don't have true expiry dates — ignore any
+  // stale expiry data that may have been captured by the OCR from prior uploads.
+  const isReviewCert = _REVIEW_CERTS.has(cert.key);
+  const certExpiry = isReviewCert ? null : (effectiveFile?.expiry||expiryData?.expiry||null);
   const expInfo=certExpiry?getExpiryStatus(certExpiry):null;
   const isExpired=expInfo?.status==="expired";
   const isExpiring=expInfo?.status==="expiring";
@@ -2601,6 +2625,7 @@ function CertCard({staffId,cert,role,onView}){
     ? `https://drive.google.com/thumbnail?id=${effectiveFile.driveId}&sz=w200`
     : (effectiveFile?.blobUrl||effectiveFile?.dataUrl);
   const isDocsFallback=!file&&!!docJdFile;
+  const isAuditFallback=!file&&!docJdFile&&!!auditEvidenceFile;
   return(
     <div style={{background:bg,border:`1px solid ${bd}`,borderRadius:8,padding:"10px 12px",marginBottom:6}}>
       <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
@@ -2612,7 +2637,7 @@ function CertCard({staffId,cert,role,onView}){
             {scanning?<span style={{fontSize:11,color:C.blue,fontWeight:500}}>🔍 Reading cert...</span>:<Pill s={isExpired?"expired":isExpiring?"due":status} label={expInfo?expInfo.label:effectiveFile?"On file ✓":cert.required?"Required":"Optional"}/>}
           </div>
           <div style={{fontSize:11,color:C.muted,marginTop:2}}>{cert.renews}</div>
-          {effectiveFile&&<div style={{fontSize:11,color:C.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{effectiveFile.fileName} · {effectiveFile.uploadedDate}{isDocsFallback?" · via Documents tab":""}</div>}
+          {effectiveFile&&<div style={{fontSize:11,color:C.muted,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{effectiveFile.fileName} · {isAuditFallback?`audit ${fmtNZ(auditEvidenceDate)}`:effectiveFile.uploadedDate}{isDocsFallback?" · via Documents tab":""}{isAuditFallback?" · via audit record":""}</div>}
           {certExpiry&&<div style={{fontSize:11,color:expInfo?.color||C.muted,marginTop:1,fontWeight:600}}>{isExpired?"⚠ ":isExpiring?"⏰ ":"✓ "}{expInfo?.label}</div>}
         </div>
       </div>
@@ -4215,21 +4240,21 @@ const INIT_AUDITS=[
   _mk(9011,"peer_review","Annual Peer Review","🔍","Titirangi","Alistair Burgess","2025-09-15",28,0,0,28,"Passed","Reviewer: Alistair Burgess (Senior Physio). Clinical — direct observation. Jade demonstrates strong clinical skills as Director and Owner, continues to set good example across clinics. Action plan: continue current excellent practice.","Jade Warren"),
 
   // ── CLINICAL NOTES AUDITS — from actual audit forms ───────────────────────
-  _mk(9101,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Dylan Connolly","2023-10-20",15,3,1,19,"3 issues found","Audit of 5 current + 5 past records. Consent 0% (major issue). Goals: Identified 70%, Measurable 0%, Time bound 10%. Adverse reaction warnings 0%. To work on: Goal Setting — SMART, Warnings re adverse Rx effects, Evidence of explanation of Ax + Rx.","Jade Warren"),
-  _mk(9102,"clinical_notes","Clinical Notes Audit","📋","Flat Bush","Dylan Connolly","2023-10-20",14,4,1,19,"Several issues","Audit of 5 current + 5 past records. Consent 100%, Assessment 90–100%. Goals: Identified 0%, Measurable 0%, Time bound 0%. DC summaries 20%, Goals evaluated 20%. To work on: Goal Setting, Complete DC Summaries, Completing notes for each appointment.","Timothy Keung"),
-  _mk(9103,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Dylan Connolly","2023-10-20",15,3,1,19,"3 issues found","Audit of 5 current + 5 past records. Notes logical 100%, Consent 100%, Assessment 100%. Goals: Identified 10%, Measurable 0%, Time bound 0%. Adverse reactions 0%, DC summaries 0%. To work on: Goal Setting — SMART, Note warnings re adverse Rx reactions, Discharging patients.","Hans Vermeulen"),
-  _mk(9104,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Jade Warren","2023-12-11",17,1,1,19,"DC summaries to complete","Dylan's clinical notes audit. 5 current + 5 past records. Most items 100%. DC summaries 20%, Goals evaluated 80%. To work on: Ensure discharge summaries completed for discharged patients — follow up phonecall or visit. Goals — always measurable, time bound.","Dylan Connolly"),
+  _mk(9101,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Dylan Connolly","2023-10-20",15,3,1,19,"3 issues found","Audit of 5 current + 5 past records. Consent 0% (major issue). Goals: Identified 70%, Measurable 0%, Time bound 10%. Adverse reaction warnings 0%. To work on: Goal Setting — SMART, Warnings re adverse Rx effects, Evidence of explanation of Ax + Rx.","Jade Warren"),
+  _mk(9102,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Dylan Connolly","2023-10-20",14,4,1,19,"Several issues","Audit of 5 current + 5 past records. Consent 100%, Assessment 90–100%. Goals: Identified 0%, Measurable 0%, Time bound 0%. DC summaries 20%, Goals evaluated 20%. To work on: Goal Setting, Complete DC Summaries, Completing notes for each appointment.","Timothy Keung"),
+  _mk(9103,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Dylan Connolly","2023-10-20",15,3,1,19,"3 issues found","Audit of 5 current + 5 past records. Notes logical 100%, Consent 100%, Assessment 100%. Goals: Identified 10%, Measurable 0%, Time bound 0%. Adverse reactions 0%, DC summaries 0%. To work on: Goal Setting — SMART, Note warnings re adverse Rx reactions, Discharging patients.","Hans Vermeulen"),
+  _mk(9104,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2023-12-11",17,1,1,19,"DC summaries to complete","Dylan's clinical notes audit. 5 current + 5 past records. Most items 100%. DC summaries 20%, Goals evaluated 80%. To work on: Ensure discharge summaries completed for discharged patients — follow up phonecall or visit. Goals — always measurable, time bound.","Dylan Connolly"),
   _mk(9105,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Jade Warren","2024-08-07",19,0,0,19,"Passed","Hans's H1 2024 notes audit. 5 current + 5 past records. All criteria 100% except Time bound 80%. 'Great notes' — very strong documentation across the board. No work-ons identified.","Hans Vermeulen"),
   _mk(9106,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Hans Vermeulen","2024-08-07",17,2,0,19,"2 issues found","Jade's H1 2024 notes audit, audited by Hans. All sections strong (100%). Discharge summary 80%, Goals Time bound 80%. To work on: Inconsistent use of VAS, Discharge planning in place but follow up for DC not completed on occasions.","Jade Warren"),
   _mk(9107,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2024-08-07",11,7,1,19,"Multiple issues","Alistair's H1 2024 notes audit. Notes 100%, Consent 100%. Goals: Measurable 50%, Time bound 0%. Treatment plan 70%, Treatment given 80%, Review 70%, DC summaries 0%. To work on: Notes incomplete, missing notes, avoid copy & paste notes, GOALS — need to be SMART (identified but no measure or time frame), D/C summaries not complete.","Alistair Burgess"),
   _mk(9108,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2024-08-07",12,6,1,19,"Multiple issues","Tim's H1 2024 notes audit. Notes 100%, Consent 100%, Assessment 80–100%. Goals: Measurable 0%, Time bound 0%. Treatment given 70%, Review 80%, DC 0%. To work on: Goals — not measurable or time bound, Notes incomplete — not done, No discharges done or incomplete, To do summaries.","Timothy Keung"),
-  _mk(9109,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Jade Warren","2024-08-07",16,2,1,19,"2 issues found","Dylan's H1 2024 notes audit. Most sections 100%. Goals: Measurable 70%, Time bound 70%. DC summaries 60%. To work on: Goals to be time framed e.g. 4 weeks, Measurable, Make sure Discharge summaries are completed.","Dylan Connolly"),
+  _mk(9109,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2024-08-07",16,2,1,19,"2 issues found","Dylan's H1 2024 notes audit. Most sections 100%. Goals: Measurable 70%, Time bound 70%. DC summaries 60%. To work on: Goals to be time framed e.g. 4 weeks, Measurable, Make sure Discharge summaries are completed.","Dylan Connolly"),
   _mk(9110,"clinical_notes","Clinical Notes Audit","📋","Flat Bush","Jade Warren","2024-08-07",18,1,0,19,"1 minor issue","Isabella's first notes audit. All criteria 100% across both current and past records. Very strong foundation. To work on: More detail needed in notes.","Isabella Yang"),
   _mk(9111,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Jade Warren","2025-02-15",18,1,0,19,"1 minor issue","Hans's H2 2024 notes audit. Continued strong documentation. Minor refinements only.","Hans Vermeulen"),
   _mk(9112,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Alistair Burgess","2025-02-15",18,1,0,19,"Improved from H1","Jade's H2 2024 notes audit, audited by Alistair. Improvement on VAS use and discharge follow-ups from previous audit.","Jade Warren"),
   _mk(9113,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2025-02-15",15,3,1,19,"Improved","Alistair's H2 2024 notes audit. SMART goals much improved since August audit. Discharge summaries now being completed. Still some work on consistency with treatment plan detail.","Alistair Burgess"),
   _mk(9114,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2025-02-15",14,4,1,19,"Partial improvement","Tim's H2 2024 notes audit. Goals now attempted SMART format. Still gaps in discharge summaries. Continue working on completion of notes per session.","Timothy Keung"),
-  _mk(9115,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Jade Warren","2025-02-15",17,2,0,19,"Improved","Dylan's H2 2024 notes audit. Goals now time-framed. DC summaries being completed. Strong improvement overall.","Dylan Connolly"),
+  _mk(9115,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Jade Warren","2025-02-15",17,2,0,19,"Improved","Dylan's H2 2024 notes audit. Goals now time-framed. DC summaries being completed. Strong improvement overall.","Dylan Connolly"),
   _mk(9116,"clinical_notes","Clinical Notes Audit","📋","Flat Bush","Jade Warren","2025-02-15",19,0,0,19,"Passed","Isabella's H2 2024 notes audit. Detail in notes improved from previous audit. All criteria 100%.","Isabella Yang"),
   _mk(9117,"clinical_notes","Clinical Notes Audit","📋","Titirangi","Jade Warren","2025-08-07",19,0,0,19,"Passed","Hans's H1 2025 notes audit. Continued strong documentation. All criteria met.","Hans Vermeulen"),
   _mk(9118,"clinical_notes","Clinical Notes Audit","📋","Pakuranga","Alistair Burgess","2025-08-07",18,1,0,19,"1 minor issue","Jade's H1 2025 notes audit, audited by Alistair. Excellent continued improvement. Minor refinement on VAS documentation consistency.","Jade Warren"),
