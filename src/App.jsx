@@ -2159,21 +2159,17 @@ function certStatus(id, key) {
     const auditList=_portalStore.data["audits"]||[];const found=auditList.some(a=>a.type==="clinical_notes"&&a.physioAudited===name);
     return found?"ok":"pending";
   }
-  // Check for peer review audit records as well as uploaded certs
-  if (key === "peerreview") {
+  // Review certs (peer review, appraisal) — ignore stale OCR expiry,
+  // check audit records as well as direct uploads
+  if (key === "peerreview" || key === "appraisal") {
     const f = loadFile(id, key);
-    if (f) {
-      const expiryData = _portalReady ? (_portalStore.data["expiry_"+sKey(id,key)] || null) : null;
-      const expiry = f.expiry || expiryData?.expiry || null;
-      if (expiry && getExpiryStatus(expiry).status === "expired") return "expired";
-      return "ok";
-    }
-    // Also check if there's a peer_review audit record for this person
-    const name=STAFF[id]?.name||"";
-    const auditList=_portalStore.data["audits"]||[];
-    const found=auditList.some(a=>a.type==="peer_review"&&a.physioAudited===name);
-    if(found) return "ok";
-    return "pending";
+    if (f) return "ok";
+    const name = STAFF[id]?.name || "";
+    const auditList = _portalStore.data["audits"] || [];
+    const auditType = key === "peerreview" ? "peer_review" : "appraisal";
+    const found = auditList.some(a => a.type === auditType && a.physioAudited === name && a.evidence);
+    if (found) return "ok";
+    return cert?.required ? "pending" : "na";
   }
   const f = loadFile(id, key);
   // For JD: also check the Documents tab storage (jd_${id})
@@ -2554,12 +2550,14 @@ function CertCard({staffId,cert,role,onView}){
   // For JD: also check the Documents tab storage as a fallback
   const docJdFiles = cert.key === "jd" ? (loadGen("jd_" + staffId) || []) : [];
   const docJdFile = Array.isArray(docJdFiles) && docJdFiles.length > 0 ? docJdFiles[docJdFiles.length - 1] : null;
-  // For peerreview / clinicalnotes: fall back to the most recent matching audit record's evidence
+  // For peerreview / appraisal / clinicalnotes: fall back to the most recent matching audit record's evidence
   let auditEvidenceFile = null;
   let auditEvidenceDate = null;
-  if (!file && (cert.key === "peerreview" || cert.key === "clinicalnotes")) {
+  if (!file && (cert.key === "peerreview" || cert.key === "appraisal" || cert.key === "clinicalnotes")) {
     const staffName = STAFF[staffId]?.name || "";
-    const auditType = cert.key === "peerreview" ? "peer_review" : "clinical_notes";
+    const auditType = cert.key === "peerreview" ? "peer_review"
+                     : cert.key === "appraisal" ? "appraisal"
+                     : "clinical_notes";
     const auditList = _portalStore.data?.audits || [];
     const matches = auditList
       .filter(a => a.type === auditType && a.physioAudited === staffName && a.evidence)
@@ -4695,21 +4693,26 @@ export default function App(){
       {compTab==="reviews"&&<div>
         <Alert type="blue" title="P&P §7 — Annual reviews & clinical notes audits">Peer review and performance appraisal annually for all staff. Clinical notes audit every 6 months (5 current + 5 past records per physio).</Alert>
         <div style={{fontSize:13,fontWeight:600,marginBottom:"0.5rem",marginTop:"0.75rem"}}>Peer Reviews & Appraisals</div>
-        <Tbl headers={["Staff","Peer Review","Last date","Appraisal","Expiry","Notes"]}>{Object.entries(STAFF).map(([id,s])=>{
+        <Tbl headers={["Staff","Peer Review","Last date","Appraisal","Last date","Notes"]}>{Object.entries(STAFF).map(([id,s])=>{
           const pr=loadFile(id,"peerreview");const ap=loadFile(id,"appraisal");
-          const prExp=pr?.expiry?getExpiryStatus(pr.expiry):null;const apExp=ap?.expiry?getExpiryStatus(ap.expiry):null;
-          // Also check for peer_review audit records
+          // Review certs don't carry a real expiry — ignore any OCR-captured expiry.
+          // Check for peer_review audit records as fallback
           const prAudit=[...audits].filter(x=>x.type==="peer_review"&&x.physioAudited===s.name).sort((a,b)=>b.date.localeCompare(a.date))[0]||null;
           const hasPr=!!(pr||prAudit);
-          const prLabel=prAudit?prAudit.date:(pr?"On file ✓":"Needed");
-          const prStatus=hasPr?(prExp?.status==="expired"?"expired":"ok"):"pending";
+          const prLabel=prAudit?fmtNZ(prAudit.date):(pr?"On file ✓":"Needed");
+          const prStatus=hasPr?"ok":"pending";
+          // Check for appraisal audit records too
+          const apAudit=[...audits].filter(x=>x.type==="appraisal"&&x.physioAudited===s.name).sort((a,b)=>b.date.localeCompare(a.date))[0]||null;
+          const hasAp=!!(ap||apAudit);
+          const apLabel=apAudit?fmtNZ(apAudit.date):(ap?"On file ✓":"Needed");
+          const apStatus=hasAp?"ok":"pending";
           const n={alistair:"Clinical Director",hans:"20+ years",dylan:"Contractor since 2025",ibrahim:"New grad",komal:"Contractor",gwenne:"First cycle"}[id]||"Annual cycle";
           return <tr key={id} onClick={()=>setProfile(id)} style={{cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background=C.grayXL} onMouseLeave={e=>e.currentTarget.style.background=""}>
             <TD><strong>{s.name}</strong></TD>
             <TD><Pill s={prStatus} label={prLabel}/></TD>
-            <TD style={{fontSize:11,color:prExp?prExp.color:(prAudit?C.green:C.hint)}}>{prExp?prExp.label:(prAudit?fmtNZ(prAudit.date):"—")}</TD>
-            <TD><Pill s={ap?(apExp?.status==="expired"?"expired":"ok"):"pending"} label={ap?"On file ✓":"Needed"}/></TD>
-            <TD style={{fontSize:11,color:apExp?apExp.color:C.hint}}>{apExp?apExp.label:"—"}</TD>
+            <TD style={{fontSize:11,color:prAudit?C.green:C.hint}}>{prAudit?fmtNZ(prAudit.date):"—"}</TD>
+            <TD><Pill s={apStatus} label={apLabel}/></TD>
+            <TD style={{fontSize:11,color:apAudit?C.green:C.hint}}>{apAudit?fmtNZ(apAudit.date):"—"}</TD>
             <TD style={{fontSize:11,color:C.muted}}>{n}</TD>
           </tr>;})}
         </Tbl>
