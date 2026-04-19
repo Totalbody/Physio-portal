@@ -2223,7 +2223,6 @@ function getReminders(audits, meetings, inservicesData) {
         lastDate = latest(audits, a =>
           a.type === r.auditKey
           && (target === "All staff" || a.clinic === target)
-          && (typeof a.id !== "number" || a.id < 100000)  // exclude reminders / drafts
         );
       } else if (r.key === "staff_meeting") {
         // Most recent staff meeting (matches Q1/Q2 etc. in topic)
