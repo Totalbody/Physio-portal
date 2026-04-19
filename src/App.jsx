@@ -2188,15 +2188,78 @@ function certStatus(id, key) {
   return "ok";
 }
 
-function getReminders() {
-  const today = new Date(); const items = [];
+function getReminders(audits, meetings, inservicesData) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const items = [];
+
+  // Fall back to module-level store if caller didn't pass state (defensive)
+  audits         = audits         || (_portalStore.data && _portalStore.data.audits)     || [];
+  meetings       = meetings       || (_portalStore.data && _portalStore.data.meetings)   || [];
+  inservicesData = inservicesData || (_portalStore.data && _portalStore.data.inservices) || [];
+
+  function latest(records, predicate) {
+    let best = null;
+    for (const r of records) {
+      if (!r || !r.date || !predicate(r)) continue;
+      const d = new Date(r.date);
+      if (isNaN(d)) continue;
+      if (!best || d > best) best = d;
+    }
+    return best;
+  }
+
   REMINDER_SCHEDULE.forEach(r => {
-    const next = new Date(today.getFullYear(), r.month - 1, r.day);
-    if (next < today) next.setFullYear(today.getFullYear() + 1);
-    const days = Math.ceil((next - today) / (1000 * 60 * 60 * 24));
-    const status = days < 0 ? "overdue" : days <= 30 ? "due" : "ok";
-    const targets = r.applies === "Per clinic" ? CLINICS.filter(c => !c.isSchool).map(c => c.short) : ["All staff"];
-    targets.forEach(t => items.push({ ...r, nextDate: next.toLocaleDateString("en-NZ"), days, status, target: t }));
+    const targets = r.applies === "Per clinic"
+      ? CLINICS.filter(c => !c.isSchool).map(c => c.short)
+      : ["All staff"];
+
+    targets.forEach(target => {
+      let lastDate = null;
+
+      // Find most recent completion for this reminder type + target
+      if (r.auditKey) {
+        // Audit-based task (fire_drill, hygiene, hs_audit, equipment, clinical_notes, peer_review)
+        lastDate = latest(audits, a =>
+          a.type === r.auditKey
+          && (target === "All staff" || a.clinic === target)
+          && (typeof a.id !== "number" || a.id < 100000)  // exclude reminders / drafts
+        );
+      } else if (r.key === "staff_meeting") {
+        // Most recent staff meeting (matches Q1/Q2 etc. in topic)
+        lastDate = latest(meetings, m =>
+          /\bstaff meeting\b/i.test(m.topic || "")
+        );
+      } else if (r.key === "inservice") {
+        // In-service — separate inservices array
+        lastDate = latest(inservicesData, i =>
+          (target === "All staff" || i.clinic === target)
+        );
+      }
+
+      // Compute next due date
+      let next;
+      if (lastDate) {
+        next = new Date(lastDate);
+        next.setDate(next.getDate() + r.freqDays);
+      } else {
+        // Fallback for renewals/certs with no completion record — use fixed calendar
+        next = new Date(today.getFullYear(), r.month - 1, r.day);
+        if (next < today) next.setFullYear(today.getFullYear() + 1);
+      }
+
+      const days = Math.ceil((next - today) / (1000 * 60 * 60 * 24));
+      const status = days < 0 ? "overdue" : days <= 30 ? "due" : "ok";
+
+      items.push({
+        ...r,
+        nextDate: next.toLocaleDateString("en-NZ"),
+        lastDone: lastDate ? lastDate.toLocaleDateString("en-NZ") : null,
+        days,
+        status,
+        target,
+      });
+    });
   });
   return items.sort((a, b) => a.days - b.days);
 }
@@ -4429,7 +4492,7 @@ export default function App(){
     const typeMap={"Employed":"Employee","Sub Contractor":"Contractor","Owner":"Owner"};
     return{...base,type:typeMap[ei.employmentType]||base.type,clinics:ei.clinics&&ei.clinics.length?ei.clinics:base.clinics};
   }
-  const reminders=getReminders();const urgentCount=reminders.filter(r=>r.status!=="ok").length;
+  const reminders=getReminders(audits,meetings,inservices);const urgentCount=reminders.filter(r=>r.status!=="ok").length;
 
   const navItems=[
     {id:"dashboard",label:"◈  Dashboard",    section:"Overview"},
@@ -4534,7 +4597,7 @@ export default function App(){
         {items.map((r,i)=>(
           <div key={i} style={{background:C.card,border:`1px solid ${r.status==="overdue"?"#f5c1c1":r.status==="due"?"#fac775":C.border}`,borderRadius:8,padding:"0.875rem 1rem",marginBottom:"0.5rem",display:"flex",alignItems:"center",gap:12}}>
             <span style={{fontSize:22,flexShrink:0}}>{r.icon}</span>
-            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{r.label}</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>{r.target} · {r.freq} · Next: {r.nextDate}</div></div>
+            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{r.label}</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>{r.target} · {r.freq} · Next: {r.nextDate}{r.lastDone?` · Last done: ${r.lastDone}`:""}</div></div>
             <div style={{textAlign:"right",flexShrink:0}}>
               <Pill s={r.status==="overdue"?"overdue":r.status==="due"?"due":"ok"} label={r.days<=0?"Overdue":r.days===0?"Today":`${r.days}d`}/>
               {r.auditKey&&<div style={{marginTop:4}}><BSm onClick={()=>setActiveAudit(r.auditKey)} color={C.teal}>Start audit →</BSm></div>}
