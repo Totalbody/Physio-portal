@@ -3997,6 +3997,52 @@ function AuditViewModal_2025({audit,onClose}){
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// HandTick — hand-drawn wobbly tick/cross SVG used by 2023 and 2024
+// era views. Takes a seed (e.g. the item's position) so each tick
+// picks a slightly different path — avoiding the identical-copy look.
+// Only the pre-2025-07 eras use these; the current (2025) era keeps
+// crisp font-character marks as Jade prefers.
+// ═══════════════════════════════════════════════════════════════════
+function HandTick({result, seed = 0, size = 20}){
+  // Three path variants each for tick and cross, plus small random
+  // rotations. `seed` picks which variant so items on a page look
+  // individually hand-drawn rather than copy-pasted.
+  const tickPaths = [
+    "M3 11 L9 17 L21 4",
+    "M4 12 L8 18 L20 3",
+    "M2 10 L10 16 L22 5",
+  ];
+  const crossPaths = [
+    "M4 4 L20 20 M20 4 L4 20",
+    "M5 5 L19 19 M21 4 L3 20",
+    "M3 5 L21 19 M20 3 L4 21",
+  ];
+  // Deterministic pseudo-randomness based on seed
+  const pick = (arr) => arr[Math.abs(seed) % arr.length];
+  const rot = ((Math.abs(seed * 37) % 9) - 4);  // -4 to +4 degrees
+
+  if(result === "pass"){
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" style={{transform:`rotate(${rot}deg)`,display:"inline-block",verticalAlign:"middle"}}>
+        <path d={pick(tickPaths)} stroke="#1F2A26" strokeWidth="2.3" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.88"/>
+      </svg>
+    );
+  }
+  if(result === "fail"){
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" style={{transform:`rotate(${rot}deg)`,display:"inline-block",verticalAlign:"middle"}}>
+        <path d={pick(crossPaths)} stroke="#1F2A26" strokeWidth="2.3" fill="none" strokeLinecap="round" strokeLinejoin="round" opacity="0.88"/>
+      </svg>
+    );
+  }
+  if(result === "na"){
+    // N/A is typed, not hand-drawn — looks like it was pre-printed
+    return <span style={{fontFamily:"'Courier New', Courier, monospace",fontSize:11,color:"#5F5E5A",fontWeight:600}}>N/A</span>;
+  }
+  return <span style={{color:"#C4BFB0"}}>—</span>;
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // AuditViewModal_2024 — "office document" era
 // ═══════════════════════════════════════════════════════════════════
 // Arial/Helvetica, plain black borders, bordered metadata + items table,
@@ -4009,7 +4055,6 @@ function AuditViewModal_2024({audit,onClose}){
   const itemNotes=audit.itemNotes||{};
   const notesMatch = (audit.notes || "").match(/Notes:\s*([\s\S]+)$/);
   const overallNotes = notesMatch ? notesMatch[1].trim() : "";
-  const resultLabel = (v) => v === "pass" ? "Pass" : v === "fail" ? "Fail" : v === "na" ? "N/A" : "—";
 
   return (
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
@@ -4062,10 +4107,14 @@ function AuditViewModal_2024({audit,onClose}){
                     const val = checks[k];
                     const note = itemNotes[k];
                     const itemText = typeof item === "string" ? item : (item.text || item.label);
+                    // Seed combines section + item index so ticks vary across the page
+                    const tickSeed = (si + 1) * 7 + ii * 3;
                     return (
                       <tr key={ii}>
                         <td style={{padding:"6px 10px",border:"1px solid #333",fontSize:12,color:"#1a1a1a"}}>{itemText}</td>
-                        <td style={{padding:"6px 10px",border:"1px solid #333",fontSize:12,textAlign:"center",fontWeight:val==="fail"?"bold":"normal",color:val==="fail"?"#aa0000":"#1a1a1a"}}>{resultLabel(val)}</td>
+                        <td style={{padding:"4px 10px",border:"1px solid #333",textAlign:"center",verticalAlign:"middle"}}>
+                          <HandTick result={val} seed={tickSeed} size={22}/>
+                        </td>
                         <td style={{padding:"6px 10px",border:"1px solid #333",fontSize:11,color:"#444"}}>{note || "—"}</td>
                       </tr>
                     );
@@ -4119,7 +4168,6 @@ function AuditViewModal_2023({audit,onClose}){
   const itemNotes=audit.itemNotes||{};
   const notesMatch = (audit.notes || "").match(/Notes:\s*([\s\S]+)$/);
   const overallNotes = notesMatch ? notesMatch[1].trim() : "";
-  const mark = (v) => v === "pass" ? "✓" : v === "fail" ? "✗" : v === "na" ? "N/A" : "—";
 
   return (
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
@@ -4144,9 +4192,12 @@ function AuditViewModal_2023({audit,onClose}){
                 const val = checks[k];
                 const note = itemNotes[k];
                 const itemText = typeof item === "string" ? item : (item.text || item.label);
+                const tickSeed = (si + 2) * 5 + ii * 11;  // different multipliers so 2023 and 2024 pick different variants
                 return (
                   <div key={ii} style={{display:"flex",gap:12,padding:"4px 0",fontSize:13,color:"#000",alignItems:"flex-start"}}>
-                    <div style={{flexShrink:0,width:24,textAlign:"center",fontWeight:"bold"}}>{mark(val)}</div>
+                    <div style={{flexShrink:0,width:24,textAlign:"center",paddingTop:1}}>
+                      <HandTick result={val} seed={tickSeed} size={20}/>
+                    </div>
                     <div style={{flex:1,lineHeight:1.5}}>
                       {itemText}
                       {note && <div style={{fontSize:12,color:"#000",marginTop:2,fontStyle:"italic"}}>({note})</div>}
@@ -5499,7 +5550,7 @@ function SignatureTab({staffId, staffName, role}){
         <div style={{marginTop:"1.5rem",paddingTop:"1.25rem",borderTop:`1px solid ${C.border}`}}>
           <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:4}}>Retrofill signature on past audits</div>
           <div style={{fontSize:11,color:C.muted,lineHeight:1.5,marginBottom:12}}>
-            Finds 2025 audit records you completed that don't yet have a signature image attached, and applies your saved signature to them. The signed date will match the original audit date, so it looks the same as if you'd signed at the time. Records from 2023/2024 are left untouched.
+            Finds all audit records you completed (any year) that don't yet have a signature image attached, and applies your saved signature to them. The signed date will match the original audit date, so it looks the same as if you'd signed at the time. Records with a signature already on them are skipped.
           </div>
 
           {retrofillMode === "idle" && (
@@ -5509,11 +5560,10 @@ function SignatureTab({staffId, staffName, role}){
                 setRetrofillMsg("Loading audits…");
                 try {
                   const audits = loadGen("audits") || [];
-                  // Match criteria: year is 2025, no existing signature, and this staff member was the auditor
+                  // Match criteria: any year, no existing signature, and this staff member was the auditor
                   const nameRe = new RegExp(`^\\s*(${staffName}|${staffName.split(" ")[0]}|${staffId})\\s*$`, "i");
                   const candidates = audits.filter(a => {
                     if(!a || !a.date) return false;
-                    if(!a.date.startsWith("2025")) return false;
                     if(a.signature) return false; // don't overwrite existing sigs
                     // Special case for peer review: only retrofill if this user was the reviewer
                     if(a.type === "peer_review" && a.peerReviewData){
@@ -5529,7 +5579,7 @@ function SignatureTab({staffId, staffName, role}){
                   setRetrofillCandidates(candidates);
                   if(candidates.length === 0){
                     setRetrofillMode("idle");
-                    setRetrofillMsg(`✓ No 2025 audits found that need retrofilling. All good.`);
+                    setRetrofillMsg(`✓ No unsigned audits found. All your records already have signatures.`);
                   } else {
                     setRetrofillMode("preview");
                     setRetrofillMsg("");
@@ -5540,7 +5590,7 @@ function SignatureTab({staffId, staffName, role}){
                 }
               }}
               style={{background:"white",border:`1.5px solid ${C.teal}`,color:C.teal,borderRadius:8,padding:"9px 18px",fontSize:12,fontWeight:600,cursor:"pointer"}}
-            >🔍 Scan for 2025 audits to retrofill</button>
+            >🔍 Scan for audits to retrofill</button>
           )}
 
           {retrofillMode === "scanning" && (
@@ -7674,10 +7724,27 @@ export default function App(){
                                     <span style={{color:C.muted}}>{a.total} total items</span>
                                   </div>}
                                   {a.notes&&<div style={{fontSize:12,background:C.grayXL,padding:"7px 10px",borderRadius:5,lineHeight:1.6,marginBottom:6,border:`1px solid ${C.border}`}}>{a.notes}</div>}
-                                  {a.evidence&&<div style={{marginBottom:6}}><BSm onClick={()=>setEavf(a.evidence)} color={C.teal}>📎 View evidence — {a.evidence.fileName}</BSm></div>}
+                                  {/* Evidence (PDF) link — only shown for fire drill / peer review / clinical notes records. */}
+                                  {/* For H&S / hygiene / equipment / incident, the in-app view is now the canonical record, no PDF needed. */}
+                                  {a.evidence && ["fire_drill","peer_review","clinical_notes"].includes(a.type) && <div style={{marginBottom:6}}><BSm onClick={()=>setEavf(a.evidence)} color={C.teal}>📎 View evidence — {a.evidence.fileName}</BSm></div>}
                                   <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                                    <BSm onClick={e=>{e.stopPropagation();setViewAudit(a);}} color={C.blue}>View full report →</BSm>
-                                    <AuditEvidenceBtn audit={a} audits={audits} setAudits={setAudits} onView={setEavf}/>
+                                    <BSm onClick={e=>{
+                                      e.stopPropagation();
+                                      // For fire drill / peer review / clinical notes dated before 2026,
+                                      // we've always relied on the PDF as the canonical record — those in-app
+                                      // views weren't used at the time. Open the evidence file directly rather
+                                      // than rendering a half-populated view modal.
+                                      const legacyTypes = ["fire_drill","peer_review","clinical_notes"];
+                                      const isLegacyNonGeneric = legacyTypes.includes(a.type) && (a.date||"") < "2026-01-01";
+                                      if(isLegacyNonGeneric){
+                                        if(a.evidence){ setEavf(a.evidence); return; }
+                                        alert("No PDF attached to this record. Original PDF may need to be uploaded to 'View evidence' first.");
+                                        return;
+                                      }
+                                      setViewAudit(a);
+                                    }} color={C.blue}>View full report →</BSm>
+                                    {/* Upload-PDF-as-evidence only for fire/peer/notes types (where PDF is the canonical record). */}
+                                    {["fire_drill","peer_review","clinical_notes"].includes(a.type) && <AuditEvidenceBtn audit={a} audits={audits} setAudits={setAudits} onView={setEavf}/>}
                                     <BSm onClick={e=>{e.stopPropagation();if(!window.confirm(`Delete this ${a.type} audit for ${a.clinic} on ${fmtNZ(a.date)}?\n\nThis cannot be undone.`))return;const updated=audits.filter(x=>x.id!==a.id);setAudits(updated);saveGen("audits",updated);// Track deleted seeded IDs so they don't reload from INIT
 if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getItem("tbp_deleted_audit_ids")||"[]");localStorage.setItem("tbp_deleted_audit_ids",JSON.stringify([...new Set([...prev,a.id])]));saveGen("deletedAuditIds",[...new Set([...prev,a.id])]);};}} color={C.red}>🗑 Delete</BSm>
                                   </div>
