@@ -319,7 +319,7 @@ const AUDIT_FORMS = {
     {title:"Treatment room equipment",items:["Treatment tables in good condition","Pillow frames and headrests secure","Wheeled stool / chair stable","Sharps disposal containers not over-filled — dispose at Chemist Warehouse at 3/4 full"]},
     {title:"Records",items:["Equipment register up to date","Service provider details recorded","Last service date recorded for each major item","Next service date scheduled"]},
   ]},
-  peer_review:{title:"Peer Review",icon:"🔍",freq:"Annual",hasPhysioSelect:true,sections:[
+  peer_review:{title:"Peer Review",icon:"🔍",freq:"Annual",hasPhysioSelect:true,useV2Modal:true,sections:[
     {title:"Review setup (PBNZ template p.1–2)",items:["Date of review recorded","Practitioner name confirmed (as per Board register)","Peer reviewer name confirmed (as per Board register)","Reviewer registration number recorded","Practice type identified — Clinical / Non-clinical / Academic / Research / Other","Method confirmed — Direct observation / Video / Performance review","Client selected — informed consent obtained and documented in Cliniko","Informed Consent Standard adhered to"]},
     {title:"Subjective assessment observation",items:["Thorough subjective assessment conducted","Detailed questions asked about pain onset and aggravating factors","Daily activities affecting condition explored","Previous treatment experiences discussed","Active listening demonstrated — patient able to express concerns","Workplace ergonomics and contributing factors explored"]},
     {title:"Objective assessment observation",items:["Comprehensive physical examination performed","Range of motion testing conducted where relevant","Palpation performed appropriately","Strength testing relevant to presentation completed","Assessment was methodical and adequately recorded","Baseline outcome measures established (NPS + PSFS)","Posture assessment included where relevant"]},
@@ -1078,33 +1078,51 @@ ${agendaItems.map(item=>`  <li><strong>${item.charAt(0).toUpperCase()+item.slice
 // Purple theme, fern accent, 3-column Areas-to-review table, summary boxes.
 function _generatePeerReviewForm(audit) {
   const dateFormatted = fmtNZLong(audit.date);
-  const practitioner = audit.physioAudited || 'Practitioner';
-  const reviewer = audit.auditor || 'Reviewer';
+  const isV2 = audit.formVersion === "v2" && audit.peerReviewData;
+  const pr = isV2 ? audit.peerReviewData : null;
 
-  // Extract reviewer registration from notes (pattern: "Reviewer: Name (70-XXXXX)" or "reg: 70-XXXXX")
-  const regMatch = (audit.notes||'').match(/70[\-\s]?\d{4,5}/);
-  const reviewerReg = regMatch ? regMatch[0].replace(/\s/,'-') : '';
+  const practitioner = (pr && pr.practitioner) || audit.physioAudited || 'Practitioner';
+  const reviewer     = (pr && pr.reviewer)     || audit.auditor        || 'Reviewer';
+  const reviewerReg  = (pr && pr.reviewerReg)  || (() => {
+    // Legacy fallback: extract rego from notes
+    const regMatch = (audit.notes||'').match(/70[\-\s]?\d{4,5}/);
+    return regMatch ? regMatch[0].replace(/\s/,'-') : '';
+  })();
+  const reviewerProfession = (pr && pr.reviewerProfession) || 'Physiotherapist';
 
-  // Work out method + practice type from notes
+  // Practice type + method — use v2 structured data, else infer from notes (legacy)
   const notesLower = (audit.notes||'').toLowerCase();
-  const isClinical = !notesLower.includes('non-clinical') && !notesLower.includes('research') && !notesLower.includes('academic');
-  const isDirect = notesLower.includes('direct observation') || notesLower.includes('direct obs');
-  const isVideo = notesLower.includes('video');
-  const isPerfReview = notesLower.includes('performance review');
+  const pt = pr && pr.practiceTypes ? pr.practiceTypes : {
+    clinical: !notesLower.includes('non-clinical') && !notesLower.includes('research') && !notesLower.includes('academic'),
+    nonClinical: notesLower.includes('non-clinical'),
+    research: notesLower.includes('research'),
+    academic: notesLower.includes('academic'),
+    other: notesLower.includes('other'),
+  };
+  const practiceOther = (pr && pr.practiceOther) || '';
+  const mt = pr && pr.methods ? pr.methods : {
+    direct: notesLower.includes('direct observation') || notesLower.includes('direct obs') || (!notesLower.includes('video') && !notesLower.includes('performance review')),
+    video: notesLower.includes('video'),
+    performance: notesLower.includes('performance review'),
+  };
 
-  // Parse specific sections from notes when present
+  // Area comments — use v2 data, else fall back to legacy placeholder text
+  const legacyComments = {
+    professional: "Clear, professional communication maintained throughout the session. Language appropriate to patient. Explanations and instructions delivered effectively.",
+    subjective:   "Thorough subjective assessment with targeted questioning. Active listening demonstrated. Patient given opportunity to express concerns.",
+    objective:    "Comprehensive objective examination performed. Relevant special tests, range of motion and strength testing completed. Methodical and well-documented.",
+    reasoning:    "Strong clinical reasoning linking subjective and objective findings. Evidence-based treatment plan with clear rationale discussed with patient. Realistic timeline and achievable goals set.",
+    interaction:  "Positive rapport with patient. Teaching approach clear and patient-centred. Exercises demonstrated effectively. Patient engagement strong throughout session.",
+  };
+  const comments = (pr && pr.comments) || {};
+  const commentOrFallback = (k) => comments[k] || legacyComments[k];
+
+  // Summaries + action plan
   const notes = audit.notes || 'Annual peer review completed.';
-
-  // Try to extract action plan from notes
   const actionMatch = notes.match(/[Aa]ction [Pp]lan[:\.]?\s*(.+?)(?=\.\s*[A-Z]|$)/s);
-  const actionPlan = actionMatch ? actionMatch[1].trim() : 'Continue current practice. Review annually.';
-
-  // Default content — use whatever's in the notes since real review content varies
-  const reviewerSummary = notes.length > 100
-    ? notes
-    : `Review conducted on ${dateFormatted}. Practitioner demonstrated professional standards and clinical competency. ${notes}`;
-
-  const revieweeSummary = 'Grateful for the feedback and opportunity to reflect on my practice. I appreciate the suggestions for continued growth and will incorporate these into my ongoing professional development.';
+  const reviewerSummary = (pr && pr.reviewerSummary) || (notes.length > 100 ? notes : `Review conducted on ${dateFormatted}. Practitioner demonstrated professional standards and clinical competency. ${notes}`);
+  const revieweeSummary = (pr && pr.revieweeSummary) || 'Grateful for the feedback and opportunity to reflect on my practice. I appreciate the suggestions for continued growth and will incorporate these into my ongoing professional development.';
+  const actionPlan      = (pr && pr.actionPlan)      || (actionMatch ? actionMatch[1].trim() : 'Continue current practice. Review annually.');
 
   // Build check mark helper matching PBNZ's pale-purple cells
   const chk = (on) => on
@@ -1137,10 +1155,10 @@ function _generatePeerReviewForm(audit) {
   table.areas td{border:1px solid #d9c9ef;padding:10px 12px;vertical-align:top;}
   table.areas td.area{background:#F5F0FB;color:#5a4a7a;font-weight:500;width:24%;}
   table.areas td.feedback{width:36%;color:#4a4a4a;font-size:9.5pt;}
-  table.areas td.comment{width:40%;color:#1a1a1a;font-size:9.5pt;}
+  table.areas td.comment{width:40%;color:#1a1a1a;font-size:9.5pt;white-space:pre-line;}
   .summary-box{border:1px solid #c7b8e0;border-radius:4px;margin:14px 0;}
   .summary-box .header{background:#E8DFF5;color:#6B46C1;padding:8px 14px;font-weight:700;font-size:10pt;text-transform:none;text-decoration:underline;}
-  .summary-box .body{padding:14px 16px;font-size:10pt;min-height:60px;color:#1a1a1a;}
+  .summary-box .body{padding:14px 16px;font-size:10pt;min-height:60px;color:#1a1a1a;white-space:pre-line;}
   .sig-area{margin-top:26px;padding-top:14px;border-top:2px solid #6B46C1;display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;}
   .sig-col{flex:1;min-width:220px;}
   .sig-col .label{font-size:9pt;color:#6B46C1;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;}
@@ -1172,31 +1190,31 @@ function _generatePeerReviewForm(audit) {
     <div class="field"><div class="label">Practitioner's name (you):</div><div class="value">${practitioner}</div></div>
     <div class="field"><div class="label">Peer reviewer name as per Board register:</div><div class="value">${reviewer}</div></div>
     <div class="field"><div class="label">Reviewer Registration number (if applicable):</div><div class="value">${reviewerReg||'—'}</div></div>
-    <div class="field"><div class="label">Reviewer Profession:</div><div class="value">Physiotherapist</div></div>
+    <div class="field"><div class="label">Reviewer Profession:</div><div class="value">${reviewerProfession}</div></div>
   </div>
 
   <table class="method">
     <tr>
       <td class="label-col">Practice type reviewed:</td>
       <td>
-        <span class="opt">${chk(isClinical)} Clinical</span>
-        <span class="opt">${chk(!isClinical && notesLower.includes('non-clinical'))} Non-clinical</span>
-        <span class="opt">${chk(notesLower.includes('research'))} Research</span>
+        <span class="opt">${chk(pt.clinical)} Clinical</span>
+        <span class="opt">${chk(pt.nonClinical)} Non-clinical</span>
+        <span class="opt">${chk(pt.research)} Research</span>
       </td>
     </tr>
     <tr>
       <td class="label-col"></td>
       <td>
-        <span class="opt">${chk(notesLower.includes('academic'))} Academic</span>
-        <span class="opt">${chk(notesLower.includes('other'))} Other <em style="color:#888;">(specify)</em></span>
+        <span class="opt">${chk(pt.academic)} Academic</span>
+        <span class="opt">${chk(pt.other)} Other ${practiceOther?`<em style="color:#5a4a7a;">(${practiceOther})</em>`:`<em style="color:#888;">(specify)</em>`}</span>
       </td>
     </tr>
     <tr>
       <td class="label-col">Method:</td>
       <td>
-        <span class="opt">${chk(isDirect || (!isVideo && !isPerfReview))} Direct observation*</span>
-        <span class="opt">${chk(isVideo)} Video*</span>
-        <span class="opt">${chk(isPerfReview)} Performance Review</span>
+        <span class="opt">${chk(mt.direct)} Direct observation*</span>
+        <span class="opt">${chk(mt.video)} Video*</span>
+        <span class="opt">${chk(mt.performance)} Performance Review</span>
       </td>
     </tr>
     <tr>
@@ -1215,27 +1233,27 @@ function _generatePeerReviewForm(audit) {
     <tr>
       <td class="area">Professional practice — communication, language, explanations, instructions</td>
       <td class="feedback">—</td>
-      <td class="comment">Clear, professional communication maintained throughout the session. Language appropriate to patient. Explanations and instructions delivered effectively.</td>
+      <td class="comment">${commentOrFallback('professional')}</td>
     </tr>
     <tr>
       <td class="area">Subjective</td>
       <td class="feedback">—</td>
-      <td class="comment">Thorough subjective assessment with targeted questioning. Active listening demonstrated. Patient given opportunity to express concerns.</td>
+      <td class="comment">${commentOrFallback('subjective')}</td>
     </tr>
     <tr>
       <td class="area">Objective</td>
       <td class="feedback">—</td>
-      <td class="comment">Comprehensive objective examination performed. Relevant special tests, range of motion and strength testing completed. Methodical and well-documented.</td>
+      <td class="comment">${commentOrFallback('objective')}</td>
     </tr>
     <tr>
       <td class="area">Clinical Reasoning and Treatment Plan</td>
       <td class="feedback">—</td>
-      <td class="comment">Strong clinical reasoning linking subjective and objective findings. Evidence-based treatment plan with clear rationale discussed with patient. Realistic timeline and achievable goals set.</td>
+      <td class="comment">${commentOrFallback('reasoning')}</td>
     </tr>
     <tr>
       <td class="area">Patient Interaction — eg teaching</td>
       <td class="feedback">—</td>
-      <td class="comment">Positive rapport with patient. Teaching approach clear and patient-centred. Exercises demonstrated effectively. Patient engagement strong throughout session.</td>
+      <td class="comment">${commentOrFallback('interaction')}</td>
     </tr>
   </table>
 
@@ -3622,6 +3640,10 @@ function AuditViewModal({audit,onClose}){
   if(audit.type === "fire_drill" && audit.formVersion === "v2" && audit.fireDrillData){
     return <FireDrillViewModal audit={audit} onClose={onClose}/>;
   }
+  // ── v2 peer review records render in PBNZ shape ──────────────────
+  if(audit.type === "peer_review" && audit.formVersion === "v2" && audit.peerReviewData){
+    return <PeerReviewViewModal audit={audit} onClose={onClose}/>;
+  }
   const form=AUDIT_FORMS[audit.type]||{sections:[]};
   const sections=audit.sections||form.sections||[];
   const checks=audit.itemChecks||{};
@@ -3675,6 +3697,262 @@ function AuditViewModal({audit,onClose}){
             <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Overall notes</div>
             <div style={{fontSize:12,color:C.muted,whiteSpace:"pre-line"}}>{audit.notes.replace(/^• .*$/gm,"").replace(/Notes: /,"").trim()}</div>
           </div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PBNZ peer review observation areas ──────────────────────────
+// These 5 areas match the official Physiotherapy Board of NZ
+// Annual Peer Review template. The reviewer writes a free-text
+// comment per area — no tick-boxes, matching the PBNZ form exactly.
+const PEER_REVIEW_AREAS = [
+  { key:"professional", label:"Professional practice", hint:"Communication, language, explanations, instructions" },
+  { key:"subjective",   label:"Subjective",            hint:"Subjective assessment observation" },
+  { key:"objective",    label:"Objective",             hint:"Objective examination observation" },
+  { key:"reasoning",    label:"Clinical Reasoning and Treatment Plan", hint:"Clinical reasoning linking Sx and Ox; treatment plan" },
+  { key:"interaction",  label:"Patient Interaction",   hint:"e.g. teaching, rapport, engagement" },
+];
+
+// PeerReviewModal — PBNZ-exact narrative peer review form.
+// Replaces the old tick-box modal when opened via the Peer Review audit type.
+// Saves with formVersion:"v2" and a structured peerReviewData payload.
+function PeerReviewModal({onClose,onComplete}){
+  const today = new Date().toISOString().split("T")[0];
+  // Practitioner list — all physios (excluding Owner? No, include Jade too; Directors do peer review)
+  const physioList = Object.values(STAFF).map(s=>s.name);
+
+  // Review setup
+  const [date, setDate] = useState(today);
+  const [practitioner, setPractitioner] = useState("");
+  const [reviewer, setReviewer] = useState("");
+  const [reviewerReg, setReviewerReg] = useState("");
+  const [reviewerProfession, setReviewerProfession] = useState("Physiotherapist");
+
+  // Practice type + method — radio-ish, but we store as sets since user might tick multiple
+  const [practiceTypes, setPracticeTypes] = useState({clinical:true, nonClinical:false, research:false, academic:false, other:false});
+  const [practiceOther, setPracticeOther] = useState("");
+  const [methods, setMethods] = useState({direct:true, video:false, performance:false});
+
+  // 5 area narrative comments
+  const [comments, setComments] = useState({});
+  // Summaries + action plan
+  const [revieweeSummary, setRevieweeSummary] = useState("");
+  const [reviewerSummary, setReviewerSummary] = useState("");
+  const [actionPlan, setActionPlan] = useState("");
+
+  function togglePractice(key){ setPracticeTypes(p=>({...p,[key]:!p[key]})); }
+  function toggleMethod(key){ setMethods(m=>({...m,[key]:!m[key]})); }
+
+  function submit(){
+    if(!practitioner) { alert("Please select the practitioner (reviewee)."); return; }
+    if(!reviewer.trim()) { alert("Please enter the reviewer's name."); return; }
+    if(!reviewerSummary.trim()) { alert("Please complete the reviewer summary."); return; }
+    if(!actionPlan.trim()) { alert("Please complete the action plan."); return; }
+
+    // Build a notes field compatible with history-list display
+    const noteLines = [];
+    PEER_REVIEW_AREAS.forEach(a=>{ if(comments[a.key]) noteLines.push(`• ${a.label}: ${comments[a.key]}`); });
+    if(reviewerSummary) noteLines.push(`Reviewer summary: ${reviewerSummary}`);
+    if(actionPlan) noteLines.push(`Action plan: ${actionPlan}`);
+
+    onComplete({
+      id: Date.now(),
+      type: "peer_review",
+      title: `Peer Review — ${practitioner}`,
+      icon: "🔍",
+      clinic: (CLINICS.find(c=>!c.isSchool)||CLINICS[0]).short,  // not clinic-specific, but schema requires it
+      auditor: reviewer,
+      physioAudited: practitioner,
+      date,
+      passed: 0, failed: 0, na: 0, total: 0,  // narrative form — no pass/fail counting
+      outcome: "Completed",
+      notes: noteLines.join("\n"),
+      formVersion: "v2",
+      peerReviewData: {
+        practitioner, reviewer, reviewerReg, reviewerProfession,
+        practiceTypes, practiceOther, methods,
+        comments, revieweeSummary, reviewerSummary, actionPlan,
+      },
+    });
+  }
+
+  const fieldLbl = (txt) => <label style={{fontSize:11,fontWeight:600,color:C.muted,display:"block",marginBottom:3,textTransform:"uppercase",letterSpacing:".3px"}}>{txt}</label>;
+  const sectionHead = (title) => <div style={{background:"#6B46C1",color:"white",padding:"7px 14px",fontWeight:700,fontSize:12,marginTop:"1.25rem",marginBottom:0,borderRadius:"5px 5px 0 0",letterSpacing:".3px"}}>{title}</div>;
+  const sectionBody = (children) => <div style={{background:"white",border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 5px 5px",padding:"0.875rem 1rem"}}>{children}</div>;
+  const chkBox = (checked, onClick, label) => (
+    <div onClick={onClick} style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer",padding:"4px 10px",marginRight:8,marginBottom:4,borderRadius:4,background:checked?"#F0E8FA":"transparent",border:`1.5px solid ${checked?"#6B46C1":C.border}`}}>
+      <span style={{width:14,height:14,borderRadius:2,background:checked?"#6B46C1":"white",border:`1.5px solid ${checked?"#6B46C1":"#c7b8e0"}`,display:"inline-flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:10,fontWeight:700}}>{checked?"✓":""}</span>
+      <span style={{fontSize:12,color:checked?"#6B46C1":C.text}}>{label}</span>
+    </div>
+  );
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:400,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:12,width:"100%",maxWidth:760,marginBottom:"2rem"}}>
+        <div style={{background:"linear-gradient(135deg,#6B46C1 0%,#8a64d8 100%)",padding:"1.25rem 1.5rem",borderRadius:"12px 12px 0 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{color:"white",fontSize:17,fontWeight:700,letterSpacing:".3px"}}>🔍 Annual Peer Review</div>
+            <div style={{color:"rgba(255,255,255,0.85)",fontSize:11,marginTop:3,fontStyle:"italic"}}>Physiotherapy Board of NZ — Te Poari Tiaki Tinana o Aotearoa</div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15}}>✕</button>
+        </div>
+
+        <div style={{padding:"1.25rem 1.5rem",maxHeight:"75vh",overflowY:"auto"}}>
+
+          {/* Review setup */}
+          {sectionHead("Review setup")}
+          {sectionBody(<>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"0.75rem"}}>
+              <div>{fieldLbl("Date of review")}<input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
+              <div>{fieldLbl("Practitioner (reviewee)")}<select value={practitioner} onChange={e=>setPractitioner(e.target.value)} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL}}>
+                <option value="">— Select —</option>
+                {physioList.map(n=><option key={n} value={n}>{n}</option>)}
+              </select></div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:"0.75rem",marginBottom:"0.75rem"}}>
+              <div>{fieldLbl("Peer reviewer name (as per Board register)")}<input type="text" value={reviewer} onChange={e=>setReviewer(e.target.value)} placeholder="e.g. Jade Warren" style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
+              <div>{fieldLbl("Registration number")}<input type="text" value={reviewerReg} onChange={e=>setReviewerReg(e.target.value)} placeholder="70-XXXXX" style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
+            </div>
+            <div>{fieldLbl("Reviewer profession")}<input type="text" value={reviewerProfession} onChange={e=>setReviewerProfession(e.target.value)} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
+          </>)}
+
+          {/* Practice type + method */}
+          {sectionHead("Practice type & method")}
+          {sectionBody(<>
+            <div style={{marginBottom:"0.75rem"}}>
+              {fieldLbl("Practice type reviewed")}
+              <div style={{display:"flex",flexWrap:"wrap",marginTop:2}}>
+                {chkBox(practiceTypes.clinical, ()=>togglePractice("clinical"), "Clinical")}
+                {chkBox(practiceTypes.nonClinical, ()=>togglePractice("nonClinical"), "Non-clinical")}
+                {chkBox(practiceTypes.research, ()=>togglePractice("research"), "Research")}
+                {chkBox(practiceTypes.academic, ()=>togglePractice("academic"), "Academic")}
+                {chkBox(practiceTypes.other, ()=>togglePractice("other"), "Other")}
+              </div>
+              {practiceTypes.other && <input type="text" placeholder="Specify other practice type" value={practiceOther} onChange={e=>setPracticeOther(e.target.value)} style={{width:"100%",marginTop:6,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/>}
+            </div>
+            <div>
+              {fieldLbl("Method")}
+              <div style={{display:"flex",flexWrap:"wrap",marginTop:2}}>
+                {chkBox(methods.direct, ()=>toggleMethod("direct"), "Direct observation")}
+                {chkBox(methods.video, ()=>toggleMethod("video"), "Video")}
+                {chkBox(methods.performance, ()=>toggleMethod("performance"), "Performance review")}
+              </div>
+              <div style={{fontSize:10.5,color:C.muted,marginTop:4,fontStyle:"italic",lineHeight:1.4}}>For Direct observation and Video methods you must adhere to the Informed Consent Standard. For videoconference reviews, also adhere to the Internet and Electronic Communication Standard.</div>
+            </div>
+          </>)}
+
+          {/* 5 areas */}
+          {sectionHead("Areas to review — reviewer's comments")}
+          {sectionBody(<>
+            {PEER_REVIEW_AREAS.map((a,i)=>(
+              <div key={a.key} style={{marginBottom:i<PEER_REVIEW_AREAS.length-1?"1rem":0,paddingBottom:i<PEER_REVIEW_AREAS.length-1?"0.75rem":0,borderBottom:i<PEER_REVIEW_AREAS.length-1?`1px solid ${C.grayL}`:"none"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#6B46C1",marginBottom:2}}>{a.label}</div>
+                <div style={{fontSize:10.5,color:C.muted,marginBottom:5,fontStyle:"italic"}}>{a.hint}</div>
+                <textarea rows={2} value={comments[a.key]||""} onChange={e=>setComments(p=>({...p,[a.key]:e.target.value}))} placeholder={`Your observations on ${a.label.toLowerCase()}…`} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
+              </div>
+            ))}
+          </>)}
+
+          {/* Summaries */}
+          {sectionHead("Reviewee summary")}
+          {sectionBody(<textarea rows={3} value={revieweeSummary} onChange={e=>setRevieweeSummary(e.target.value)} placeholder="The reviewee's own reflection on the session (optional — can be added later)…" style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>)}
+
+          {sectionHead("Reviewer summary")}
+          {sectionBody(<textarea rows={3} value={reviewerSummary} onChange={e=>setReviewerSummary(e.target.value)} placeholder="Overall summary — strengths, areas for improvement, notable observations…" style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>)}
+
+          {sectionHead("Action plan")}
+          {sectionBody(<textarea rows={3} value={actionPlan} onChange={e=>setActionPlan(e.target.value)} placeholder="1. Specific actions with timeframes\n2. ...\n3. ..." style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>)}
+
+          <div style={{background:C.grayXL,borderRadius:8,padding:"1rem",marginTop:"1.25rem",border:`1px solid ${C.border}`}}>
+            <Btn onClick={submit}>Submit peer review record</Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Read-only PBNZ-shaped view for v2 peer review records
+function PeerReviewViewModal({audit,onClose}){
+  const pr = audit.peerReviewData || {};
+  const pt = pr.practiceTypes || {};
+  const mt = pr.methods || {};
+  const comments = pr.comments || {};
+
+  const sectionHead = (title) => <div style={{background:"#6B46C1",color:"white",padding:"7px 14px",fontWeight:700,fontSize:12,marginTop:"1rem",marginBottom:0,borderRadius:"5px 5px 0 0"}}>{title}</div>;
+  const sectionBody = (children) => <div style={{background:"white",border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 5px 5px",padding:"0.75rem 1rem"}}>{children}</div>;
+  const row = (label, value) => (
+    <div style={{display:"flex",borderBottom:`1px solid ${C.grayL}`,padding:"6px 0",fontSize:12}}>
+      <div style={{minWidth:180,color:C.muted,fontWeight:500}}>{label}</div>
+      <div style={{flex:1,color:C.text}}>{value || <span style={{color:C.hint,fontStyle:"italic"}}>—</span>}</div>
+    </div>
+  );
+  const chk = (on) => <span style={{width:14,height:14,borderRadius:2,background:on?"#6B46C1":"white",border:`1.5px solid ${on?"#6B46C1":"#c7b8e0"}`,display:"inline-flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:10,fontWeight:700}}>{on?"✓":""}</span>;
+  // Render a tick-labelled option
+  const opt = (on, label) => <span key={label} style={{display:"inline-flex",alignItems:"center",gap:5,marginRight:14,fontSize:12,color:on?"#6B46C1":C.muted,fontWeight:on?600:400}}><span style={{width:14,height:14,borderRadius:2,background:on?"#6B46C1":"white",border:`1.5px solid ${on?"#6B46C1":"#c7b8e0"}`,display:"inline-flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:10,fontWeight:700}}>{on?"✓":""}</span>{label}</span>;
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:12,width:"100%",maxWidth:760,marginBottom:"2rem",overflow:"hidden"}}>
+        <div style={{background:"linear-gradient(135deg,#6B46C1 0%,#8a64d8 100%)",padding:"1.25rem 1.5rem",display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
+          <div>
+            <div style={{color:"white",fontSize:16,fontWeight:600}}>🔍 {audit.title}</div>
+            <div style={{color:"rgba(255,255,255,0.85)",fontSize:12,marginTop:4,display:"flex",gap:12,flexWrap:"wrap"}}>
+              <span>📅 {fmtNZ(audit.date)}</span>
+              <span>👤 Reviewer: {audit.auditor}</span>
+              <span>🎯 Reviewee: {pr.practitioner || audit.physioAudited}</span>
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15,flexShrink:0}}>✕</button>
+        </div>
+
+        <div style={{padding:"1.25rem 1.5rem",maxHeight:"72vh",overflowY:"auto"}}>
+
+          {sectionHead("Review setup")}
+          {sectionBody(<>
+            {row("Date of review", fmtNZ(audit.date))}
+            {row("Practitioner (reviewee)", pr.practitioner)}
+            {row("Peer reviewer", pr.reviewer)}
+            {row("Registration number", pr.reviewerReg)}
+            {row("Reviewer profession", pr.reviewerProfession)}
+          </>)}
+
+          {sectionHead("Practice type & method")}
+          {sectionBody(<>
+            <div style={{paddingBottom:8,borderBottom:`1px solid ${C.grayL}`,marginBottom:8}}>
+              <div style={{fontSize:11,color:C.muted,fontWeight:500,marginBottom:5,textTransform:"uppercase",letterSpacing:".3px"}}>Practice type</div>
+              <div>{opt(pt.clinical,"Clinical")}{opt(pt.nonClinical,"Non-clinical")}{opt(pt.research,"Research")}{opt(pt.academic,"Academic")}{opt(pt.other,"Other")}</div>
+              {pt.other && pr.practiceOther && <div style={{fontSize:12,color:C.text,marginTop:4,marginLeft:22,fontStyle:"italic"}}>Specify: {pr.practiceOther}</div>}
+            </div>
+            <div>
+              <div style={{fontSize:11,color:C.muted,fontWeight:500,marginBottom:5,textTransform:"uppercase",letterSpacing:".3px"}}>Method</div>
+              <div>{opt(mt.direct,"Direct observation")}{opt(mt.video,"Video")}{opt(mt.performance,"Performance review")}</div>
+            </div>
+          </>)}
+
+          {sectionHead("Areas to review")}
+          {sectionBody(<>
+            {PEER_REVIEW_AREAS.map((a,i)=>(
+              <div key={a.key} style={{paddingBottom:i<PEER_REVIEW_AREAS.length-1?"0.75rem":0,marginBottom:i<PEER_REVIEW_AREAS.length-1?"0.75rem":0,borderBottom:i<PEER_REVIEW_AREAS.length-1?`1px solid ${C.grayL}`:"none"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#6B46C1",marginBottom:3}}>{a.label}</div>
+                <div style={{fontSize:12,color:C.text,lineHeight:1.5,whiteSpace:"pre-line"}}>{comments[a.key] || <span style={{color:C.hint,fontStyle:"italic"}}>Not recorded</span>}</div>
+              </div>
+            ))}
+          </>)}
+
+          {pr.revieweeSummary && <>
+            {sectionHead("Reviewee summary")}
+            {sectionBody(<div style={{fontSize:12,color:C.text,lineHeight:1.5,whiteSpace:"pre-line"}}>{pr.revieweeSummary}</div>)}
+          </>}
+
+          {sectionHead("Reviewer summary")}
+          {sectionBody(<div style={{fontSize:12,color:C.text,lineHeight:1.5,whiteSpace:"pre-line"}}>{pr.reviewerSummary || <span style={{color:C.hint,fontStyle:"italic"}}>Not recorded</span>}</div>)}
+
+          {sectionHead("Action plan")}
+          {sectionBody(<div style={{fontSize:12,color:C.text,lineHeight:1.5,whiteSpace:"pre-line"}}>{pr.actionPlan || <span style={{color:C.hint,fontStyle:"italic"}}>Not recorded</span>}</div>)}
+
         </div>
       </div>
     </div>
@@ -3932,6 +4210,10 @@ function AuditModal({type,onClose,onComplete}){
   // ── Fire drill uses a dedicated FENZ-style form ──────────────────
   if(type === "fire_drill"){
     return <FireDrillModal onClose={onClose} onComplete={onComplete}/>;
+  }
+  // ── Peer review uses a dedicated PBNZ-style narrative form ────────
+  if(type === "peer_review"){
+    return <PeerReviewModal onClose={onClose} onComplete={onComplete}/>;
   }
   const form=AUDIT_FORMS[type];const all=form.sections.flatMap(s=>s.items);
   const[checks,setChecks]=useState({});const[notes,setNotes]=useState({});
