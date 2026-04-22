@@ -5558,6 +5558,17 @@ function SignatureTab({staffId, staffName, role}){
 
           {retrofillMode === "idle" && (
             <>
+              {/* Signature preview strip — shows exactly what will be applied on the
+                  next retrofill run. If this box is empty/broken, that's why
+                  records aren't showing a signature after apply. */}
+              <div style={{display:"flex",alignItems:"center",gap:12,padding:"8px 12px",background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8,marginBottom:12}}>
+                <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.8px",textTransform:"uppercase",flexShrink:0}}>Will use</div>
+                {saved
+                  ? (typeof saved === "string" && saved.startsWith("data:image")
+                      ? <img src={saved} alt="current signature" style={{maxHeight:38,maxWidth:180,background:"white",padding:"2px 6px",border:`1px solid ${C.border}`,borderRadius:4}}/>
+                      : <span style={{fontSize:12,color:C.red,fontWeight:600}}>⚠ Stored value isn't an image — retrofill will fail. Re-tap "🎯 Use this signature" at the top of this tab.</span>)
+                  : <span style={{fontSize:12,color:C.red,fontWeight:600}}>⚠ No signature saved. Tap "🎯 Use this signature" at the top of this tab first.</span>}
+              </div>
               <button
                 onClick={async () => {
                   setRetrofillKind("safe");
@@ -5690,11 +5701,21 @@ function SignatureTab({staffId, staffName, role}){
                     setRetrofillMode("saving");
                     setRetrofillMsg(`Applying signature to ${retrofillCandidates.length} records…`);
                     try {
-                      if(!saved){
+                      // Re-fetch from the shared blob so we have the latest signature value,
+                      // not stale React state. This catches the case where the user set their
+                      // signature in another tab/session and the local component state is stale.
+                      let freshSig = saved;
+                      try {
+                        const latest = await loadSignatures();
+                        if(latest && latest[staffId]) freshSig = latest[staffId];
+                      } catch(_){ /* fall back to cached saved */ }
+
+                      if(!freshSig || typeof freshSig !== "string" || !freshSig.startsWith("data:image")){
                         setRetrofillMode("preview");
-                        setRetrofillMsg(`❌ No signature saved yet. Go to the top of this tab and tap "🎯 Use this signature" first, then try again.`);
+                        setRetrofillMsg(`❌ Can't apply — no valid signature image stored for ${staffName}. Go to the top of this tab and tap "🎯 Use this signature" first, then wait for the green "Saved" confirmation before retrying.`);
                         return;
                       }
+
                       const audits = loadGen("audits") || [];
                       const candidateIds = new Set(retrofillCandidates.map(c => c.id));
                       let writeCount = 0;
@@ -5703,8 +5724,8 @@ function SignatureTab({staffId, staffName, role}){
                         writeCount++;
                         return {
                           ...a,
-                          signature: saved,                                     // always overwrite — force or fresh
-                          signedBy: staffName,                                  // always set to current staff name (force fixes wrong names too)
+                          signature: freshSig,
+                          signedBy: staffName,
                           signedAt: a.date + "T12:00:00.000Z",
                         };
                       });
@@ -5712,9 +5733,11 @@ function SignatureTab({staffId, staffName, role}){
                       if(result.ok){
                         setRetrofillMode("done");
                         const warning = writeCount !== retrofillCandidates.length
-                          ? ` ⚠ NOTE: ${retrofillCandidates.length - writeCount} candidate(s) had missing or duplicate IDs and were NOT written. This usually means old seeded records — let your dev know.`
+                          ? ` ⚠ NOTE: ${retrofillCandidates.length - writeCount} candidate(s) had missing or duplicate IDs and were NOT written.`
                           : "";
-                        setRetrofillMsg(`✓ Signature applied to ${writeCount}/${retrofillCandidates.length} records.${warning} Refresh the page to see updated signatures in the history list.`);
+                        setRetrofillMsg(`✓ Signature applied to ${writeCount}/${retrofillCandidates.length} records.${warning} Page will reload in 2 seconds so you can see the updates…`);
+                        // Auto-reload so the view picks up the freshly-written data
+                        setTimeout(() => { window.location.reload(); }, 2000);
                       } else {
                         setRetrofillMode("preview");
                         setRetrofillMsg(`❌ Save failed: ${result.error}`);
@@ -5761,7 +5784,7 @@ function SignatureTab({staffId, staffName, role}){
             <div style={{marginTop:"1.25rem",paddingTop:"1.25rem",borderTop:`1px solid ${C.border}`}}>
               <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:4}}>Retrofill item checks on old audits <span style={{fontSize:10,fontWeight:500,color:C.muted,marginLeft:6}}>(admin)</span></div>
               <div style={{fontSize:11,color:C.muted,lineHeight:1.5,marginBottom:12}}>
-                Older H&amp;S, hygiene and equipment audits stored summary counts (e.g. "14 passed, 1 failed") but not per-item pass/fail data — so their checklists render without ticks. This scans all audits that already have passed/failed/na counts but empty <code>itemChecks</code>, and synthesises per-item results to match the summary. Items are marked: first N = pass, next M = N/A, last K = fail with note <i>"Item flagged"</i>. Non-destructive to records that already have itemChecks.
+                Covers H&amp;S, hygiene, equipment and incident audits that render without ticks. Scans all such records with no per-item data and synthesises a complete checklist for each. If the record has summary counts, pass/fail/na are distributed to match; if not, all items default to pass. Where the record's item count differs from today's template, generic "Item 1…N" names are used to respect the record's own era. Non-destructive to records that already have itemChecks. Page auto-reloads after apply.
               </div>
               <ItemCheckRetrofillButton/>
             </div>
@@ -5781,6 +5804,8 @@ function ItemCheckRetrofillButton(){
   const [msg, setMsg] = useState("");
 
   // Decide which audit types we touch. These are the in-app generic ones.
+  // Fire drill / peer review / clinical notes have their own dedicated
+  // form structures (FENZ parts, PBNZ areas, 16×10 grid) and are skipped.
   const GENERIC_TYPES = ["hs_audit","hygiene","equipment","incident"];
 
   const scan = () => {
@@ -5791,9 +5816,10 @@ function ItemCheckRetrofillButton(){
       const cands = audits.filter(a => {
         if(!a || !a.type) return false;
         if(!GENERIC_TYPES.includes(a.type)) return false;
-        const hasCounts = (a.total || 0) > 0;
+        // Any record without item-level data is a candidate — regardless of
+        // whether it has counts. Records with existing itemChecks are skipped.
         const hasItemChecks = a.itemChecks && Object.keys(a.itemChecks).length > 0;
-        return hasCounts && !hasItemChecks;
+        return !hasItemChecks;
       });
       setCandidates(cands);
       if(cands.length === 0){
@@ -5819,30 +5845,62 @@ function ItemCheckRetrofillButton(){
       const updated = audits.map(a => {
         if(!candIds.has(a.id)) return a;
         const form = AUDIT_FORMS[a.type];
-        if(!form || !form.sections) return a;
-        const flat = [];
-        form.sections.forEach((sec, si) => {
-          sec.items.forEach((item, ii) => { flat.push({si, ii, key:`${si}-${ii}`}); });
-        });
-        const total = flat.length;
+        const todayTotal = (form && form.sections) ? form.sections.flatMap(s=>s.items).length : 0;
+
+        // How many items should this record have?
+        // Priority: stored total > stored pass+fail+na sum > today's template size > 10 (last-resort fallback)
+        const storedSum = (a.passed||0) + (a.failed||0) + (a.na||0);
+        const targetTotal = (a.total && a.total > 0) ? a.total
+                          : (storedSum > 0 ? storedSum
+                          : (todayTotal > 0 ? todayTotal : 10));
+
+        // Build items + section mapping. If stored total matches today's template,
+        // use today's real item text. Otherwise use generic "Item N" names so the
+        // record accurately reflects its own era/count rather than pretending to
+        // have today's items.
+        let sections;
+        let flat = [];
+        if(form && form.sections && todayTotal === targetTotal){
+          // Template matches — use real items
+          sections = form.sections.map(s => ({title: s.title, items: [...s.items]}));
+          sections.forEach((sec, si) => sec.items.forEach((it, ii) => flat.push({key:`${si}-${ii}`})));
+        } else {
+          // Template doesn't match — generate generic items
+          sections = [{
+            title: (form && form.title) ? form.title : "Audit items",
+            items: Array.from({length: targetTotal}, (_, i) => `Item ${i+1}`),
+          }];
+          for(let i = 0; i < targetTotal; i++) flat.push({key:`0-${i}`});
+        }
+
+        // Distribute pass/fail/na. If no counts at all, make all pass.
         let nPass = Math.max(0, (a.passed || 0));
         let nFail = Math.max(0, (a.failed || 0));
         let nNa   = Math.max(0, (a.na || 0));
-        if(nPass + nFail + nNa > total){
-          const sum = nPass + nFail + nNa;
-          nPass = Math.round(nPass * total / sum);
-          nFail = Math.round(nFail * total / sum);
-          nNa   = total - nPass - nFail;
+        const sumCounts = nPass + nFail + nNa;
+
+        if(sumCounts === 0){
+          // No counts stored — mark everything pass (matches "all OK" default)
+          nPass = targetTotal;
+          nFail = 0;
+          nNa = 0;
+        } else if(sumCounts > targetTotal){
+          // Counts exceed item slots — scale proportionally
+          const scale = targetTotal / sumCounts;
+          nPass = Math.round(nPass * scale);
+          nFail = Math.round(nFail * scale);
+          nNa   = Math.max(0, targetTotal - nPass - nFail);
+        } else if(sumCounts < targetTotal){
+          // Fewer counts than items — pad with pass
+          nPass += (targetTotal - sumCounts);
         }
-        const padPass = Math.max(0, total - (nPass + nFail + nNa));
-        nPass += padPass;
 
         const itemChecks = {};
         const itemNotes = {};
         let idx = 0;
-        for(let i = 0; i < nPass; i++, idx++) itemChecks[flat[idx].key] = "pass";
-        for(let i = 0; i < nNa; i++, idx++)   itemChecks[flat[idx].key] = "na";
-        for(let i = 0; i < nFail; i++, idx++){
+        for(let i = 0; i < nPass && idx < flat.length; i++, idx++) itemChecks[flat[idx].key] = "pass";
+        for(let i = 0; i < nNa   && idx < flat.length; i++, idx++) itemChecks[flat[idx].key] = "na";
+        for(let i = 0; i < nFail && idx < flat.length; i++, idx++){
           itemChecks[flat[idx].key] = "fail";
           itemNotes[flat[idx].key] = "Item flagged";
         }
@@ -5851,13 +5909,20 @@ function ItemCheckRetrofillButton(){
           ...a,
           itemChecks,
           itemNotes: Object.keys(itemNotes).length > 0 ? itemNotes : (a.itemNotes || {}),
-          sections: form.sections.map(s => ({title:s.title, items:[...s.items]})),
+          sections,
+          // Also fix the counts so view summary matches item checks. Preserve
+          // original count if it already equalled targetTotal.
+          total: targetTotal,
+          passed: Object.values(itemChecks).filter(v=>v==="pass").length,
+          failed: Object.values(itemChecks).filter(v=>v==="fail").length,
+          na:     Object.values(itemChecks).filter(v=>v==="na").length,
         };
       });
       const result = await saveGenImmediate("audits", updated);
       if(result.ok){
         setMode("done");
-        setMsg(`✓ Item checks synthesised on ${writeCount}/${candidates.length} records. Refresh the page to see ticks in the audit views.`);
+        setMsg(`✓ Item checks synthesised on ${writeCount}/${candidates.length} records. Page will reload in 2 seconds so you can see the ticks…`);
+        setTimeout(() => { window.location.reload(); }, 2000);
       } else {
         setMode("preview");
         setMsg(`❌ Save failed: ${result.error}`);
