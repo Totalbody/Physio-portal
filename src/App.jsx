@@ -1280,8 +1280,12 @@ function _generatePeerReviewForm(audit) {
     </div>
     <div class="sig-col" style="text-align:right;">
       <div class="label">Reviewer</div>
-      <div class="name">${reviewer}</div>
-      <div class="date">${fmtNZ(audit.date)}</div>
+      ${audit.signature
+        ? `<div style="display:inline-block;"><img src="${audit.signature}" alt="reviewer signature" style="max-height:56px;max-width:260px;display:block;margin-left:auto;"/></div>
+           <div class="date" style="font-family:'IBM Plex Mono',monospace;">${audit.signedBy||reviewer} · ${fmtNZ(audit.date)}</div>`
+        : `<div class="name">${reviewer}</div>
+           <div class="date">${fmtNZ(audit.date)}</div>`
+      }
     </div>
   </div>
 
@@ -1661,8 +1665,12 @@ function _generateNotesAuditForm(audit) {
   <div class="signoff">
     <div class="sig-block">
       <div class="label">Auditor signature</div>
-      <div class="value">${audit.auditor||''}</div>
-      <div class="date">${dateFormatted}</div>
+      ${audit.signature
+        ? `<div style="border-bottom:1.5px solid #1a2a24;padding-bottom:4px;min-width:200px;display:inline-block;"><img src="${audit.signature}" alt="signature" style="max-height:52px;max-width:260px;display:block;"/></div>
+           <div class="date" style="font-family:'IBM Plex Mono',monospace;">${audit.signedBy||audit.auditor||''} · ${dateFormatted}</div>`
+        : `<div class="value">${audit.auditor||''}</div>
+           <div class="date">${dateFormatted}</div>`
+      }
     </div>
     <div class="sig-block">
       <div class="label">Physio signature (acknowledged)</div>
@@ -2096,7 +2104,10 @@ ${rows}
 <div class="notes">${audit.notes||'No issues identified. All items checked and found to be satisfactory.'}</div>
 <h2>Sign-off</h2>
 <table class="meta">
-<tr><th>Auditor</th><td><span class="sig-auditor">${audit.auditor}</span>&nbsp;&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
+<tr><th>Auditor</th><td>${audit.signature
+  ? `<img src="${audit.signature}" alt="signature" style="max-height:42px;max-width:260px;display:inline-block;vertical-align:middle;"/>&nbsp;&nbsp;&nbsp;<span style="font-size:9.5pt;color:#666">${audit.signedBy||audit.auditor} · ${fmtNZ(audit.date)}</span>`
+  : `<span class="sig-auditor">${audit.auditor}</span>&nbsp;&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}`
+}</td></tr>
 <tr><th>Director review</th><td><span class="sig-director">Jade Warren</span>&nbsp;&nbsp;&nbsp;Date: ${fmtNZ(audit.date)}</td></tr>
 </table>
 </div>
@@ -2166,11 +2177,19 @@ ${rows}
 <h2>Sign-off — digital attestation</h2>
 <table class="meta">
 <tr><th>Auditor</th><td>
-  <div class="attestation">
-    <span class="label">✓ DIGITALLY SIGNED</span><br>
-    <span class="name">${audit.auditor}</span><br>
-    <span class="ref">${fmtNZ(audit.date)} · Ref A-${audit.id}</span>
-  </div>
+  ${audit.signature
+    ? `<div class="attestation" style="padding:10px 16px;">
+         <div style="margin-bottom:4px;"><img src="${audit.signature}" alt="signature" style="max-height:56px;max-width:260px;display:block;"/></div>
+         <span class="label">✓ HANDWRITTEN SIGNATURE</span><br>
+         <span class="name">${audit.signedBy||audit.auditor}</span><br>
+         <span class="ref">${fmtNZ(audit.date)} · Ref A-${audit.id}</span>
+       </div>`
+    : `<div class="attestation">
+         <span class="label">✓ DIGITALLY SIGNED</span><br>
+         <span class="name">${audit.auditor}</span><br>
+         <span class="ref">${fmtNZ(audit.date)} · Ref A-${audit.id}</span>
+       </div>`
+  }
 </td></tr>
 <tr><th>Director review</th><td>
   <div class="attestation">
@@ -3903,6 +3922,19 @@ function AuditViewModal({audit,onClose}){
             <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Overall notes</div>
             <div style={{fontSize:12,color:C.muted,whiteSpace:"pre-line"}}>{audit.notes.replace(/^• .*$/gm,"").replace(/Notes: /,"").trim()}</div>
           </div>}
+          {/* Sign-off — shows actual signature image when present */}
+          <div style={{marginTop:"1rem",padding:"0.875rem",background:"#f6f8fb",border:`1px solid #e0e5ee`,borderRadius:8}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.teal,textTransform:"uppercase",letterSpacing:".4px",marginBottom:6}}>Auditor signature</div>
+            {audit.signature
+              ? <>
+                  <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:6,padding:8,display:"inline-block",maxWidth:"100%"}}>
+                    <img src={audit.signature} alt="signature" style={{maxHeight:56,maxWidth:240,display:"block"}}/>
+                  </div>
+                  <div style={{fontSize:11,color:C.muted,marginTop:5,fontFamily:"monospace"}}>{audit.signedBy||audit.auditor} · signed {audit.signedAt?fmtNZ(audit.signedAt.slice(0,10)):fmtNZ(audit.date)}</div>
+                </>
+              : <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Signature not recorded — pre-signature system. Signed by: <b style={{color:C.text,fontStyle:"normal"}}>{audit.auditor||"—"}</b></div>
+            }
+          </div>
         </div>
       </div>
     </div>
@@ -3939,7 +3971,7 @@ const NOTES_DISPLAY = {
   na:   {mark:"N/A",color:"#5F5E5A", bg:"#E8E6DC"},
 };
 
-function NotesAuditGridModal({onClose,onComplete}){
+function NotesAuditGridModal({onClose,onComplete,role,roleName}){
   const today = new Date().toISOString().split("T")[0];
   // State — one grid cell per (criterion index, record index). Stored as
   // flat object keyed "rowIdx-colIdx" to keep the save payload compact.
@@ -3948,9 +3980,12 @@ function NotesAuditGridModal({onClose,onComplete}){
     date: today,
     clinic: CLINICS[0].short,
     physioAudited: "",
-    auditor: "",
+    auditor: roleName||"",
     workOn: "",
   });
+  // Pass 2 — signature
+  const [signatureObj, setSignatureObj] = useState(null);
+  useEffect(()=>{ if(!_sigCacheLoaded) loadSignatures().catch(()=>{}); },[]);
 
   // Cycle a cell through the four states
   function cycleCell(row, col){
@@ -3993,6 +4028,7 @@ function NotesAuditGridModal({onClose,onComplete}){
   function submit(){
     if(!meta.physioAudited){ alert("Please select the physiotherapist whose notes are being audited."); return; }
     if(!meta.auditor.trim()){ alert("Please enter auditor name."); return; }
+    if(!signatureObj || !signatureObj.dataUrl){ alert("Please sign the form before submitting."); return; }
     if(totalAnswered < totalCells){
       if(!window.confirm(`${totalCells - totalAnswered} of ${totalCells} cells unanswered. Submit anyway?`)) return;
     }
@@ -4025,6 +4061,9 @@ function NotesAuditGridModal({onClose,onComplete}){
       total: totalCells,
       outcome: totalFailed === 0 ? "Passed" : `${totalFailed} issue${totalFailed>1?"s":""} found`,
       notes: notesText,
+      signature: signatureObj.dataUrl,
+      signedBy: meta.auditor,
+      signedAt: new Date().toISOString(),
       formVersion: "v2",
       notesAuditData: {
         grid: {...grid},
@@ -4157,7 +4196,10 @@ function NotesAuditGridModal({onClose,onComplete}){
             <textarea rows={4} value={meta.workOn} onChange={e=>setMeta(p=>({...p,workOn:e.target.value}))} placeholder="e.g. Goals to be time framed — e.g. 4 weeks · Measurable · Make sure Discharge summaries are completed" style={{width:"100%",padding:"9px 12px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
           </div>
 
-          <Btn onClick={submit}>Submit audit record</Btn>
+          <AuditSignature staffKey={role||"staff"} staffName={meta.auditor||roleName||"Staff member"} onChange={setSignatureObj}/>
+          <div style={{marginTop:"1rem"}}>
+            <Btn onClick={submit}>Submit audit record</Btn>
+          </div>
         </div>
       </div>
     </div>
@@ -4268,6 +4310,19 @@ function NotesAuditGridViewModal({audit,onClose}){
               <div style={{fontSize:12,color:C.text,lineHeight:1.5,whiteSpace:"pre-line"}}>{nd.workOn}</div>
             </div>
           )}
+          {/* Sign-off — shows actual signature image when present */}
+          <div style={{marginTop:"1rem",padding:"0.875rem",background:"#f6f8fb",border:`1px solid #e0e5ee`,borderRadius:8}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.teal,textTransform:"uppercase",letterSpacing:".4px",marginBottom:6}}>Auditor signature</div>
+            {audit.signature
+              ? <>
+                  <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:6,padding:8,display:"inline-block",maxWidth:"100%"}}>
+                    <img src={audit.signature} alt="signature" style={{maxHeight:56,maxWidth:240,display:"block"}}/>
+                  </div>
+                  <div style={{fontSize:11,color:C.muted,marginTop:5,fontFamily:"monospace"}}>{audit.signedBy||audit.auditor} · signed {audit.signedAt?fmtNZ(audit.signedAt.slice(0,10)):fmtNZ(audit.date)}</div>
+                </>
+              : <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Signature not recorded — pre-signature system. Signed by: <b style={{color:C.text,fontStyle:"normal"}}>{audit.auditor||"—"}</b></div>
+            }
+          </div>
         </div>
       </div>
     </div>
@@ -4289,7 +4344,7 @@ const PEER_REVIEW_AREAS = [
 // PeerReviewModal — PBNZ-exact narrative peer review form.
 // Replaces the old tick-box modal when opened via the Peer Review audit type.
 // Saves with formVersion:"v2" and a structured peerReviewData payload.
-function PeerReviewModal({onClose,onComplete}){
+function PeerReviewModal({onClose,onComplete,role,roleName}){
   const today = new Date().toISOString().split("T")[0];
   // Practitioner list — all physios (excluding Owner? No, include Jade too; Directors do peer review)
   const physioList = Object.values(STAFF).map(s=>s.name);
@@ -4297,9 +4352,13 @@ function PeerReviewModal({onClose,onComplete}){
   // Review setup
   const [date, setDate] = useState(today);
   const [practitioner, setPractitioner] = useState("");
-  const [reviewer, setReviewer] = useState("");
+  const [reviewer, setReviewer] = useState(roleName||"");
   const [reviewerReg, setReviewerReg] = useState("");
   const [reviewerProfession, setReviewerProfession] = useState("Physiotherapist");
+
+  // Pass 2 — signature
+  const [signatureObj, setSignatureObj] = useState(null);
+  useEffect(()=>{ if(!_sigCacheLoaded) loadSignatures().catch(()=>{}); },[]);
 
   // Practice type + method — radio-ish, but we store as sets since user might tick multiple
   const [practiceTypes, setPracticeTypes] = useState({clinical:true, nonClinical:false, research:false, academic:false, other:false});
@@ -4321,6 +4380,7 @@ function PeerReviewModal({onClose,onComplete}){
     if(!reviewer.trim()) { alert("Please enter the reviewer's name."); return; }
     if(!reviewerSummary.trim()) { alert("Please complete the reviewer summary."); return; }
     if(!actionPlan.trim()) { alert("Please complete the action plan."); return; }
+    if(!signatureObj || !signatureObj.dataUrl){ alert("Please sign the form before submitting."); return; }
 
     // Build a notes field compatible with history-list display
     const noteLines = [];
@@ -4340,6 +4400,9 @@ function PeerReviewModal({onClose,onComplete}){
       passed: 0, failed: 0, na: 0, total: 0,  // narrative form — no pass/fail counting
       outcome: "Completed",
       notes: noteLines.join("\n"),
+      signature: signatureObj.dataUrl,
+      signedBy: reviewer,
+      signedAt: new Date().toISOString(),
       formVersion: "v2",
       peerReviewData: {
         practitioner, reviewer, reviewerReg, reviewerProfession,
@@ -4437,7 +4500,10 @@ function PeerReviewModal({onClose,onComplete}){
           {sectionBody(<textarea rows={3} value={actionPlan} onChange={e=>setActionPlan(e.target.value)} placeholder="1. Specific actions with timeframes\n2. ...\n3. ..." style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>)}
 
           <div style={{background:C.grayXL,borderRadius:8,padding:"1rem",marginTop:"1.25rem",border:`1px solid ${C.border}`}}>
-            <Btn onClick={submit}>Submit peer review record</Btn>
+            <AuditSignature staffKey={role||"staff"} staffName={reviewer||roleName||"Reviewer"} onChange={setSignatureObj}/>
+            <div style={{marginTop:"1rem"}}>
+              <Btn onClick={submit}>Submit peer review record</Btn>
+            </div>
           </div>
         </div>
       </div>
@@ -4523,6 +4589,20 @@ function PeerReviewViewModal({audit,onClose}){
 
           {sectionHead("Action plan")}
           {sectionBody(<div style={{fontSize:12,color:C.text,lineHeight:1.5,whiteSpace:"pre-line"}}>{pr.actionPlan || <span style={{color:C.hint,fontStyle:"italic"}}>Not recorded</span>}</div>)}
+
+          {/* Sign-off — reviewer signature */}
+          <div style={{marginTop:"1rem",padding:"0.875rem",background:"#F5F0FB",border:`1px solid #c7b8e0`,borderRadius:8}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#6B46C1",textTransform:"uppercase",letterSpacing:".4px",marginBottom:6}}>Reviewer signature</div>
+            {audit.signature
+              ? <>
+                  <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:6,padding:8,display:"inline-block",maxWidth:"100%"}}>
+                    <img src={audit.signature} alt="reviewer signature" style={{maxHeight:56,maxWidth:240,display:"block"}}/>
+                  </div>
+                  <div style={{fontSize:11,color:C.muted,marginTop:5,fontFamily:"monospace"}}>{audit.signedBy||pr.reviewer||audit.auditor} · signed {audit.signedAt?fmtNZ(audit.signedAt.slice(0,10)):fmtNZ(audit.date)}</div>
+                </>
+              : <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Signature not recorded — pre-signature system. Signed by: <b style={{color:C.text,fontStyle:"normal"}}>{pr.reviewer||audit.auditor||"—"}</b></div>
+            }
+          </div>
 
         </div>
       </div>
@@ -5179,25 +5259,29 @@ function AuditModal({type,onClose,onComplete,role,roleName}){
   }
   // ── Peer review uses a dedicated PBNZ-style narrative form ────────
   if(type === "peer_review"){
-    return <PeerReviewModal onClose={onClose} onComplete={onComplete}/>;
+    return <PeerReviewModal onClose={onClose} onComplete={onComplete} role={role} roleName={roleName}/>;
   }
   // ── Clinical notes audit uses a 16 x 10 grid ───────────────────
   if(type === "clinical_notes"){
-    return <NotesAuditGridModal onClose={onClose} onComplete={onComplete}/>;
+    return <NotesAuditGridModal onClose={onClose} onComplete={onComplete} role={role} roleName={roleName}/>;
   }
   const form=AUDIT_FORMS[type];const all=form.sections.flatMap(s=>s.items);
   const[checks,setChecks]=useState({});const[notes,setNotes]=useState({});
-  const[meta,setMeta]=useState({clinic:CLINICS[0].short,auditor:"",physioAudited:"",date:new Date().toISOString().split("T")[0],time:"",duration:""});
+  const[meta,setMeta]=useState({clinic:CLINICS[0].short,auditor:roleName||"",physioAudited:"",date:new Date().toISOString().split("T")[0],time:"",duration:""});
   const[overall,setOverall]=useState("");
+  // Pass 2 — signature (from AuditSignature component; shape: { dataUrl, mode } | null)
+  const[signatureObj,setSignatureObj]=useState(null);
+  useEffect(()=>{ if(!_sigCacheLoaded) loadSignatures().catch(()=>{}); },[]);
   const passed=Object.values(checks).filter(v=>v==="pass").length;const failed=Object.values(checks).filter(v=>v==="fail").length;const na=Object.values(checks).filter(v=>v==="na").length;
   const answered=passed+failed+na;const pct=Math.round((answered/all.length)*100);
   function submit(){
     if(!meta.auditor.trim()){alert("Please enter auditor name.");return;}
     if(form.hasPhysioSelect&&!meta.physioAudited){alert("Please select the physiotherapist whose notes are being audited.");return;}
+    if(!signatureObj || !signatureObj.dataUrl){alert("Please sign the form before submitting.");return;}
     if(answered<all.length&&!window.confirm(`${all.length-answered} items unanswered. Submit anyway?`))return;
     const fn=Object.entries(notes).filter(([,v])=>v).map(([k,v])=>`• ${k}: ${v}`).join("\n");
     const titleDisplay=form.hasPhysioSelect&&meta.physioAudited?`${form.title} — ${meta.physioAudited}`:form.title;
-    onComplete({id:Date.now(),type,title:titleDisplay,icon:form.icon,clinic:meta.clinic,auditor:meta.auditor,physioAudited:meta.physioAudited||null,date:meta.date,passed,failed,na,total:all.length,outcome:failed===0?"Passed":`${failed} issue${failed>1?"s":""} found`,notes:(fn+(overall?`\nNotes: ${overall}`:"")).trim()});
+    onComplete({id:Date.now(),type,title:titleDisplay,icon:form.icon,clinic:meta.clinic,auditor:meta.auditor,physioAudited:meta.physioAudited||null,date:meta.date,passed,failed,na,total:all.length,outcome:failed===0?"Passed":`${failed} issue${failed>1?"s":""} found`,notes:(fn+(overall?`\nNotes: ${overall}`:"")).trim(),signature:signatureObj.dataUrl,signedBy:meta.auditor,signedAt:new Date().toISOString()});
   }
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:400,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
@@ -5255,7 +5339,10 @@ function AuditModal({type,onClose,onComplete,role,roleName}){
           <div style={{background:C.grayXL,borderRadius:8,padding:"1rem",border:`1px solid ${C.border}`}}>
             <div style={{display:"flex",gap:20,marginBottom:"0.875rem"}}><span style={{fontSize:13}}><b style={{color:"#3B6D11"}}>{passed}</b> passed</span><span style={{fontSize:13}}><b style={{color:C.red}}>{failed}</b> failed</span><span style={{fontSize:13}}><b style={{color:C.gray}}>{na}</b> N/A</span><span style={{fontSize:13,color:C.muted}}>{all.length-answered} left</span></div>
             <Textarea label="Overall notes / actions" value={overall} onChange={e=>setOverall(e.target.value)} rows={2}/>
-            <Btn onClick={submit}>Submit audit record</Btn>
+            <AuditSignature staffKey={role||"staff"} staffName={meta.auditor||roleName||"Staff member"} onChange={setSignatureObj}/>
+            <div style={{marginTop:"1rem"}}>
+              <Btn onClick={submit}>Submit audit record</Btn>
+            </div>
           </div>
         </div>
       </div>
