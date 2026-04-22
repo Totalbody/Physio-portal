@@ -5106,7 +5106,11 @@ function SignatureTab({staffId, staffName, role}){
   // Retrofill state — only relevant when user is viewing their own profile
   // and has a saved signature. Walks all audit records, finds unsigned ones
   // where this user was the auditor, and lets them batch-apply their sig.
-  const isOwnProfile = role === staffId;
+  // The `role` state is a "viewing as" selector (owner/alistair/etc), and
+  // `staffId` is the staff record being viewed. We show the retrofill
+  // section when: the viewer IS the staff member being viewed, OR the
+  // viewer is owner and this is the owner's own profile (jade).
+  const isOwnProfile = role === staffId || (role === "owner" && staffId === "jade");
   const [retrofillMode, setRetrofillMode] = useState("idle");  // idle | scanning | preview | saving | done
   const [retrofillCandidates, setRetrofillCandidates] = useState([]);
   const [retrofillMsg, setRetrofillMsg] = useState("");
