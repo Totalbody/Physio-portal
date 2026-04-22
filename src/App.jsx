@@ -1275,6 +1275,208 @@ function _generatePeerReviewForm(audit) {
 </body></html>`;
 }
 
+// ── FENZ-style PDF for v2 fire drill records ────────────────────
+// Matches the official Fire and Emergency NZ Evacuation Report form:
+// blue banner header, Parts A-E in boxed sections, tick boxes in
+// Yes/No/N/A columns, sign-off line with typed contact name.
+function _generateFireDrillForm(audit) {
+  const fd = audit.fireDrillData || {};
+  const ev = fd.evacuation || {};
+  const ct = fd.contact || {};
+  const answers = fd.answers || {};
+  const details = fd.details || {};
+  const ref = `FD-${audit.id}`;
+  const dateFormatted = fmtNZLong(audit.date);
+  const concerns = audit.failed || 0;
+
+  // Fire drill question text — repeated from FENZ_QUESTIONS for PDF standalone
+  const fdQs = [
+    {n:1, q:"Did any injuries occur during this trial evacuation?", detail:"If yes, detail the injuries that occurred during the trial evacuation", yesIsGood:false},
+    {n:2, q:"Was the evacuation alarm/method of alerting occupants clearly heard in all areas of the building?", detail:"If no, detail issue and action taken to remedy it", yesIsGood:true},
+    {n:3, q:"Were all exit ways clear?", detail:"If no, detail issue and action taken to remedy it", yesIsGood:true},
+    {n:4, q:"Were 'FIRE ACTION NOTICES' in place?", detail:"If no, detail issue and action taken to remedy it", yesIsGood:true},
+    {n:5, q:"Were systems in place to assist anyone who could not self-evacuate and if so, did the systems function?", detail:"If no, detail issue and action taken to remedy it", yesIsGood:true},
+    {n:6, q:"Did any equipment to assist with the evacuation work as intended?", detail:"If no, detail issue and action taken to remedy it", yesIsGood:true},
+    {n:7, q:"Occupants accounted for or building determined to be clear in accordance with the evacuation scheme?", detail:"If no, detail issue and action taken to remedy it", yesIsGood:true},
+  ];
+
+  // Render a Yes/No/N/A tick cell — filled if answered, empty square if not
+  const tick = (marked) => marked
+    ? `<span style="font-family:'Courier New',monospace;font-size:12pt;color:#1F3A5F;font-weight:700">[✓]</span>`
+    : `<span style="font-family:'Courier New',monospace;font-size:12pt;color:#666">[&nbsp;&nbsp;]</span>`;
+
+  const questionRows = fdQs.map(q => {
+    const a = answers[q.n];
+    const showDetail = a === (q.yesIsGood ? "no" : "yes");
+    const detailText = showDetail && details[q.n] ? details[q.n] : "";
+    return `
+      <tr>
+        <td style="width:42px;vertical-align:top;padding:10px 8px;font-weight:700;font-size:11pt;text-align:center;border:1px solid #d9dde8;">${q.n}</td>
+        <td style="vertical-align:top;padding:10px 12px;font-size:10.5pt;line-height:1.5;border:1px solid #d9dde8;">
+          <div>${q.q}</div>
+          <div style="font-style:italic;color:#666;font-size:9.5pt;margin-top:4px;">${q.detail}</div>
+          ${detailText ? `<div style="background:#FFF8E6;border-left:3px solid #D4AF37;padding:6px 10px;margin-top:8px;font-size:9.5pt;color:#4a3c1a;">${detailText}</div>` : ""}
+        </td>
+        <td style="width:48px;text-align:center;vertical-align:middle;border:1px solid #d9dde8;">${tick(a==="yes")}</td>
+        <td style="width:48px;text-align:center;vertical-align:middle;border:1px solid #d9dde8;">${tick(a==="no")}</td>
+        <td style="width:48px;text-align:center;vertical-align:middle;border:1px solid #d9dde8;">${tick(a==="na")}</td>
+      </tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fire Evacuation Report ${fmtNZ(audit.date)}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'IBM Plex Sans','Segoe UI',sans-serif;font-size:10.5pt;color:#1a1a18;background:#fff;}
+  .header{background:linear-gradient(135deg,#1F3A5F 0%,#2d4f7a 100%);color:white;padding:22px 40px;display:flex;justify-content:space-between;align-items:center;}
+  .header .brand{display:flex;align-items:center;gap:18px;}
+  .header .icon{background:rgba(255,255,255,0.18);padding:10px 16px;border-radius:6px;font-size:18pt;}
+  .header h1{margin:0;font-size:20pt;font-weight:700;letter-spacing:-0.01em;}
+  .header .sub{font-size:10pt;opacity:0.85;margin-top:2px;}
+  .header .ref{text-align:right;font-size:9pt;opacity:0.85;line-height:1.7;}
+  .notice{background:#EEF2F8;padding:10px 40px;font-size:9pt;color:#555;font-style:italic;border-bottom:1px solid #d9dde8;}
+  .body{padding:20px 40px 30px;}
+  .part-head{background:#1F3A5F;color:white;padding:8px 16px;margin:18px 0 0;display:flex;align-items:center;gap:12px;border-radius:5px 5px 0 0;}
+  .part-head .label{background:rgba(255,255,255,0.2);padding:2px 10px;border-radius:3px;font-size:9.5pt;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;}
+  .part-head .title{font-size:11pt;font-weight:600;flex:1;}
+  .part-head .subtitle{font-size:9.5pt;opacity:0.85;text-align:right;}
+  .part-body{border:1px solid #d9dde8;border-top:none;border-radius:0 0 5px 5px;background:#fff;}
+  .part-body table{width:100%;border-collapse:collapse;}
+  .part-body td{padding:9px 14px;font-size:10.5pt;vertical-align:top;border:1px solid #d9dde8;}
+  .part-body .lbl{background:#f6f8fb;width:32%;font-weight:500;color:#555;}
+  .part-body .val{background:#fff;font-weight:500;color:#1a1a18;}
+  .part-body .val.strong{font-weight:600;}
+  .qtable{width:100%;border-collapse:collapse;margin:0;}
+  .qtable thead th{background:#f0f3f8;color:#1F3A5F;padding:8px 6px;font-size:9.5pt;font-weight:600;border:1px solid #d9dde8;text-align:center;}
+  .comments{background:#FEFCF3;border:1px solid #D4AF37;border-left:4px solid #D4AF37;padding:14px 18px;border-radius:0 4px 4px 0;font-size:10.5pt;margin:10px 14px;min-height:30px;line-height:1.5;}
+  .signoff{background:#f6f8fb;padding:16px;margin:6px 14px 14px;border-radius:4px;border:1px solid #e0e5ee;}
+  .signoff .sig-label{font-size:9.5pt;color:#555;margin-bottom:4px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;}
+  .signoff .sig-value{font-family:'Brush Script MT','Apple Chancery',cursive;font-size:20pt;color:#1F3A5F;line-height:1.2;border-bottom:1px solid #1F3A5F;padding-bottom:4px;min-width:260px;display:inline-block;}
+  .signoff .sig-meta{font-size:9pt;color:#888;margin-top:4px;font-family:'IBM Plex Mono',monospace;}
+  .followup{display:flex;align-items:center;gap:8px;margin:12px 14px;font-size:10pt;color:${fd.followUpRequested?'#c25500':'#888'};}
+  .followup-box{display:inline-block;width:14px;height:14px;border:1.5px solid ${fd.followUpRequested?'#c25500':'#888'};text-align:center;line-height:11px;font-weight:700;color:#c25500;}
+  .outcome{display:inline-block;padding:6px 18px;border-radius:4px;font-weight:600;font-size:10pt;letter-spacing:0.04em;background:${concerns===0?'#1F3A5F':'#c0392b'};color:white;}
+  .footer{background:#f3f5f9;border-top:1px solid #d9dde8;padding:12px 40px;font-size:8pt;color:#888;display:flex;justify-content:space-between;margin-top:20px;}
+</style></head><body>
+
+<div class="header">
+  <div class="brand">
+    <div class="icon">🔥</div>
+    <div>
+      <h1>Evacuation Report</h1>
+      <div class="sub">Fire and Emergency New Zealand &middot; evacuation trial record</div>
+    </div>
+  </div>
+  <div class="ref">Ref: ${ref}<br>${audit.clinic} &middot; ${fmtNZ(audit.date)}</div>
+</div>
+
+<div class="notice">Send completed reports to the Fire Information Unit &mdash; <b>evacuation@fireandemergency.nz</b> or PO Box 68042, Wellesley Street, Auckland 1141.</div>
+
+<div class="body">
+
+  <!-- Part A — Building -->
+  <div class="part-head">
+    <span class="label">Part A</span>
+    <span class="title">Building description</span>
+  </div>
+  <div class="part-body">
+    <table>
+      <tr><td class="lbl">Building name</td><td class="val strong">${fd.buildingName||'—'}</td></tr>
+      <tr><td class="lbl">Address</td><td class="val">${fd.address||'—'}</td></tr>
+      <tr><td class="lbl">Scheme reference</td><td class="val">${fd.schemeRef||'—'}</td></tr>
+    </table>
+  </div>
+
+  <!-- Part B — Contact -->
+  <div class="part-head">
+    <span class="label">Part B</span>
+    <span class="title">Contact person details</span>
+  </div>
+  <div class="part-body">
+    <table>
+      <tr><td class="lbl">Contact person's name</td><td class="val strong">${ct.name||'—'}</td></tr>
+      <tr><td class="lbl">Phone / mobile</td><td class="val">${ct.phone||'—'}</td></tr>
+      <tr><td class="lbl">Email address</td><td class="val">${ct.email||'—'}</td></tr>
+    </table>
+  </div>
+
+  <!-- Part C — Evacuation details -->
+  <div class="part-head">
+    <span class="label">Part C</span>
+    <span class="title">Evacuation details</span>
+  </div>
+  <div class="part-body">
+    <table>
+      <tr>
+        <td class="lbl">Date of evacuation</td>
+        <td class="val strong" style="width:26%">${dateFormatted}</td>
+        <td class="lbl" style="width:16%">Time of evacuation</td>
+        <td class="val strong">${ev.time||'—'}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Time taken to evacuate</td>
+        <td class="val strong" colspan="3">${ev.minutes||'0'} minutes &middot; ${ev.seconds||'0'} seconds</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Part D — Assessment outcomes -->
+  <div class="part-head">
+    <span class="label">Part D</span>
+    <span class="title">Assessment outcomes</span>
+  </div>
+  <div class="part-body">
+    <table class="qtable">
+      <thead>
+        <tr>
+          <th style="width:42px">#</th>
+          <th style="text-align:left;padding-left:12px">Question</th>
+          <th style="width:48px">Yes</th>
+          <th style="width:48px">No</th>
+          <th style="width:48px">N/A</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${questionRows}
+        <tr>
+          <td style="padding:10px 8px;font-weight:700;font-size:11pt;text-align:center;border:1px solid #d9dde8;">8</td>
+          <td colspan="4" style="padding:10px 12px;border:1px solid #d9dde8;font-size:10.5pt;">
+            When was the last training session for permanent occupants held?
+            <span style="margin-left:20px;font-weight:600;color:#1F3A5F;">${fd.lastTrainingDate?fmtNZ(fd.lastTrainingDate):'Not recorded'}</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Part E — Additional comments + sign-off -->
+  <div class="part-head">
+    <span class="label">Part E</span>
+    <span class="title">Additional comments</span>
+    <span class="subtitle">Outcome: <span class="outcome">${concerns===0?'✓ All clear':`⚠ ${concerns} issue${concerns>1?'s':''}`}</span></span>
+  </div>
+  <div class="part-body" style="padding-bottom:1px;">
+    <div class="comments">${fd.additionalComments || 'No additional comments recorded.'}</div>
+    <div class="followup">
+      <span class="followup-box">${fd.followUpRequested?'✓':''}</span>
+      <span>${fd.followUpRequested ? 'Follow-up requested — contact person wishes to speak about this trial.' : 'Follow-up not requested.'}</span>
+    </div>
+    <div class="signoff">
+      <div class="sig-label">Contact person signature</div>
+      <div class="sig-value">${audit.auditor||ct.name||''}</div>
+      <div class="sig-meta">${fmtNZ(audit.date)} &middot; Ref ${ref}</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <span>Total Body Physio Ltd &middot; Fire Evacuation Report</span>
+  <span>${fmtNZ(audit.date)} &middot; ${audit.clinic} &middot; Ref: ${ref}</span>
+</div>
+
+</body></html>`;
+}
+
 function _generateAuditForm(audit) {
   const era = _era(audit.date);
   const dateFormatted = fmtNZLong(audit.date);
@@ -1284,6 +1486,12 @@ function _generateAuditForm(audit) {
   // matches the actual Physiotherapy Board of NZ peer review form.
   if (audit.type === 'peer_review') {
     return _generatePeerReviewForm(audit);
+  }
+
+  // v2 fire drills use the FENZ Evacuation Report template —
+  // pre-v2 fire drill records still fall through to the generic era-based layout.
+  if (audit.type === 'fire_drill' && audit.formVersion === 'v2' && audit.fireDrillData) {
+    return _generateFireDrillForm(audit);
   }
 
   const checklists = {
@@ -3295,8 +3503,125 @@ function MeetingAttachBtn({meeting,meetings,setMeetings,onView}){
     </div>
   );
 }
+// ── FENZ-shaped read-only view for v2 fire drill records ────────────────
+function FireDrillViewModal({audit,onClose}){
+  const fd = audit.fireDrillData || {};
+  const ev = fd.evacuation || {};
+  const ct = fd.contact || {};
+  const answers = fd.answers || {};
+  const details = fd.details || {};
+  const answerDisplay = (v) => v==="yes"?{label:"Yes",color:"#3B6D11",bg:"#EAF3DE"}
+                              : v==="no"?{label:"No",color:C.red,bg:"#FCEBEB"}
+                              : v==="na"?{label:"N/A",color:C.gray,bg:C.grayL}
+                              : {label:"—",color:C.hint,bg:"transparent"};
+  const concerns = (audit.failed || 0);
+  const row = (label, value) => (
+    <div style={{display:"flex",borderBottom:`1px solid ${C.grayL}`,padding:"7px 0",fontSize:12}}>
+      <div style={{minWidth:180,color:C.muted,fontWeight:500}}>{label}</div>
+      <div style={{flex:1,color:C.text}}>{value || <span style={{color:C.hint,fontStyle:"italic"}}>Not recorded</span>}</div>
+    </div>
+  );
+  const sectionHead = (letter,title) => (
+    <div style={{background:"#1F3A5F",color:"white",padding:"7px 12px",fontWeight:700,fontSize:12,marginTop:"1rem",marginBottom:0,borderRadius:"5px 5px 0 0",display:"flex",alignItems:"center",gap:8}}>
+      <span style={{background:"rgba(255,255,255,.2)",padding:"1px 7px",borderRadius:3,fontSize:10,letterSpacing:".5px"}}>Part {letter}</span>
+      <span>{title}</span>
+    </div>
+  );
+  const sectionBody = (children) => <div style={{background:"white",border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 5px 5px",padding:"0.75rem 1rem"}}>{children}</div>;
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:12,width:"100%",maxWidth:760,marginBottom:"2rem",overflow:"hidden"}}>
+        <div style={{background:concerns===0?"linear-gradient(135deg,#1F3A5F 0%,#2d4f7a 100%)":C.red,padding:"1.25rem 1.5rem",display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
+          <div>
+            <div style={{color:"white",fontSize:16,fontWeight:600}}>🔥 {audit.title}</div>
+            <div style={{color:"rgba(255,255,255,0.8)",fontSize:12,marginTop:4,display:"flex",gap:12,flexWrap:"wrap"}}>
+              <span>📅 {fmtNZ(audit.date)}{ev.time?` · ⏰ ${ev.time}`:""}</span>
+              <span>📍 {audit.clinic}</span>
+              <span>👤 {audit.auditor}</span>
+              {audit.duration && <span>⏱ {audit.duration}</span>}
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{background:"rgba(255,255,255,0.2)",borderRadius:8,padding:"6px 14px",textAlign:"center"}}>
+              <div style={{color:"white",fontSize:16,fontWeight:700}}>{audit.outcome}</div>
+              <div style={{color:"rgba(255,255,255,0.7)",fontSize:11}}>FENZ format</div>
+            </div>
+            <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15,flexShrink:0}}>✕</button>
+          </div>
+        </div>
+
+        <div style={{padding:"1.25rem 1.5rem",maxHeight:"72vh",overflowY:"auto"}}>
+
+          {sectionHead("A","Building description")}
+          {sectionBody(<>
+            {row("Building name", fd.buildingName)}
+            {row("Address", fd.address)}
+            {row("Scheme reference", fd.schemeRef)}
+          </>)}
+
+          {sectionHead("B","Contact person details")}
+          {sectionBody(<>
+            {row("Contact name", ct.name)}
+            {row("Phone / mobile", ct.phone)}
+            {row("Email address", ct.email)}
+          </>)}
+
+          {sectionHead("C","Evacuation details")}
+          {sectionBody(<>
+            {row("Date of evacuation", fmtNZ(ev.date || audit.date))}
+            {row("Time of evacuation", ev.time)}
+            {row("Time taken", (ev.minutes || ev.seconds) ? `${ev.minutes||0} minutes ${ev.seconds||0} seconds` : "")}
+          </>)}
+
+          {sectionHead("D","Assessment outcomes")}
+          {sectionBody(<>
+            {FENZ_QUESTIONS.map(q=>{
+              const a = answers[q.n];
+              const d = answerDisplay(a);
+              const showDetail = a === (q.yesIsGood ? "no" : "yes");
+              return (
+                <div key={q.n} style={{padding:"8px 0",borderBottom:`1px solid ${C.grayL}`}}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                    <span style={{fontSize:12,fontWeight:600,color:C.teal,minWidth:22,marginTop:1}}>{q.n}.</span>
+                    <span style={{flex:1,fontSize:12,lineHeight:1.45,color:C.text}}>{q.q}</span>
+                    <span style={{fontSize:11,fontWeight:600,padding:"3px 10px",background:d.bg,color:d.color,borderRadius:4,minWidth:44,textAlign:"center",flexShrink:0}}>{d.label}</span>
+                  </div>
+                  {showDetail && details[q.n] && (
+                    <div style={{marginTop:6,marginLeft:32,fontSize:11,color:C.red,fontStyle:"italic",background:"#FAEEDA",padding:"5px 9px",borderRadius:4,borderLeft:`2px solid ${C.amber}`}}>↳ {details[q.n]}</div>
+                  )}
+                </div>
+              );
+            })}
+            {fd.lastTrainingDate && (
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",marginTop:4}}>
+                <span style={{fontSize:12,fontWeight:600,color:C.teal,minWidth:22}}>8.</span>
+                <span style={{flex:1,fontSize:12,color:C.text}}>Last training session for permanent occupants</span>
+                <span style={{fontSize:11,color:C.text,fontWeight:500}}>{fmtNZ(fd.lastTrainingDate)}</span>
+              </div>
+            )}
+          </>)}
+
+          {(fd.additionalComments || fd.followUpRequested) && <>
+            {sectionHead("E","Additional comments")}
+            {sectionBody(<>
+              {fd.additionalComments && <div style={{fontSize:12,color:C.text,whiteSpace:"pre-line",lineHeight:1.5,marginBottom:fd.followUpRequested?"0.5rem":0}}>{fd.additionalComments}</div>}
+              {fd.followUpRequested && <div style={{fontSize:12,color:C.amber,fontWeight:600,marginTop:"0.5rem"}}>⚑ Follow-up requested — contact person wants to speak about this trial</div>}
+            </>)}
+          </>}
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AuditViewModal({audit,onClose}){
   if(!audit)return null;
+  // ── v2 fire drill records render in FENZ shape ────────────────────
+  if(audit.type === "fire_drill" && audit.formVersion === "v2" && audit.fireDrillData){
+    return <FireDrillViewModal audit={audit} onClose={onClose}/>;
+  }
   const form=AUDIT_FORMS[audit.type]||{sections:[]};
   const sections=audit.sections||form.sections||[];
   const checks=audit.itemChecks||{};
@@ -3356,8 +3681,258 @@ function AuditViewModal({audit,onClose}){
   );
 }
 
+// ── FENZ fire drill questions (matches the official Evacuation Report form) ─
+// Question 1 is unusual — Yes means "injuries occurred", which is BAD.
+// Questions 2–7 follow the normal pattern where Yes means "things worked".
+// Question 8 is a date field (last training session), handled separately.
+const FENZ_QUESTIONS = [
+  {n:1, q:"Did any injuries occur during this trial evacuation?", detailPrompt:"If yes, detail the injuries that occurred", yesIsGood:false},
+  {n:2, q:"Was the evacuation alarm/method of alerting occupants clearly heard in all areas of the building?", detailPrompt:"If no, detail issue and action taken to remedy it", yesIsGood:true},
+  {n:3, q:"Were all exit ways clear?", detailPrompt:"If no, detail issue and action taken to remedy it", yesIsGood:true},
+  {n:4, q:"Were 'FIRE ACTION NOTICES' in place?", detailPrompt:"If no, detail issue and action taken to remedy it", yesIsGood:true},
+  {n:5, q:"Were systems in place to assist anyone who could not self-evacuate and if so, did the systems function?", detailPrompt:"If no, detail issue and action taken to remedy it", yesIsGood:true},
+  {n:6, q:"Did any equipment to assist with the evacuation work as intended?", detailPrompt:"If no, detail issue and action taken to remedy it", yesIsGood:true},
+  {n:7, q:"Occupants accounted for or building determined to be clear in accordance with the evacuation scheme?", detailPrompt:"If no, detail issue and action taken to remedy it", yesIsGood:true},
+];
+
+// Fire drill form — matches FENZ Evacuation Report template exactly.
+// Stored with formVersion:"v2" so AuditViewModal + PDF generator can branch.
+function FireDrillModal({onClose,onComplete}){
+  const today = new Date().toISOString().split("T")[0];
+  // Default to first clinic that actually does fire drills
+  const drillClinics = CLINICS.filter(c=>!c.noFireDrill);
+  const [clinicId, setClinicId] = useState(drillClinics[0].id);
+  const activeClinic = CLINICS.find(c=>c.id===clinicId) || drillClinics[0];
+  // Part A — Building (auto-set name, editable address pre-filled from clinic)
+  const [buildingName, setBuildingName] = useState(`Total Body Physio — ${activeClinic.short}`);
+  const [address, setAddress] = useState(activeClinic.address || "");
+  const [schemeRef, setSchemeRef] = useState("");
+  // Part B — Contact person (pre-filled, editable)
+  const [contactName, setContactName] = useState("Jade Warren");
+  const [contactPhone, setContactPhone] = useState("021 794 272");
+  const [contactEmail, setContactEmail] = useState("admin@totalbodyphysio.co.nz");
+  // Part C — Evacuation details
+  const [date, setDate] = useState(today);
+  const [time, setTime] = useState("");
+  const [minutes, setMinutes] = useState("");
+  const [seconds, setSeconds] = useState("");
+  // Part D — Assessment outcomes (1-7 = yes/no/na + detail; 8 = last training date)
+  const [answers, setAnswers] = useState({}); // { 1: 'yes'|'no'|'na', ... }
+  const [details, setDetails] = useState({}); // { 1: "...", ... }
+  const [lastTrainingDate, setLastTrainingDate] = useState("");
+  // Part E — Additional comments + follow-up request
+  const [additionalComments, setAdditionalComments] = useState("");
+  const [followUpRequested, setFollowUpRequested] = useState(false);
+  const [auditorName, setAuditorName] = useState("");
+
+  // When clinic changes, refresh the building name + address defaults
+  function onClinicChange(newId){
+    const c = CLINICS.find(x=>x.id===newId);
+    if(!c) return;
+    setClinicId(newId);
+    setBuildingName(`Total Body Physio — ${c.short}`);
+    setAddress(c.address || "");
+  }
+
+  // Outcome logic: count "concerns" — anything that isn't the desirable answer.
+  // Q1: yes=concern (injury). Q2–7: no=concern. N/A and "yes is good" don't count.
+  const concerns = FENZ_QUESTIONS.filter(q => {
+    const a = answers[q.n];
+    if(!a || a === "na") return false;
+    return q.yesIsGood ? a === "no" : a === "yes";
+  }).length;
+  const answered = FENZ_QUESTIONS.filter(q => !!answers[q.n]).length;
+
+  function submit(){
+    if(!auditorName.trim()){ alert("Please enter the auditor / contact person name."); return; }
+    if(answered < FENZ_QUESTIONS.length){
+      if(!window.confirm(`${FENZ_QUESTIONS.length - answered} of 7 assessment questions unanswered. Submit anyway?`)) return;
+    }
+    if(!minutes && !seconds){
+      if(!window.confirm("Evacuation time not recorded. Submit anyway?")) return;
+    }
+    // Build a notes summary for the history-pane and PDF compatibility
+    const concernLines = FENZ_QUESTIONS.filter(q=>{
+      const a = answers[q.n]; if(!a||a==="na") return false;
+      return q.yesIsGood ? a==="no" : a==="yes";
+    }).map(q=>{
+      const d = details[q.n] ? ` — ${details[q.n]}` : "";
+      return `• Q${q.n}: ${q.q.split("?")[0]}?${d}`;
+    }).join("\n");
+    const summaryParts = [];
+    if(minutes||seconds) summaryParts.push(`Evacuation time: ${minutes||0}m ${seconds||0}s`);
+    if(lastTrainingDate) summaryParts.push(`Last training: ${fmtNZ(lastTrainingDate)}`);
+    if(additionalComments) summaryParts.push(`Comments: ${additionalComments}`);
+    const notes = [concernLines, summaryParts.join(" · ")].filter(Boolean).join("\n").trim();
+
+    onComplete({
+      id: Date.now(),
+      type: "fire_drill",
+      title: `Fire Drill Record — ${activeClinic.short}`,
+      icon: "🔥",
+      clinic: activeClinic.short,
+      auditor: auditorName,
+      physioAudited: null,
+      date,
+      time,
+      duration: (minutes||seconds) ? `${minutes||0}m ${seconds||0}s` : "",
+      passed: FENZ_QUESTIONS.length - concerns,
+      failed: concerns,
+      na: FENZ_QUESTIONS.filter(q=>answers[q.n]==="na").length,
+      total: FENZ_QUESTIONS.length,
+      outcome: concerns === 0 ? "All clear" : `${concerns} issue${concerns>1?"s":""} flagged`,
+      notes: notes || "Drill completed. No issues identified.",
+      // FENZ-specific payload — rendered by AuditViewModal v2 branch + PDF
+      formVersion: "v2",
+      fireDrillData: {
+        buildingName, address, schemeRef,
+        contact: { name: contactName, phone: contactPhone, email: contactEmail },
+        evacuation: { date, time, minutes: minutes||"0", seconds: seconds||"0" },
+        answers, details, lastTrainingDate,
+        additionalComments, followUpRequested,
+      },
+    });
+  }
+
+  // ── UI helpers ──
+  const lbl = (txt) => <label style={{fontSize:11,fontWeight:600,color:C.muted,display:"block",marginBottom:3,textTransform:"uppercase",letterSpacing:".3px"}}>{txt}</label>;
+  const inp = (value,onChange,placeholder,type="text") => <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder||""} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/>;
+  const sectionHead = (letter,title) => <div style={{background:"#1F3A5F",color:"white",padding:"8px 14px",fontWeight:700,fontSize:13,marginTop:"1.25rem",marginBottom:0,borderRadius:"6px 6px 0 0",display:"flex",alignItems:"center",gap:10}}><span style={{background:"rgba(255,255,255,.2)",padding:"2px 9px",borderRadius:4,fontSize:11,letterSpacing:".5px"}}>Part {letter}</span><span>{title}</span></div>;
+  const sectionBody = (children) => <div style={{background:"white",border:`1px solid ${C.border}`,borderTop:"none",borderRadius:"0 0 6px 6px",padding:"0.875rem 1rem"}}>{children}</div>;
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:400,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:12,width:"100%",maxWidth:760,marginBottom:"2rem"}}>
+        {/* FENZ-style blue header */}
+        <div style={{background:"linear-gradient(135deg,#1F3A5F 0%,#2d4f7a 100%)",padding:"1.25rem 1.5rem",borderRadius:"12px 12px 0 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{color:"white",fontSize:17,fontWeight:700,letterSpacing:".3px"}}>🔥 FIRE EVACUATION REPORT</div>
+            <div style={{color:"rgba(255,255,255,0.8)",fontSize:11,marginTop:3,fontStyle:"italic"}}>Matches FENZ Evacuation Report — Part A through E</div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15}}>✕</button>
+        </div>
+
+        <div style={{padding:"1.25rem 1.5rem",maxHeight:"75vh",overflowY:"auto"}}>
+
+          {/* Clinic picker — only clinics that actually run drills */}
+          <div style={{marginBottom:"0.5rem"}}>
+            {lbl("Clinic")}
+            <select value={clinicId} onChange={e=>onClinicChange(e.target.value)} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL}}>
+              {drillClinics.map(c=><option key={c.id} value={c.id}>{c.short}</option>)}
+            </select>
+            <div style={{fontSize:11,color:C.muted,marginTop:4,fontStyle:"italic"}}>Howick &amp; Edgewater Schools run their own fire drills — not shown here.</div>
+          </div>
+
+          {/* Part A — Building */}
+          {sectionHead("A","Building description")}
+          {sectionBody(<>
+            <div style={{marginBottom:"0.75rem"}}>{lbl("Building name")}{inp(buildingName,setBuildingName,"e.g. Total Body Physio — Panmure")}</div>
+            <div style={{marginBottom:"0.75rem"}}>{lbl("Address")}{inp(address,setAddress,"Street address")}</div>
+            <div>{lbl("Scheme reference (if known)")}{inp(schemeRef,setSchemeRef,"FENZ scheme number — leave blank if not known")}</div>
+          </>)}
+
+          {/* Part B — Contact */}
+          {sectionHead("B","Contact person details")}
+          {sectionBody(<>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"0.75rem"}}>
+              <div>{lbl("Name")}{inp(contactName,setContactName)}</div>
+              <div>{lbl("Phone / mobile")}{inp(contactPhone,setContactPhone)}</div>
+            </div>
+            <div>{lbl("Email address")}{inp(contactEmail,setContactEmail,"","email")}</div>
+          </>)}
+
+          {/* Part C — Evacuation details */}
+          {sectionHead("C","Evacuation details")}
+          {sectionBody(<>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"0.75rem"}}>
+              <div>{lbl("Date of evacuation")}{inp(date,setDate,"","date")}</div>
+              <div>{lbl("Time of evacuation")}{inp(time,setTime,"","time")}</div>
+            </div>
+            <div>{lbl("Time taken to evacuate")}
+              <div style={{display:"flex",gap:"0.5rem",alignItems:"center"}}>
+                <input type="number" min="0" max="60" value={minutes} onChange={e=>setMinutes(e.target.value)} placeholder="0" style={{width:70,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,textAlign:"center"}}/>
+                <span style={{fontSize:12,color:C.muted}}>minutes</span>
+                <input type="number" min="0" max="59" value={seconds} onChange={e=>setSeconds(e.target.value)} placeholder="0" style={{width:70,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,textAlign:"center"}}/>
+                <span style={{fontSize:12,color:C.muted}}>seconds</span>
+              </div>
+            </div>
+          </>)}
+
+          {/* Part D — Assessment outcomes */}
+          {sectionHead("D","Assessment outcomes")}
+          {sectionBody(<>
+            <div style={{display:"flex",gap:16,marginBottom:"0.75rem",fontSize:11,color:C.muted,justifyContent:"flex-end",paddingRight:"0.75rem"}}>
+              <span style={{width:40,textAlign:"center",fontWeight:600}}>Yes</span>
+              <span style={{width:40,textAlign:"center",fontWeight:600}}>No</span>
+              <span style={{width:40,textAlign:"center",fontWeight:600}}>N/A</span>
+            </div>
+            {FENZ_QUESTIONS.map(q=>{
+              const val = answers[q.n];
+              const showsDetail = val === (q.yesIsGood ? "no" : "yes");
+              return (
+                <div key={q.n} style={{paddingBottom:"0.75rem",marginBottom:"0.75rem",borderBottom:`1px solid ${C.grayL}`}}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                    <span style={{fontSize:12,fontWeight:600,color:C.teal,minWidth:24,marginTop:2}}>{q.n}.</span>
+                    <span style={{flex:1,fontSize:13,lineHeight:1.45}}>{q.q}</span>
+                    <div style={{display:"flex",gap:6,flexShrink:0,marginLeft:8}}>
+                      {[["yes","Yes","#EAF3DE","#3B6D11"],["no","No","#FCEBEB",C.red],["na","N/A",C.grayL,C.gray]].map(([v,lblTxt,bg,fg])=>(
+                        <button key={v} onClick={()=>setAnswers(p=>({...p,[q.n]:p[q.n]===v?undefined:v}))} style={{width:40,fontSize:11,padding:"4px 0",borderRadius:4,border:`1.5px solid ${val===v?fg:C.border}`,background:val===v?bg:"white",color:val===v?fg:C.muted,cursor:"pointer",fontWeight:val===v?600:400,textAlign:"center"}}>{lblTxt}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {showsDetail && (
+                    <div style={{marginTop:"0.5rem",marginLeft:32}}>
+                      <input placeholder={q.detailPrompt} value={details[q.n]||""} onChange={e=>setDetails(p=>({...p,[q.n]:e.target.value}))} style={{width:"100%",padding:"5px 8px",border:`1px solid ${C.amber}`,borderRadius:5,fontSize:12,background:"#FAEEDA",boxSizing:"border-box"}}/>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {/* Q8 — last training date */}
+            <div style={{display:"flex",alignItems:"center",gap:10,paddingTop:"0.25rem"}}>
+              <span style={{fontSize:12,fontWeight:600,color:C.teal,minWidth:24}}>8.</span>
+              <span style={{flex:1,fontSize:13}}>When was the last training session for permanent occupants held?</span>
+              <input type="date" value={lastTrainingDate} onChange={e=>setLastTrainingDate(e.target.value)} style={{padding:"5px 8px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:12,background:C.grayXL}}/>
+            </div>
+          </>)}
+
+          {/* Part E — Additional comments */}
+          {sectionHead("E","Additional comments")}
+          {sectionBody(<>
+            <div style={{marginBottom:"0.75rem"}}>
+              {lbl("Additional comments / observations")}
+              <textarea rows={3} value={additionalComments} onChange={e=>setAdditionalComments(e.target.value)} placeholder="e.g. Drill completed. Gwenne leading as new H&S Officer for Panmure. All clear." style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"0.75rem"}}>
+              <div>{lbl("Contact person signature (name)")}{inp(auditorName,setAuditorName,"Type name to confirm")}</div>
+              <div style={{display:"flex",alignItems:"center",gap:8,paddingTop:18}}>
+                <input type="checkbox" checked={followUpRequested} onChange={e=>setFollowUpRequested(e.target.checked)} id="fd-followup" style={{width:16,height:16,cursor:"pointer"}}/>
+                <label htmlFor="fd-followup" style={{fontSize:12,color:C.text,cursor:"pointer",lineHeight:1.4}}>Tick if you would like to speak to someone about this trial</label>
+              </div>
+            </div>
+          </>)}
+
+          {/* Summary + submit */}
+          <div style={{background:C.grayXL,borderRadius:8,padding:"1rem",marginTop:"1.25rem",border:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",gap:20,marginBottom:"0.875rem",fontSize:13}}>
+              <span><b style={{color:"#3B6D11"}}>{FENZ_QUESTIONS.length - concerns}</b> OK</span>
+              {concerns > 0 && <span><b style={{color:C.red}}>{concerns}</b> concern{concerns>1?"s":""} flagged</span>}
+              <span style={{color:C.muted}}>{FENZ_QUESTIONS.length - answered} unanswered</span>
+            </div>
+            <Btn onClick={submit}>Submit fire drill record</Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // audit modal
 function AuditModal({type,onClose,onComplete}){
+  // ── Fire drill uses a dedicated FENZ-style form ──────────────────
+  if(type === "fire_drill"){
+    return <FireDrillModal onClose={onClose} onComplete={onComplete}/>;
+  }
   const form=AUDIT_FORMS[type];const all=form.sections.flatMap(s=>s.items);
   const[checks,setChecks]=useState({});const[notes,setNotes]=useState({});
   const[meta,setMeta]=useState({clinic:CLINICS[0].short,auditor:"",physioAudited:"",date:new Date().toISOString().split("T")[0],time:"",duration:""});
