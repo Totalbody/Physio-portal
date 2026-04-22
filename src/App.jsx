@@ -915,7 +915,56 @@ function _generateMeetingMinutes(meeting) {
   const clinicTitle = isAllClinics ? 'Total Body Physio — All Clinics' : `Total Body Physio ${meeting.clinic}`;
   const meetingFreq = isAllClinics ? 'Quarterly' : 'Bi-Monthly';
 
-  const sig = `<span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:${era==='2022'?'19':era==='2023'?'20':'18'}pt;color:#1a1a7a;">Jade Warren</span>`;
+  // Use Jade's real signature PNG when available (set at module scope at line
+  // ~5456). When missing (e.g. older runs) fall back to cursive text so the
+  // signature row still renders cleanly.
+  const jadeSigImg = (typeof PRELOADED_SIGNATURES !== 'undefined' && PRELOADED_SIGNATURES.jade)
+    ? PRELOADED_SIGNATURES.jade
+    : null;
+  const sigHeight = era==='2022'?'42':era==='2023'?'44':'40';
+  const sig = jadeSigImg
+    ? `<img src="${jadeSigImg}" alt="Jade Warren" style="height:${sigHeight}px;max-width:220px;vertical-align:middle;display:inline-block;">`
+    : `<span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:${era==='2022'?'19':era==='2023'?'20':'18'}pt;color:#1a1a7a;">Jade Warren</span>`;
+
+  // Parse real action items out of the notes text. Looks for explicit
+  // patterns Jade actually uses in her minutes:
+  //   "Jade to book Vevo", "Alistair to email OCM", "Hans — follow up on X"
+  //   "Action items: all staff — ..."
+  //   "...Jade to finalise soccer club proposal..."
+  // Returns an array of {who, action} objects, or [] if nothing actionable
+  // was found. The rendered table is OMITTED entirely when no real actions
+  // can be extracted — better to show nothing than generic placeholder rows.
+  const parsedActions = (() => {
+    const notes = (meeting.notes || '').trim();
+    if (!notes) return [];
+    const results = [];
+    const firstNames = attendeeList.map(a => a.split(' ')[0].trim()).filter(Boolean);
+    // Pattern 1: "Name to verb ..." — split on sentence boundaries (. ! ? , ; —)
+    // then look for "{FirstName} to {something}" within each clause
+    const clauses = notes.split(/[.!?;]\s+|\s+—\s+/).map(s => s.trim()).filter(Boolean);
+    for (const clause of clauses) {
+      for (const name of firstNames) {
+        // Match "FirstName to <verb phrase>" or "FirstName to <verb> ..."
+        const re = new RegExp(`\\b${name}\\s+to\\s+([a-z][^,.;—]*)`,'i');
+        const m = clause.match(re);
+        if (m && m[1]) {
+          const actionText = m[1].trim().replace(/\s+/g,' ');
+          // Skip if too short (likely parsing noise)
+          if (actionText.length > 3 && actionText.length < 160) {
+            results.push({ who: name, action: actionText.charAt(0).toUpperCase() + actionText.slice(1) });
+          }
+        }
+      }
+    }
+    // Dedupe by (who+action) lowercase
+    const seen = new Set();
+    return results.filter(r => {
+      const k = (r.who + '|' + r.action).toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }).slice(0, 8);  // cap at 8 rows to avoid runaway
+  })();
 
   // ── ERA 2022 — "Just learned Word" — Arial, bordered tables, no colour ──
   if (era === '2022') return `<!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -947,11 +996,11 @@ function _generateMeetingMinutes(meeting) {
 <h3>Agenda / Notes</h3>
 ${agendaItems.map((item,i)=>`<h3>${i+1}. ${item.charAt(0).toUpperCase()+item.slice(1)}</h3>
 <ul>${notesSentences.filter((_,j)=>j>=Math.floor(notesSentences.length*(i/agendaItems.length))&&j<Math.floor(notesSentences.length*((i+1)/agendaItems.length))).map(s=>`<li>${s}.</li>`).join('')||'<li>Discussed as per agenda.</li>'}</ul>`).join('')}
-<h3>Action Items</h3>
+${parsedActions.length > 0 ? `<h3>Action Items</h3>
 <table class="actions">
   <tr><th>#</th><th>Action</th><th>Owner</th><th>Due</th></tr>
-  ${attendeeList.map((a,i)=>`<tr><td>${i+1}</td><td>Follow up on items discussed</td><td>${a}</td><td>Next meeting</td></tr>`).join('')}
-</table>
+  ${parsedActions.map((a,i)=>`<tr><td>${i+1}</td><td>${a.action}</td><td>${a.who}</td><td>Next meeting</td></tr>`).join('')}
+</table>` : ''}
 <h3>Next Meeting</h3>
 <p>Approx ${nextMeetMonth} ${nextMeetYear} — date TBC.</p>
 <h3>Signatures</h3>
@@ -992,11 +1041,11 @@ ${agendaItems.map((item,i)=>`<h3>${i+1}. ${item.charAt(0).toUpperCase()+item.sli
 <h3>Agenda / Notes</h3>
 ${agendaItems.map((item,i)=>`<h3>${i+1}. ${item.charAt(0).toUpperCase()+item.slice(1)}</h3>
 <ul>${notesSentences.filter((_,j)=>j>=Math.floor(notesSentences.length*(i/agendaItems.length))&&j<Math.floor(notesSentences.length*((i+1)/agendaItems.length))).map(s=>`<li>${s}.</li>`).join('')||'<li>Discussed as per agenda.</li>'}</ul>`).join('')}
-<h3>Action Items</h3>
+${parsedActions.length > 0 ? `<h3>Action Items</h3>
 <table class="actions">
   <tr><th>#</th><th>Action</th><th>Owner</th><th>Due</th></tr>
-  ${attendeeList.map((a,i)=>`<tr><td>${i+1}</td><td>Follow up on items discussed</td><td>${a}</td><td>Next meeting</td></tr>`).join('')}
-</table>
+  ${parsedActions.map((a,i)=>`<tr><td>${i+1}</td><td>${a.action}</td><td>${a.who}</td><td>Next meeting</td></tr>`).join('')}
+</table>` : ''}
 <h3>Next Meeting</h3>
 <p>Approximately ${nextMeetMonth} ${nextMeetYear} — date to be confirmed.</p>
 <h3>Signatures</h3>
@@ -1007,112 +1056,103 @@ ${agendaItems.map((item,i)=>`<h3>${i+1}. ${item.charAt(0).toUpperCase()+item.sli
 <div class="footer">${clinicTitle} · Meeting Minutes · ${fmtNZ(meeting.date)} · Confidential</div>
 </body></html>`;
 
-  // ── ERA 2024a / 2024b / 2025a / 2025b — Word-theme-ish layouts ──
-  // All share the same structure but look progressively more polished.
-  const isNew  = era === '2025b';
-  const accentColor = era==='2024a' ? '#2d7d46'     // bright green — first theme attempt
-                    : era==='2024b' ? '#0f5c3a'     // toned-down forest green
-                    : era==='2025a' ? '#0F6E56'     // teal
-                    : '#1F3A5F';                    // 2025b navy
-  const headerFont  = era==='2024a' ? "'Trebuchet MS','Segoe UI',sans-serif"
-                    : era==='2024b' ? 'Calibri,"Segoe UI",sans-serif'
-                    : era==='2025a' ? "'Inter','Segoe UI',Helvetica,sans-serif"
-                    : "'IBM Plex Sans','Inter','Segoe UI',sans-serif";
-  const metaBg      = era==='2024a' ? '#d8f0e0'
-                    : era==='2024b' ? '#e8f4ee'
-                    : era==='2025a' ? '#E1F5EE'
-                    : '#EEF2F8';
-  const headerBorder = era==='2024a' ? '3px double rgba(255,255,255,.5)'
-                     : era==='2024b' ? 'none'
-                     : era==='2025a' ? 'none'
-                     : '4px solid #D4AF37';
-  const timeStr = isAllClinics && isNew ? '1:00 PM – 2:00 PM' : '12:00 PM – 12:45 PM';
+  // ── ERA 2024a / 2024b / 2025a / 2025b — Small-business Word template ──
+  // Kept deliberately basic — Jade's Word template that evolved over time but
+  // never went "corporate". All four eras use the 2023 base (Times New Roman
+  // or Calibri, grey meta bar, bordered tables, no colored banners) with small
+  // tweaks between them (body font, heading accent, tiny subtitle variations).
+  const is2024a = era==='2024a';
+  const is2024b = era==='2024b';
+  const is2025a = era==='2025a';
+  const is2025b = era==='2025b';
+  // Progressive tiny changes: serif → sans-serif over time. Very subtle.
+  const bodyFont  = is2024a ? '"Times New Roman",serif'
+                  : is2024b ? '"Times New Roman",Georgia,serif'
+                  : is2025a ? '"Calibri","Segoe UI",Arial,sans-serif'
+                  :           '"Calibri","Segoe UI",Arial,sans-serif';  // 2025b
+  const headingDecoration = is2024a ? 'text-decoration:underline;'
+                          : is2024b ? 'text-decoration:underline;'
+                          : is2025a ? 'border-bottom:1px solid #666;padding-bottom:2px;'
+                          :           'border-bottom:1px solid #666;padding-bottom:2px;';  // 2025b
+  const h1Style = is2024a ? '' : is2024b ? '' : 'letter-spacing:0.02em;';
+  // Quiet accent colour for each era — not banner, just a thin 2px rule under the H1
+  const quietAccent = is2024a ? '#1a6b45'    // quiet green
+                    : is2024b ? '#2a5c4e'    // quiet forest
+                    : is2025a ? '#1a6b6b'    // quiet teal
+                    :           '#1a3a5f';   // quiet navy
+  // Slightly wider meta bar alternates over time — another subtle tweak
+  const metaThW = is2024a||is2024b ? '30%' : '32%';
 
-  // Varied confirmation row — different signer + different handwriting per era
-  const confirmationRow = era === '2024a'
-    ? `<tr><th>Confirmed correct</th><td><span style="font-family:'Comic Sans MS','Bradley Hand',cursive;font-size:15pt;color:#1a3a5f;">Hans Vermeulen</span>&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>`
-  : era === '2024b'
-    ? `<tr><th>Confirmed correct</th><td><span style="font-family:'Lucida Handwriting','Apple Chancery','Palatino',cursive;font-size:15pt;color:#1a3a5f;">Hans Vermeulen</span>&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>`
-  : era === '2025a'
-    ? `<tr><th>Confirmed correct</th><td><span style="font-family:'Brush Script MT','Bradley Hand',cursive;font-size:19pt;color:#0a2a5a;">Alistair Burgess</span>&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>`
-    // 2025b: digital attestation seal
-  : `<tr><th>Confirmed correct</th><td>
-        <div style="display:inline-block;border:1.5px solid #1F3A5F;border-radius:6px;padding:6px 14px;background:#EEF2F8;font-size:9.5pt;">
-          <span style="color:#1F3A5F;font-weight:700;letter-spacing:0.04em;">✓ DIGITALLY CONFIRMED</span><br>
-          <span style="color:#444;">Alistair Burgess · HPI PAJ826</span><br>
-          <span style="color:#888;font-size:8.5pt;">${fmtNZ(meeting.date)} · Ref M-${meeting.id}</span>
-        </div>
-      </td></tr>`;
+  const timeStr = isAllClinics && is2025b ? '1:00 PM – 2:00 PM' : '12:00 PM – 12:45 PM';
 
-  // Minutes-by signature also varies per era
-  const minutesSigFont = era==='2024a' ? "'Bradley Hand','Comic Sans MS',cursive"
-                       : era==='2024b' ? "'Brush Script MT','Apple Chancery',cursive"
-                       : era==='2025a' ? "'Segoe Script','Brush Script MT',cursive"
-                       : "'Caveat','Comic Sans MS',cursive";
-  const minutesSigSize = era==='2024a' ? '15pt' : era==='2024b' ? '17pt' : era==='2025a' ? '18pt' : '20pt';
+  // Confirmation row — different signer per era (Jade always records, rotates who confirms)
+  // Kept as typed names (no image signatures for anyone but Jade) so it stays authentic
+  // to a small business that's only digitised the owner's signature so far.
+  const confirmName = is2024a ? 'Hans Vermeulen'
+                    : is2024b ? 'Hans Vermeulen'
+                    : is2025a ? 'Alistair Burgess'
+                    :           'Alistair Burgess';
+  const confirmFont = is2024a ? "'Comic Sans MS','Bradley Hand',cursive"
+                    : is2024b ? "'Lucida Handwriting','Apple Chancery','Palatino',cursive"
+                    : is2025a ? "'Brush Script MT','Bradley Hand',cursive"
+                    :           "'Segoe Script','Brush Script MT',cursive";
+  const confirmSize = is2024a ? '15pt' : is2024b ? '15pt' : is2025a ? '18pt' : '17pt';
+  const confirmationRow = `<tr><th>Confirmed correct</th><td><span style="font-family:${confirmFont};font-size:${confirmSize};color:#1a1a5a;">${confirmName}</span>&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>`;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>${clinicTitle} Meeting Minutes ${fmtNZ(meeting.date)}</title>
 <style>
-  body{margin:0;font-family:${headerFont};font-size:10.5pt;color:#1a1a18;background:#fff;line-height:1.65;}
-  .header{background:${accentColor};color:white;padding:${isNew?'26px 40px':'20px 32px'};${headerBorder!=='none'?`border-bottom:${headerBorder};`:''}}
-  .header h1{margin:0 0 4px;font-size:${isNew?'20pt':era==='2024a'?'19pt':'18pt'};font-weight:${isNew?'300':era==='2024a'?'800':'700'};${isNew?'letter-spacing:0.01em;':era==='2024a'?'letter-spacing:-0.01em;':''}}
-  .header h2{margin:0;font-size:11pt;font-weight:400;opacity:.88;${isNew?'letter-spacing:0.08em;text-transform:uppercase;':era==='2024a'?'font-style:italic;':''}}
-  .body{padding:24px 32px;}
-  table.meta{width:100%;border-collapse:collapse;margin:0 0 20px;}
-  table.meta td,table.meta th{border:1px solid #ddd;padding:7px 12px;}
-  table.meta th{background:${metaBg};color:${accentColor};font-weight:600;width:30%;}
-  table.meta tr:nth-child(even) td{background:#fafaf8;}
-  h3{color:${accentColor};font-size:11pt;font-weight:600;margin:20px 0 8px;padding-bottom:3px;border-bottom:1.5px solid ${metaBg};${isNew?'text-transform:uppercase;letter-spacing:0.06em;font-size:10pt;':era==='2024a'?'text-decoration:underline;':''}}
-  ol{margin:0 0 12px 18px;padding:0;}
-  li{margin-bottom:5px;}
-  .action-table{width:100%;border-collapse:collapse;margin:8px 0;}
-  .action-table th{background:${accentColor};color:white;padding:6px 12px;font-size:9.5pt;font-weight:500;text-align:left;}
-  .action-table td{border-bottom:1px solid #eee;padding:7px 12px;font-size:10pt;}
-  .action-table tr:nth-child(even) td{background:#fafaf8;}
-  .sig{font-family:${minutesSigFont};font-size:${minutesSigSize};color:${isNew?'#0a2a5a':'#1a1a7a'};}
-  .footer{background:${isNew?'#f3f5f9':'#f5f3ee'};border-top:1px solid ${isNew?'#d9dde8':'#e2e0d8'};padding:10px 32px;font-size:8pt;color:#888;display:flex;justify-content:space-between;margin-top:24px;}
+  body{margin:2cm 2.5cm;font-family:${bodyFont};font-size:11pt;color:#111;line-height:1.6;background:#fff;}
+  h1{font-size:15pt;text-align:center;margin:0 0 3px;${h1Style}}
+  h2{font-size:12.5pt;text-align:center;margin:0 0 4px;font-weight:normal;font-style:italic;color:#444;}
+  .divider{border:0;border-top:2px solid ${quietAccent};margin:6px auto 18px;width:40%;}
+  .meta{width:100%;border-collapse:collapse;margin:0 0 18px;}
+  .meta td,.meta th{border:1px solid #666;padding:5px 9px;}
+  .meta th{background:#e8e8e8;font-weight:bold;width:${metaThW};}
+  h3{font-size:11pt;font-weight:bold;margin:14px 0 4px;${headingDecoration}}
+  ul,ol{margin:0 0 10px 18px;padding:0;}
+  li{margin-bottom:3px;}
+  .actions{width:100%;border-collapse:collapse;margin:8px 0 16px;}
+  .actions td,.actions th{border:1px solid #888;padding:5px 9px;font-size:10.5pt;}
+  .actions th{background:#e8e8e8;}
+  .footer{border-top:1px solid #999;margin-top:28px;padding-top:8px;font-size:9pt;color:#555;text-align:center;}
 </style></head><body>
-<div class="header">
-  <h1>${clinicTitle}</h1>
-  <h2>${meetingFreq} Meeting Minutes — ${['January','February','March','April','May','June','July','August','September','October','November','December'][dateObj.getMonth()]} ${dateObj.getFullYear()}</h2>
-</div>
-<div class="body">
+<h1>${clinicTitle}</h1>
+<h2>${meetingFreq} Meeting Minutes — ${['January','February','March','April','May','June','July','August','September','October','November','December'][dateObj.getMonth()]} ${dateObj.getFullYear()}</h2>
+<hr class="divider"/>
+
 <table class="meta">
   <tr><th>Date</th><td>${dateFormatted}</td></tr>
   <tr><th>Time</th><td>${timeStr}</td></tr>
   <tr><th>Location</th><td>${location}</td></tr>
-  <tr><th>Attendees</th><td>${attendeeList.join('<br>')}</td></tr>
-  <tr><th>Minutes by</th><td>Jade Warren</td></tr>
+  <tr><th>Attendees</th><td>${attendeeList.join(', ')}</td></tr>
+  <tr><th>Minutes recorded by</th><td>Jade Warren</td></tr>
 </table>
 
-<h3>Agenda Items</h3>
+<h3>Agenda</h3>
 <ol>
-${agendaItems.map(item=>`  <li><strong>${item.charAt(0).toUpperCase()+item.slice(1)}</strong></li>`).join('\n')}
+${agendaItems.map(item=>`  <li>${item.charAt(0).toUpperCase()+item.slice(1)}</li>`).join('\n')}
 </ol>
 
 <h3>Notes &amp; Discussion</h3>
-<p style="line-height:1.8;color:#333;">${(meeting.notes||'').replace(/\.\s+/g,'.<br><br>')}</p>
+<p>${(meeting.notes||'').replace(/\.\s+/g,'.<br><br>')}</p>
 
-<h3>Action Items</h3>
-<table class="action-table">
-  <tr><th>#</th><th>Action</th><th>Owner</th><th>Due date</th></tr>
-  ${attendeeList.map((a,i)=>`<tr><td>${i+1}</td><td>Complete action items from meeting discussion</td><td>${a}</td><td>Next meeting</td></tr>`).join('')}
-</table>
+${parsedActions.length > 0 ? `<h3>Action Items</h3>
+<table class="actions">
+  <tr><th>#</th><th>Action</th><th>Owner</th><th>Due</th></tr>
+  ${parsedActions.map((a,i)=>`<tr><td>${i+1}</td><td>${a.action}</td><td>${a.who}</td><td>Next meeting</td></tr>`).join('')}
+</table>` : ''}
 
 <h3>Next Meeting</h3>
-<p>Approximately <strong>${nextMeetMonth} ${nextMeetYear}</strong> — date TBC. All attendees to confirm availability.</p>
+<p>Approximately ${nextMeetMonth} ${nextMeetYear} — date to be confirmed.</p>
 
 <h3>Signatures</h3>
 <table class="meta">
-  <tr><th>Minutes recorded by</th><td><div class="sig">Jade Warren</div>Date: ${fmtNZ(meeting.date)}</td></tr>
+  <tr><th>Minutes recorded by</th><td>${sig}&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>
   ${confirmationRow}
 </table>
-</div>
-<div class="footer">
-  <span>${clinicTitle} · Meeting Minutes · ${fmtNZ(meeting.date)}</span>
-  <span>${isNew?'Digitally signed':'Confidential'} — staff only</span>
-</div>
+
+<div class="footer">${clinicTitle} · Meeting Minutes · ${fmtNZ(meeting.date)} · Confidential</div>
 </body></html>`;
 }
 
