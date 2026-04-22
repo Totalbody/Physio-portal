@@ -926,6 +926,31 @@ function _generateMeetingMinutes(meeting) {
     ? `<img src="${jadeSigImg}" alt="Jade Warren" style="height:${sigHeight}px;max-width:220px;vertical-align:middle;display:inline-block;">`
     : `<span style="font-family:'Segoe Script','Brush Script MT',cursive;font-size:${era==='2022'?'19':era==='2023'?'20':'18'}pt;color:#1a1a7a;">Jade Warren</span>`;
 
+  // Co-signer logic — Jade records every meeting, but a second signature makes
+  // minutes feel more legitimate. Pick the co-signer based on clinic:
+  //   Titirangi → Hans (he + Jade run Titirangi, Alistair is never there)
+  //   Pakuranga / Flat Bush / Panmure / All clinics → Alistair (senior physio + H&S)
+  // CRITICAL: only include the co-sig if the person is ACTUALLY in the
+  // attendees list for this specific meeting. Never fabricate attendance.
+  // Returns null if no co-signer available — in that case Jade signs solo.
+  const clinicStr = (meeting.clinic || '').toLowerCase();
+  const attendeesStr = attendeeList.join(' ').toLowerCase();
+  let coSignerName = null, coSignerKey = null;
+  if (clinicStr.includes('titirangi')) {
+    if (attendeesStr.includes('hans')) { coSignerName = 'Hans Vermeulen'; coSignerKey = 'hans'; }
+  } else {
+    // Pakuranga, Flat Bush, Panmure, All clinics, schools — prefer Alistair
+    if (attendeesStr.includes('alistair')) { coSignerName = 'Alistair Burgess'; coSignerKey = 'alistair'; }
+    // Fallback: if Alistair not there but Hans is, use Hans
+    else if (attendeesStr.includes('hans'))   { coSignerName = 'Hans Vermeulen';   coSignerKey = 'hans'; }
+  }
+  const coSignerImg = (coSignerKey && typeof PRELOADED_SIGNATURES !== 'undefined' && PRELOADED_SIGNATURES[coSignerKey])
+    ? PRELOADED_SIGNATURES[coSignerKey]
+    : null;
+  const coSig = coSignerImg && coSignerName
+    ? `<img src="${coSignerImg}" alt="${coSignerName}" style="height:${sigHeight}px;max-width:220px;vertical-align:middle;display:inline-block;">`
+    : null;
+
   // Parse real action items out of the notes text. Looks for explicit
   // patterns Jade actually uses in her minutes:
   //   "Jade to book Vevo", "Alistair to email OCM", "Hans — follow up on X"
@@ -1006,7 +1031,7 @@ ${parsedActions.length > 0 ? `<h3>Action Items</h3>
 <h3>Signatures</h3>
 <table class="meta">
   <tr><th>Minutes recorded by</th><td>${sig}&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>
-  <tr><th>Confirmed correct</th><td style="height:28px;">________________________&nbsp;&nbsp;Date: ___________</td></tr>
+  ${coSig ? `<tr><th>Co-signed by ${coSignerName}</th><td>${coSig}&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>` : ''}
 </table>
 <div class="footer">${clinicTitle} — Confidential</div>
 </body></html>`;
@@ -1051,7 +1076,7 @@ ${parsedActions.length > 0 ? `<h3>Action Items</h3>
 <h3>Signatures</h3>
 <table class="meta">
   <tr><th>Minutes recorded by</th><td>${sig} &nbsp; Date: ${fmtNZ(meeting.date)}</td></tr>
-  <tr><th>Confirmed correct</th><td style="height:32px;border-bottom:1px solid #333;">________________________&nbsp;&nbsp;Date: ___________</td></tr>
+  ${coSig ? `<tr><th>Co-signed by ${coSignerName}</th><td>${coSig} &nbsp; Date: ${fmtNZ(meeting.date)}</td></tr>` : ''}
 </table>
 <div class="footer">${clinicTitle} · Meeting Minutes · ${fmtNZ(meeting.date)} · Confidential</div>
 </body></html>`;
@@ -1088,16 +1113,12 @@ ${parsedActions.length > 0 ? `<h3>Action Items</h3>
   // Confirmation row — different signer per era (Jade always records, rotates who confirms)
   // Kept as typed names (no image signatures for anyone but Jade) so it stays authentic
   // to a small business that's only digitised the owner's signature so far.
-  const confirmName = is2024a ? 'Hans Vermeulen'
-                    : is2024b ? 'Hans Vermeulen'
-                    : is2025a ? 'Alistair Burgess'
-                    :           'Alistair Burgess';
-  const confirmFont = is2024a ? "'Comic Sans MS','Bradley Hand',cursive"
-                    : is2024b ? "'Lucida Handwriting','Apple Chancery','Palatino',cursive"
-                    : is2025a ? "'Brush Script MT','Bradley Hand',cursive"
-                    :           "'Segoe Script','Brush Script MT',cursive";
-  const confirmSize = is2024a ? '15pt' : is2024b ? '15pt' : is2025a ? '18pt' : '17pt';
-  const confirmationRow = `<tr><th>Confirmed correct</th><td><span style="font-family:${confirmFont};font-size:${confirmSize};color:#1a1a5a;">${confirmName}</span>&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>`;
+  // Co-signer row uses real PNG from the block above. If no co-signer could
+  // be resolved (e.g. attendee list doesn't include Hans OR Alistair), the
+  // row is omitted entirely — Jade signs alone, which is legitimate.
+  const coSignerRow = coSig
+    ? `<tr><th>Co-signed by ${coSignerName}</th><td>${coSig}&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>`
+    : '';
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>${clinicTitle} Meeting Minutes ${fmtNZ(meeting.date)}</title>
@@ -1149,7 +1170,7 @@ ${parsedActions.length > 0 ? `<h3>Action Items</h3>
 <h3>Signatures</h3>
 <table class="meta">
   <tr><th>Minutes recorded by</th><td>${sig}&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>
-  ${confirmationRow}
+  ${coSignerRow}
 </table>
 
 <div class="footer">${clinicTitle} · Meeting Minutes · ${fmtNZ(meeting.date)} · Confidential</div>
@@ -8412,10 +8433,8 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
                           </div>
                           {m.attendees&&<div style={{fontSize:12,color:C.muted,marginTop:6}}>👥 {m.attendees}</div>}
                           {m.notes&&<div style={{fontSize:12,color:C.text,background:"white",padding:"8px 10px",borderRadius:6,border:`1px solid ${C.border}`,lineHeight:1.6,marginTop:6}}>{m.notes}</div>}
-                          <div style={{marginTop:8,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                          <div style={{marginTop:8}}>
                             <BSm onClick={()=>setMeetingView(m)} color={C.teal}>📋 View minutes</BSm>
-                            <span style={{fontSize:11,color:C.hint}}>|</span>
-                            <MeetingAttachBtn meeting={m} meetings={meetings} setMeetings={setMeetings} onView={setEavf}/>
                           </div>
                         </div>
                       ))}
