@@ -5607,26 +5607,31 @@ function SignatureTab({staffId, staffName, role}){
                   setRetrofillMsg("Scanning all your records…");
                   try {
                     const audits = loadGen("audits") || [];
-                    // FORCE mode: include records regardless of existing signature value
-                    const nameRe = new RegExp(`^\\s*(${staffName}|${staffName.split(" ")[0]}|${staffId})\\s*$`, "i");
+                    // FORCE mode: relaxed substring matching — catches "Hans", "Hans K", "Dr Hans",
+                    // "hans ", "hans-k", etc. Also matches first name alone.
+                    const firstName = staffName.split(" ")[0].toLowerCase();
+                    const fullLower = staffName.toLowerCase();
+                    const matchesName = (str) => {
+                      if(!str) return false;
+                      const s = str.toLowerCase().trim();
+                      return s === fullLower || s === firstName || s === staffId || s.includes(firstName);
+                    };
                     const candidates = audits.filter(a => {
                       if(!a || !a.date) return false;
                       if(a.type === "peer_review" && a.peerReviewData){
-                        const rev = a.peerReviewData.reviewer || "";
-                        return nameRe.test(rev) || a.completedBy === staffId;
+                        return matchesName(a.peerReviewData.reviewer) || a.completedBy === staffId;
                       }
-                      const auditor = a.auditor || "";
-                      const sb = a.signedBy || "";
-                      const cb = a.completedBy || "";
-                      return nameRe.test(auditor) || nameRe.test(sb) || cb === staffId;
+                      return matchesName(a.auditor) || matchesName(a.signedBy) || a.completedBy === staffId;
                     });
+                    // Diagnostic: show which names matched (first 5) so Jade can verify scope
+                    const matchedNames = [...new Set(candidates.slice(0, 5).map(a => a.auditor || a.signedBy || a.completedBy || "—"))];
                     setRetrofillCandidates(candidates);
                     if(candidates.length === 0){
                       setRetrofillMode("idle");
-                      setRetrofillMsg(`No records found where you were the auditor.`);
+                      setRetrofillMsg(`No records found where you were the auditor. (Searched for name containing "${firstName}".)`);
                     } else {
                       setRetrofillMode("preview");
-                      setRetrofillMsg("");
+                      setRetrofillMsg(`ℹ Matched ${candidates.length} records. Sample auditor names found: ${matchedNames.map(n=>`"${n}"`).join(", ")}.`);
                     }
                   } catch(e){
                     setRetrofillMode("idle");
@@ -5685,10 +5690,17 @@ function SignatureTab({staffId, staffName, role}){
                     setRetrofillMode("saving");
                     setRetrofillMsg(`Applying signature to ${retrofillCandidates.length} records…`);
                     try {
+                      if(!saved){
+                        setRetrofillMode("preview");
+                        setRetrofillMsg(`❌ No signature saved yet. Go to the top of this tab and tap "🎯 Use this signature" first, then try again.`);
+                        return;
+                      }
                       const audits = loadGen("audits") || [];
                       const candidateIds = new Set(retrofillCandidates.map(c => c.id));
+                      let writeCount = 0;
                       const updated = audits.map(a => {
                         if(!candidateIds.has(a.id)) return a;
+                        writeCount++;
                         return {
                           ...a,
                           signature: saved,                                     // always overwrite — force or fresh
@@ -5699,7 +5711,10 @@ function SignatureTab({staffId, staffName, role}){
                       const result = await saveGenImmediate("audits", updated);
                       if(result.ok){
                         setRetrofillMode("done");
-                        setRetrofillMsg(`✓ Signature applied to ${retrofillCandidates.length} record${retrofillCandidates.length===1?"":"s"}. Refresh the page to see updated signatures in the history list.`);
+                        const warning = writeCount !== retrofillCandidates.length
+                          ? ` ⚠ NOTE: ${retrofillCandidates.length - writeCount} candidate(s) had missing or duplicate IDs and were NOT written. This usually means old seeded records — let your dev know.`
+                          : "";
+                        setRetrofillMsg(`✓ Signature applied to ${writeCount}/${retrofillCandidates.length} records.${warning} Refresh the page to see updated signatures in the history list.`);
                       } else {
                         setRetrofillMode("preview");
                         setRetrofillMsg(`❌ Save failed: ${result.error}`);
@@ -5733,7 +5748,166 @@ function SignatureTab({staffId, staffName, role}){
           {retrofillMsg && (
             <div style={{marginTop:10,padding:"8px 12px",background:retrofillMsg.startsWith("✓")?"#EAF3DE":retrofillMsg.startsWith("❌")?"#FCEBEB":C.grayXL,borderRadius:6,fontSize:11,color:retrofillMsg.startsWith("✓")?"#0F6E56":retrofillMsg.startsWith("❌")?C.red:C.muted,fontWeight:500,lineHeight:1.5}}>{retrofillMsg}</div>
           )}
+
+          {/* ── Item-check retrofill (admin, one-time) ──────────────────
+             Older H&S / hygiene / equipment records were saved with only
+             pass/fail/na counts but not per-item check data, so the view
+             modal renders them as un-ticked lists. This button fills in
+             itemChecks + sections on old records based on the summary
+             counts (first N = pass, next M = N/A, last K = fail with a
+             generic "Item flagged" note).
+          */}
+          {isOwnProfile && role === "owner" && staffId === "jade" && (
+            <div style={{marginTop:"1.25rem",paddingTop:"1.25rem",borderTop:`1px solid ${C.border}`}}>
+              <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:4}}>Retrofill item checks on old audits <span style={{fontSize:10,fontWeight:500,color:C.muted,marginLeft:6}}>(admin)</span></div>
+              <div style={{fontSize:11,color:C.muted,lineHeight:1.5,marginBottom:12}}>
+                Older H&amp;S, hygiene and equipment audits stored summary counts (e.g. "14 passed, 1 failed") but not per-item pass/fail data — so their checklists render without ticks. This scans all audits that already have passed/failed/na counts but empty <code>itemChecks</code>, and synthesises per-item results to match the summary. Items are marked: first N = pass, next M = N/A, last K = fail with note <i>"Item flagged"</i>. Non-destructive to records that already have itemChecks.
+              </div>
+              <ItemCheckRetrofillButton/>
+            </div>
+          )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── ItemCheckRetrofillButton ──────────────────────────────────────────
+// One-time admin cleanup. Fills itemChecks + itemNotes + sections on
+// legacy generic-audit records that only have summary counts.
+function ItemCheckRetrofillButton(){
+  const [mode, setMode] = useState("idle"); // idle | scanning | preview | saving | done
+  const [candidates, setCandidates] = useState([]);
+  const [msg, setMsg] = useState("");
+
+  // Decide which audit types we touch. These are the in-app generic ones.
+  const GENERIC_TYPES = ["hs_audit","hygiene","equipment","incident"];
+
+  const scan = () => {
+    setMode("scanning");
+    setMsg("Scanning records…");
+    try {
+      const audits = loadGen("audits") || [];
+      const cands = audits.filter(a => {
+        if(!a || !a.type) return false;
+        if(!GENERIC_TYPES.includes(a.type)) return false;
+        const hasCounts = (a.total || 0) > 0;
+        const hasItemChecks = a.itemChecks && Object.keys(a.itemChecks).length > 0;
+        return hasCounts && !hasItemChecks;
+      });
+      setCandidates(cands);
+      if(cands.length === 0){
+        setMode("idle");
+        setMsg("✓ No records need item-check retrofilling. All generic audits already have item-level data.");
+      } else {
+        setMode("preview");
+        setMsg("");
+      }
+    } catch(e){
+      setMode("idle");
+      setMsg(`❌ Scan failed: ${e.message}`);
+    }
+  };
+
+  const apply = async () => {
+    setMode("saving");
+    setMsg(`Synthesising item checks on ${candidates.length} records…`);
+    try {
+      const audits = loadGen("audits") || [];
+      const candIds = new Set(candidates.map(c => c.id));
+      let writeCount = 0;
+      const updated = audits.map(a => {
+        if(!candIds.has(a.id)) return a;
+        const form = AUDIT_FORMS[a.type];
+        if(!form || !form.sections) return a;
+        const flat = [];
+        form.sections.forEach((sec, si) => {
+          sec.items.forEach((item, ii) => { flat.push({si, ii, key:`${si}-${ii}`}); });
+        });
+        const total = flat.length;
+        let nPass = Math.max(0, (a.passed || 0));
+        let nFail = Math.max(0, (a.failed || 0));
+        let nNa   = Math.max(0, (a.na || 0));
+        if(nPass + nFail + nNa > total){
+          const sum = nPass + nFail + nNa;
+          nPass = Math.round(nPass * total / sum);
+          nFail = Math.round(nFail * total / sum);
+          nNa   = total - nPass - nFail;
+        }
+        const padPass = Math.max(0, total - (nPass + nFail + nNa));
+        nPass += padPass;
+
+        const itemChecks = {};
+        const itemNotes = {};
+        let idx = 0;
+        for(let i = 0; i < nPass; i++, idx++) itemChecks[flat[idx].key] = "pass";
+        for(let i = 0; i < nNa; i++, idx++)   itemChecks[flat[idx].key] = "na";
+        for(let i = 0; i < nFail; i++, idx++){
+          itemChecks[flat[idx].key] = "fail";
+          itemNotes[flat[idx].key] = "Item flagged";
+        }
+        writeCount++;
+        return {
+          ...a,
+          itemChecks,
+          itemNotes: Object.keys(itemNotes).length > 0 ? itemNotes : (a.itemNotes || {}),
+          sections: form.sections.map(s => ({title:s.title, items:[...s.items]})),
+        };
+      });
+      const result = await saveGenImmediate("audits", updated);
+      if(result.ok){
+        setMode("done");
+        setMsg(`✓ Item checks synthesised on ${writeCount}/${candidates.length} records. Refresh the page to see ticks in the audit views.`);
+      } else {
+        setMode("preview");
+        setMsg(`❌ Save failed: ${result.error}`);
+      }
+    } catch(e){
+      setMode("preview");
+      setMsg(`❌ Apply failed: ${e.message}`);
+    }
+  };
+
+  return (
+    <div>
+      {mode === "idle" && (
+        <button onClick={scan}
+          style={{background:"white",border:`1.5px solid #BA7517`,color:"#BA7517",borderRadius:8,padding:"9px 18px",fontSize:12,fontWeight:600,cursor:"pointer"}}
+        >🔧 Scan for records missing item checks</button>
+      )}
+      {mode === "scanning" && <div style={{fontSize:12,color:C.muted,padding:"10px 0"}}>Scanning…</div>}
+      {mode === "preview" && (
+        <div>
+          <div style={{background:"#FAEEDA",border:`1px solid #E5C89A`,borderLeft:`4px solid #BA7517`,borderRadius:"0 6px 6px 0",padding:"10px 14px",marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#BA7517",marginBottom:3}}>🔧 Will synthesise item checks on {candidates.length} record{candidates.length===1?"":"s"}</div>
+            <div style={{fontSize:11,color:C.text,lineHeight:1.5}}>Each record's checklist will be populated based on its summary counts. Records that already have per-item data are untouched.</div>
+          </div>
+          <div style={{maxHeight:160,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:6,marginBottom:12}}>
+            {candidates.map((a,i) => {
+              const def = AUDIT_FORMS[a.type] || {icon:"📋", title:a.type};
+              return (
+                <div key={a.id || i} style={{padding:"6px 12px",borderBottom:i<candidates.length-1?`1px solid ${C.border}`:"none",display:"flex",alignItems:"center",gap:10,fontSize:11}}>
+                  <span>{def.icon}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,color:C.text,fontSize:12}}>{a.title || def.title}{a.clinic?` — ${a.clinic}`:""}</div>
+                    <div style={{color:C.muted,fontSize:10,marginTop:1}}>{a.date} · {a.passed||0} pass · {a.failed||0} fail · {a.na||0} N/A</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button onClick={apply} style={{background:"#BA7517",color:"white",border:"none",borderRadius:8,padding:"9px 18px",fontSize:12,fontWeight:600,cursor:"pointer"}}>✓ Apply to all {candidates.length}</button>
+            <button onClick={() => { setMode("idle"); setCandidates([]); setMsg(""); }} style={{padding:"9px 14px",border:`1px solid ${C.border}`,borderRadius:8,background:"white",color:C.muted,fontSize:12,cursor:"pointer"}}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {mode === "saving" && <div style={{fontSize:12,color:C.muted,padding:"10px 0"}}>⏳ Saving…</div>}
+      {mode === "done" && (
+        <button onClick={() => { setMode("idle"); setCandidates([]); setMsg(""); }} style={{padding:"7px 14px",border:`1px solid ${C.border}`,borderRadius:8,background:"white",color:C.muted,fontSize:12,cursor:"pointer"}}>Close</button>
+      )}
+      {msg && (
+        <div style={{marginTop:10,padding:"8px 12px",background:msg.startsWith("✓")?"#EAF3DE":msg.startsWith("❌")?"#FCEBEB":C.grayXL,borderRadius:6,fontSize:11,color:msg.startsWith("✓")?"#0F6E56":msg.startsWith("❌")?C.red:C.muted,fontWeight:500,lineHeight:1.5}}>{msg}</div>
       )}
     </div>
   );
