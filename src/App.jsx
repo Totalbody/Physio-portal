@@ -7134,7 +7134,11 @@ export default function App(){
 
     const initAudits = INIT_AUDITS
       .filter(a => !deletedIds.has(a.id))
-      .map(a => { const drv = driveById[a.id]; return drv?.evidence ? {...a, evidence: drv.evidence} : a; });
+      // Merge ALL Drive-stored changes back onto seeded audits. Previously only
+      // `evidence` was propagated, which silently discarded retrofilled signatures,
+      // item checks, and any other field written after the seed was originally
+      // created. Now: seed is the base, Drive data overlays on top.
+      .map(a => { const drv = driveById[a.id]; return drv ? {...a, ...drv} : a; });
     const initMeetings = INIT_MEETINGS.map(m => {
       const drv = driveMeetById[m.id];
       return drv?.attachment ? {...m, attachment: drv.attachment} : m;
