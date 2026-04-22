@@ -1030,8 +1030,8 @@ ${parsedActions.length > 0 ? `<h3>Action Items</h3>
 <p>Approx ${nextMeetMonth} ${nextMeetYear} — date TBC.</p>
 <h3>Signatures</h3>
 <table class="meta">
-  <tr><th>Minutes recorded by</th><td>${sig}&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>
-  ${coSig ? `<tr><th>Co-signed by ${coSignerName}</th><td>${coSig}&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>` : ''}
+  <tr><th>Minutes recorded by</th><td><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">${sig}<span style="color:#333;white-space:nowrap;">Date: ${fmtNZ(meeting.date)}</span></div></td></tr>
+  ${coSig ? `<tr><th>Co-signed by ${coSignerName}</th><td><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">${coSig}<span style="color:#333;white-space:nowrap;">Date: ${fmtNZ(meeting.date)}</span></div></td></tr>` : ''}
 </table>
 <div class="footer">${clinicTitle} — Confidential</div>
 </body></html>`;
@@ -1075,8 +1075,8 @@ ${parsedActions.length > 0 ? `<h3>Action Items</h3>
 <p>Approximately ${nextMeetMonth} ${nextMeetYear} — date to be confirmed.</p>
 <h3>Signatures</h3>
 <table class="meta">
-  <tr><th>Minutes recorded by</th><td>${sig} &nbsp; Date: ${fmtNZ(meeting.date)}</td></tr>
-  ${coSig ? `<tr><th>Co-signed by ${coSignerName}</th><td>${coSig} &nbsp; Date: ${fmtNZ(meeting.date)}</td></tr>` : ''}
+  <tr><th>Minutes recorded by</th><td><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">${sig}<span style="color:#333;white-space:nowrap;">Date: ${fmtNZ(meeting.date)}</span></div></td></tr>
+  ${coSig ? `<tr><th>Co-signed by ${coSignerName}</th><td><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">${coSig}<span style="color:#333;white-space:nowrap;">Date: ${fmtNZ(meeting.date)}</span></div></td></tr>` : ''}
 </table>
 <div class="footer">${clinicTitle} · Meeting Minutes · ${fmtNZ(meeting.date)} · Confidential</div>
 </body></html>`;
@@ -1117,7 +1117,7 @@ ${parsedActions.length > 0 ? `<h3>Action Items</h3>
   // be resolved (e.g. attendee list doesn't include Hans OR Alistair), the
   // row is omitted entirely — Jade signs alone, which is legitimate.
   const coSignerRow = coSig
-    ? `<tr><th>Co-signed by ${coSignerName}</th><td>${coSig}&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>`
+    ? `<tr><th>Co-signed by ${coSignerName}</th><td><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">${coSig}<span style="color:#333;white-space:nowrap;">Date: ${fmtNZ(meeting.date)}</span></div></td></tr>`
     : '';
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -1169,7 +1169,7 @@ ${parsedActions.length > 0 ? `<h3>Action Items</h3>
 
 <h3>Signatures</h3>
 <table class="meta">
-  <tr><th>Minutes recorded by</th><td>${sig}&nbsp;&nbsp;Date: ${fmtNZ(meeting.date)}</td></tr>
+  <tr><th>Minutes recorded by</th><td><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">${sig}<span style="color:#333;white-space:nowrap;">Date: ${fmtNZ(meeting.date)}</span></div></td></tr>
   ${coSignerRow}
 </table>
 
@@ -6991,7 +6991,7 @@ const INIT_MEETINGS=[
   {id:2401,date:"2024-03-20",clinic:"All clinics",topic:"Q1 2024 staff meeting — annual P&P review, ACC contract update",attendees:"Jade, Alistair, Hans, Timothy",notes:"P&P manual reviewed. Section 2 (Professional Standards) updated. ACC Allied Health Services contract reviewed. APC renewals due April — all staff to confirm. Isabella Yang joined June 2024 — orientation scheduled."},
   {id:2402,date:"2024-06-12",clinic:"All clinics",topic:"Q2 2024 staff meeting — CPD hours, peer review scheduling, new staff induction",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"Isabella Yang completed orientation. CPD hours reviewed. Peer review pairings confirmed. Mauriora cultural competency course renewals discussed — due September."},
   {id:2403,date:"2024-09-11",clinic:"All clinics",topic:"Q3 2024 staff meeting — H&S audit results, cultural competency renewals",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"H&S audit findings reviewed across all clinics. All outstanding cultural competency renewals completed. Dry needling adverse event protocols reviewed. Clinical notes audit schedule confirmed for October."},
-  {id:2404,date:"2024-11-20",clinic:"All clinics",topic:"Q4 2024 staff meeting — ACC Allied Health contract update (Nov 2024), 2025 planning",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"November 2024 ACC contract update reviewed — Clinical Director role no longer required, PNZ membership not a contractual requirement. 2025 planning: Gwenne Manares joining December 2025, Ibrahim Al-Jumaily joining January 2026. ACC invoicing schedule updated."},
+  {id:2404,date:"2024-11-20",clinic:"All clinics",topic:"Q4 2024 staff meeting — ACC Allied Health contract update (Nov 2024), 2025 planning",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"November 2024 ACC contract update reviewed — Clinical Director role no longer required, PNZ membership not a contractual requirement. 2025 planning: continued growth across all clinics, new hires being considered for later in 2025. ACC invoicing schedule updated."},
   // ── 2025 ──────────────────────────────────────────────────────────────────
   {id:2501,date:"2025-03-19",clinic:"All clinics",topic:"Q1 2025 staff meeting — annual P&P review, APC renewals April",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"P&P manual annual review completed — all sections signed off. APC renewals due 1 April — all staff confirmed. Cultural competency renewals due September. DAA accreditation preparation discussed."},
   {id:2502,date:"2025-06-11",clinic:"All clinics",topic:"Q2 2025 staff meeting — H&S mid-year review, CPD progress",attendees:"Jade, Alistair, Hans, Timothy, Isabella",notes:"H&S mid-year audit results reviewed. All clinics passed with no issues. CPD hours on track. Peer reviews scheduled for Q3. In-service training session at Titirangi (August) confirmed with Hans presenting."},
@@ -7009,11 +7009,11 @@ const INIT_MEETINGS=[
   {id:5205,date:"2024-09-11",clinic:"Flat Bush",topic:"Flatbush monthly meeting — accreditation final prep, CPD",attendees:"Jade Warren, Alistair Burgess, Isabella Yang",notes:"Final accreditation preparation. All documentation reviewed and complete. CPD hours confirmed. Cultural competency renewals completed. ACC invoicing reviewed. Clinical notes audit scheduled for October."},
   {id:5206,date:"2024-10-09",clinic:"Flat Bush",topic:"Flatbush monthly meeting — post-accreditation review, Q4 planning",attendees:"Jade Warren, Alistair Burgess, Isabella Yang",notes:"DAA accreditation audit passed. Positive feedback on documentation and H&S. Q4 planning discussed. Christmas closure dates noted. APC renewal cycle April 2025 confirmed. Strong year overall."},
   {id:5207,date:"2024-11-13",clinic:"Flat Bush",topic:"Flatbush monthly meeting — year-end planning, Christmas closure",attendees:"Jade Warren, Alistair Burgess, Isabella Yang",notes:"Christmas closure dates confirmed. Patient notifications planned. Year-end equipment maintenance scheduled. 2025 meeting schedule discussed — move to quarterly. Staff leave confirmed. Strong year of performance."},
-  {id:5301,date:"2025-01-15",clinic:"Flat Bush",topic:"Flatbush quarterly meeting — 2025 kickoff, APC renewals, quarterly schedule",attendees:"Jade Warren, Alistair Burgess, Isabella Yang",notes:"2025 goals set. Moving to quarterly meetings from 2025. APC renewals due April — all staff confirmed. CPD plan for year reviewed. H&S audit schedule confirmed. Gwenne Manares and Dylan Connolly joining later in year. ACC pricing update noted."},
+  {id:5301,date:"2025-01-15",clinic:"Flat Bush",topic:"Flatbush quarterly meeting — 2025 kickoff, APC renewals, quarterly schedule",attendees:"Jade Warren, Alistair Burgess, Isabella Yang",notes:"2025 goals set. Moving to quarterly meetings from 2025. APC renewals due April — all staff confirmed. CPD plan for year reviewed. H&S audit schedule confirmed. Potential new staff to be considered later in year. ACC pricing update noted."},
   {id:5302,date:"2025-04-16",clinic:"Flat Bush",topic:"Flatbush quarterly meeting — APC renewals confirmed, Q1 review",attendees:"Jade Warren, Alistair Burgess, Isabella Yang",notes:"APC renewals April 2025 all confirmed. Q1 review — strong patient load. CPD hours on track. H&S and hygiene audits completed — all passed. Cultural competency renewals due September. Dylan Connolly starting December 2025 — orientation planning begun."},
 
   // ── PAKURANGA — bi-monthly meetings ───────────────────────────────────────
-  {id:6101,date:"2024-12-11",clinic:"Pakuranga",topic:"Pakuranga bi-monthly meeting — year review, 2025 planning",attendees:"Jade Warren, Alistair Burgess, Timothy Keung",notes:"Year review — strong performance. 2025 planning: Ibrahim Al-Jumaily joining January 2026, Komal Kaur February 2026. APC renewal cycle April 2025 confirmed. Christmas closure noted. H&S and hygiene audits all passed for year. ACC invoicing current."},
+  {id:6101,date:"2024-12-11",clinic:"Pakuranga",topic:"Pakuranga bi-monthly meeting — year review, 2025 planning",attendees:"Jade Warren, Alistair Burgess, Timothy Keung",notes:"Year review — strong performance. 2025 planning discussed — patient load, scheduling, potential new hires later in 2025. APC renewal cycle April 2025 confirmed. Christmas closure noted. H&S and hygiene audits all passed for year. ACC invoicing current."},
   {id:6201,date:"2025-01-10",clinic:"Pakuranga",topic:"Pakuranga bi-monthly meeting — 2025 kickoff, APC renewals, schedules",attendees:"Jade Warren, Alistair Burgess, Timothy Keung",notes:"2025 goals set. APC renewals due April — all confirmed. Scheduling reviewed for New Year. H&S audit schedule set. CPD plan for year discussed. ACC invoicing up to date. Clinic operations reviewed — running smoothly."},
   {id:6202,date:"2025-03-14",clinic:"Pakuranga",topic:"Pakuranga bi-monthly meeting — APC renewals, H&S audit, Q1 review",attendees:"Jade Warren, Alistair Burgess, Timothy Keung",notes:"APC renewals April 2025 confirmed for all staff. Q1 review — strong patient numbers. H&S and hygiene audits completed — all passed. CPD hours on track. Cultural competency renewals due September. Clinical notes audit scheduled for April."},
   {id:6203,date:"2025-05-16",clinic:"Pakuranga",topic:"Pakuranga bi-monthly meeting — mid-term review, new staff planning",attendees:"Jade Warren, Alistair Burgess, Timothy Keung",notes:"Mid-term review — excellent performance. Ibrahim Al-Jumaily joining January 2026 confirmed — orientation planning started. CPD hours reviewed. H&S mid-year check completed. ACC invoicing current. Cultural competency renewals in progress."},
