@@ -3709,6 +3709,36 @@ function getMeetingFile(m){
   return null;
 }
 
+// ── MeetingViewModal ─────────────────────────────────────────────
+// Renders the era-aware meeting minutes HTML directly inline, no PDF.
+// Uses _generateMeetingMinutes() which already produces complete HTML for
+// each of the 6 meeting eras (2022 / 2023 / 2024a / 2024b / 2025a / 2025b)
+// with signatures, tables, and styling. We strip the <html><body> wrapper
+// so it drops into our modal cleanly via srcDoc — keeping the CSS isolated
+// so the meeting template doesn't fight with portal styles.
+function MeetingViewModal({meeting, onClose}){
+  if(!meeting) return null;
+  const fullHtml = _generateMeetingMinutes(meeting);
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:820,marginBottom:"2rem",overflow:"hidden",boxShadow:"0 6px 32px rgba(0,0,0,0.18)"}}>
+        <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.grayL}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+          <div style={{fontSize:13,fontWeight:600,color:C.text}}>
+            {meeting.clinic} · {fmtNZ(meeting.date)}
+            <span style={{fontWeight:400,color:C.muted,marginLeft:8,fontSize:11}}>{_era(meeting.date)} era</span>
+          </div>
+          <button onClick={onClose} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.muted,width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:13,flexShrink:0,lineHeight:1}}>✕</button>
+        </div>
+        <iframe
+          srcDoc={fullHtml}
+          title="Meeting minutes"
+          style={{width:"100%",height:"75vh",border:"none",display:"block",background:"#fff"}}
+        />
+      </div>
+    </div>
+  );
+}
+
 // Per-meeting attach/view button — supports upload OR paste existing blob URL
 function MeetingAttachBtn({meeting,meetings,setMeetings,onView}){
   const ref=useRef();
@@ -7211,6 +7241,7 @@ export default function App(){
   // logAudit and showLogAudit moved into ManagementPage to prevent re-mount on every keystroke
   const[extAudits,setExtAudits]=useState(()=>loadGen("extAudits")||[]);
   const[eavf,setEavf]=useState(null);
+  const[meetingView,setMeetingView]=useState(null);  // {meeting} — opens inline MeetingViewModal
   const[analysing,setAnalysing]=useState(null);
   const[showExtForm,setShowExtForm]=useState(false);
   const[extLabel,setExtLabel]=useState("");
@@ -8341,7 +8372,9 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
                           </div>
                           {m.attendees&&<div style={{fontSize:12,color:C.muted,marginTop:6}}>👥 {m.attendees}</div>}
                           {m.notes&&<div style={{fontSize:12,color:C.text,background:"white",padding:"8px 10px",borderRadius:6,border:`1px solid ${C.border}`,lineHeight:1.6,marginTop:6}}>{m.notes}</div>}
-                          <div style={{marginTop:8}}>
+                          <div style={{marginTop:8,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                            <BSm onClick={()=>setMeetingView(m)} color={C.teal}>📋 View minutes</BSm>
+                            <span style={{fontSize:11,color:C.hint}}>|</span>
                             <MeetingAttachBtn meeting={m} meetings={meetings} setMeetings={setMeetings} onView={setEavf}/>
                           </div>
                         </div>
@@ -8488,6 +8521,7 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
       {viewAudit&&<AuditViewModal audit={viewAudit} onClose={()=>setViewAudit(null)}/>}
       {activeAudit&&<AuditModal type={activeAudit} role={role} roleName={roleNames[role]||"Staff member"} onClose={()=>setActiveAudit(null)} onComplete={r=>{setAudits(p=>{const updated=[...p,r];saveGen("audits",updated);return updated;});setActiveAudit(null);setPage("management");setMgmtTab("audits");}}/>}
       {eavf&&<FileViewer file={eavf} onClose={()=>setEavf(null)}/>}
+      {meetingView&&<MeetingViewModal meeting={meetingView} onClose={()=>setMeetingView(null)}/>}
       {vf&&<FileViewer file={vf} onClose={()=>setVf(null)}/>}
     </div>
   );
