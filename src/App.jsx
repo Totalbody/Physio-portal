@@ -5484,6 +5484,41 @@ function SignatureTab({staffId, staffName, role}){
         </div>
       )}
 
+      {/* Replace-with-preloaded panel — shows when the staff already has a saved
+          signature BUT the baked-in preloaded one is different. This covers the
+          case where a newer/better preloaded image has been shipped since the
+          user last saved, and they want to install it without hunting for it. */}
+      {saved && mode === "current" && PRELOADED_SIGNATURES[staffId] && PRELOADED_SIGNATURES[staffId] !== saved && (
+        <div style={{background:"#FEFCF3",border:`1px solid #D4AF37`,borderLeft:"4px solid #D4AF37",borderRadius:"0 8px 8px 0",padding:"12px 16px",marginBottom:"1rem"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#8a6a1c",textTransform:"uppercase",letterSpacing:".3px",marginBottom:6}}>New pre-loaded signature available</div>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:6,padding:6,flexShrink:0}}>
+              <img src={PRELOADED_SIGNATURES[staffId]} alt="preloaded signature" style={{maxHeight:40,maxWidth:180,display:"block"}}/>
+            </div>
+            <button
+              onClick={async () => {
+                if(!window.confirm(`Replace your current signature with the new pre-loaded one?\n\nThis will overwrite the image shown above. Your current signature will be lost.\n\nAfter install, use "Force regenerate all my sigs" below to apply the new signature to all your past audits.`)) return;
+                setUploading(true);
+                setMsg("");
+                try {
+                  await saveSignature(staffId, PRELOADED_SIGNATURES[staffId]);
+                  setSaved(PRELOADED_SIGNATURES[staffId]);
+                  setMsg("✓ New signature installed — remember to Force regenerate below");
+                  setTimeout(()=>setMsg(""), 5000);
+                } catch (err) {
+                  setMsg("Install failed: " + (err.message || err));
+                } finally {
+                  setUploading(false);
+                }
+              }}
+              disabled={uploading}
+              style={{background:"#8a6a1c",color:"white",border:"none",borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",opacity:uploading?0.6:1,flexShrink:0}}
+            >{uploading?"Installing…":"🎯 Replace with this"}</button>
+          </div>
+          <div style={{fontSize:11,color:"#8a6a1c",marginTop:8,lineHeight:1.4,fontStyle:"italic"}}>A newer version of your signature has been baked in. Tap to replace the current one with it.</div>
+        </div>
+      )}
+
       {!saved && mode === "current" && (
         <div style={{background:"#FEFCF3",border:`1px solid #D4AF37`,borderLeft:"4px solid #D4AF37",borderRadius:"0 8px 8px 0",padding:"12px 16px",marginBottom:"1rem"}}>
           <div style={{fontSize:12,color:"#4a3c1a",lineHeight:1.5}}>No signature on file yet. Choose one of the options below — a photographed signature on paper usually looks cleanest.</div>
