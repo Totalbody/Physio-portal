@@ -3728,6 +3728,7 @@ function MeetingAttachBtn({meeting,meetings,setMeetings,onView}){
     </div>
   );
 }
+
 // ── FENZ-shaped read-only view for v2 fire drill records ────────────────
 function FireDrillViewModal({audit,onClose}){
   const fd = audit.fireDrillData || {};
@@ -3855,6 +3856,22 @@ function FireDrillViewModal({audit,onClose}){
   );
 }
 
+// ── Audit view era dispatcher ──────────────────────────────────────
+// Records evolved visually over the life of the business. Rather than
+// force old records to look like new ones, we render each era in its
+// own style. The era is determined purely by audit.date:
+//   < 2024-01-01          → 2023 era (basic white paper, Arial)
+//   < 2025-07-01          → 2024 era (office document, bordered tables)
+//   >= 2025-07-01         → current (Option A clean clinical)
+// Only applies to generic audits (H&S / hygiene / equipment). Fire drill,
+// peer review and clinical notes grid have their own dedicated styles.
+function getAuditEra(audit){
+  const d = audit?.date || "";
+  if(d < "2024-01-01") return "2023";
+  if(d < "2025-07-01") return "2024";
+  return "current";
+}
+
 function AuditViewModal({audit,onClose}){
   if(!audit)return null;
   // ── v2 fire drill records render in FENZ shape ────────────────────
@@ -3869,71 +3886,294 @@ function AuditViewModal({audit,onClose}){
   if(audit.type === "clinical_notes" && audit.formVersion === "v2" && audit.notesAuditData){
     return <NotesAuditGridViewModal audit={audit} onClose={onClose}/>;
   }
+  // ── Generic audit view — era-aware dispatch ──────────────────────
+  const era = getAuditEra(audit);
+  if(era === "2023") return <AuditViewModal_2023 audit={audit} onClose={onClose}/>;
+  if(era === "2024") return <AuditViewModal_2024 audit={audit} onClose={onClose}/>;
+  return <AuditViewModal_2025 audit={audit} onClose={onClose}/>;
+}
+
+function AuditViewModal_2025({audit,onClose}){
+  // ── Current style (Option A — clean clinical) ─────────────────────
+  // Modern sans-serif, tracked grey section labels with thin dark
+  // underlines, status as simple symbols per item.
   const form=AUDIT_FORMS[audit.type]||{sections:[]};
   const sections=audit.sections||form.sections||[];
   const checks=audit.itemChecks||{};
   const itemNotes=audit.itemNotes||{};
-  const statusColor={pass:C.green,fail:C.red,na:C.gray};
-  const statusLabel={pass:"✓ Pass",fail:"✗ Fail",na:"— N/A"};
-  return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:12,width:"100%",maxWidth:720,marginBottom:"2rem",overflow:"hidden"}}>
-        <div style={{background:audit.outcome==="Passed"?C.teal:C.red,padding:"1.25rem 1.5rem",display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
-          <div>
-            <div style={{color:"white",fontSize:16,fontWeight:600}}>{audit.icon} {audit.title}</div>
-            <div style={{color:"rgba(255,255,255,0.8)",fontSize:12,marginTop:4,display:"flex",gap:12,flexWrap:"wrap"}}>
-              <span>📅 {fmtNZ(audit.date)}{audit.time?` · ⏰ ${audit.time}`:""}</span>
-              <span>📍 {audit.clinic}</span>
-              <span>👤 {audit.auditor}</span>
-              {audit.duration&&<span>⏱ {audit.duration}</span>}
+  // Status indicator: simple mark + color, no badge/pill chrome
+  const statusMark = (v) => {
+    if(v === "pass") return {mark:"✓", color:"#0F6E56"};
+    if(v === "fail") return {mark:"✗", color:"#c0392b"};
+    if(v === "na")   return {mark:"N/A", color:"#8B8680", size:"11px"};
+    return {mark:"—", color:"#C4BFB0"};
+  };
+  // Parse overall notes out of the baked "• ... \n Notes: ..." shape
+  const notesMatch = (audit.notes || "").match(/Notes:\s*([\s\S]+)$/);
+  const overallNotes = notesMatch ? notesMatch[1].trim() : "";
+  const outcomeIsFail = (audit.failed||0) > 0;
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:720,marginBottom:"2rem",overflow:"hidden",boxShadow:"0 4px 24px rgba(0,0,0,0.12)"}}>
+        {/* Header — minimal, no colored banner */}
+        <div style={{padding:"24px 28px 18px",borderBottom:`1px solid ${C.grayL}`,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:20,fontWeight:600,letterSpacing:"-0.01em",color:C.text,lineHeight:1.25}}>{form.title || audit.title}</div>
+            <div style={{fontSize:13,color:C.muted,marginTop:5,display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+              <span>{audit.clinic}</span>
+              <span style={{color:C.hint}}>·</span>
+              <span>{fmtNZ(audit.date)}</span>
+              <span style={{color:C.hint}}>·</span>
+              <span>{audit.auditor}</span>
+              {audit.physioAudited && <>
+                <span style={{color:C.hint}}>·</span>
+                <span style={{color:C.text,fontWeight:500}}>For: {audit.physioAudited}</span>
+              </>}
+              {audit.outcome && (
+                <span style={{marginLeft:"auto",padding:"2px 10px",borderRadius:4,fontSize:11,fontWeight:600,letterSpacing:"0.3px",background:outcomeIsFail?"#FCEBEB":"#EAF3DE",color:outcomeIsFail?"#c0392b":"#0F6E56"}}>{audit.outcome}</span>
+              )}
             </div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{background:"rgba(255,255,255,0.2)",borderRadius:8,padding:"6px 14px",textAlign:"center"}}>
-              <div style={{color:"white",fontSize:18,fontWeight:700}}>{audit.outcome}</div>
-              <div style={{color:"rgba(255,255,255,0.7)",fontSize:11}}>{audit.passed}/{audit.total} passed</div>
-            </div>
-            <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15,flexShrink:0}}>✕</button>
-          </div>
+          <button onClick={onClose} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.muted,width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:13,flexShrink:0,lineHeight:1}}>✕</button>
         </div>
-        <div style={{padding:"1.25rem 1.5rem",maxHeight:"72vh",overflowY:"auto"}}>
-          {audit.failed>0&&<div style={{background:C.redL,border:`1px solid #f5a0a0`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1rem"}}>
-            <div style={{fontSize:12,fontWeight:600,color:C.red,marginBottom:4}}>⚠ {audit.failed} issue{audit.failed>1?"s":""} found</div>
-            <div style={{fontSize:12,color:C.muted}}>{audit.notes?.replace(/^Notes:.*$/m,"").trim()}</div>
-          </div>}
-          {sections.length>0?sections.map((sec,si)=>(
-            <div key={si} style={{marginBottom:"1.25rem"}}>
-              <div style={{fontSize:12,fontWeight:600,padding:"6px 10px",background:C.grayXL,borderRadius:6,marginBottom:"0.375rem",borderLeft:`3px solid ${C.teal}`}}>{sec.title}</div>
-              {sec.items.map((item,ii)=>{
-                const k=`${si}-${ii}`;const val=checks[k];const note=itemNotes[k];
-                return(
-                  <div key={ii} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"6px 0",borderBottom:`1px solid ${C.grayL}`}}>
-                    <span style={{fontSize:11,fontWeight:600,color:statusColor[val]||C.hint,minWidth:52,flexShrink:0,marginTop:1}}>{statusLabel[val]||"—"}</span>
-                    <div style={{flex:1}}>
-                      <span style={{fontSize:12,color:val==="fail"?C.text:val?C.muted:C.hint}}>{item}</span>
-                      {note&&<div style={{fontSize:11,color:C.red,marginTop:2,fontStyle:"italic"}}>↳ {note}</div>}
+
+        {/* Body */}
+        <div style={{padding:"22px 28px 24px",maxHeight:"72vh",overflowY:"auto"}}>
+          {sections.length > 0 ? sections.map((sec,si) => (
+            <div key={si} style={{marginBottom:"26px"}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"1.4px",textTransform:"uppercase",paddingBottom:8,borderBottom:`1px solid ${C.teal}`,marginBottom:4}}>{sec.title}</div>
+              {sec.items.map((item,ii) => {
+                const k = `${si}-${ii}`;
+                const val = checks[k];
+                const s = statusMark(val);
+                const note = itemNotes[k];
+                return (
+                  <div key={ii} style={{display:"flex",gap:14,padding:"11px 0",borderBottom:`1px solid ${C.grayL}`,alignItems:"flex-start"}}>
+                    <div style={{flexShrink:0,width:32,textAlign:"center",fontWeight:600,color:s.color,fontSize:s.size||"14px",paddingTop:1}}>{s.mark}</div>
+                    <div style={{flex:1,fontSize:14,color:C.text,lineHeight:1.5}}>
+                      {typeof item === "string" ? item : (item.text || item.label)}
+                      {note && <div style={{fontSize:12,color:"#c0392b",marginTop:4,lineHeight:1.5}}>{note}</div>}
                     </div>
                   </div>
                 );
               })}
             </div>
-          )):<Alert type="blue" title="Checklist not available">This audit was completed before detailed item recording was added. Only the summary is available.</Alert>}
-          {audit.notes&&<div style={{background:C.grayXL,borderRadius:8,padding:"0.875rem",marginTop:"0.5rem"}}>
-            <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Overall notes</div>
-            <div style={{fontSize:12,color:C.muted,whiteSpace:"pre-line"}}>{audit.notes.replace(/^• .*$/gm,"").replace(/Notes: /,"").trim()}</div>
-          </div>}
-          {/* Sign-off — shows actual signature image when present */}
-          <div style={{marginTop:"1rem",padding:"0.875rem",background:"#f6f8fb",border:`1px solid #e0e5ee`,borderRadius:8}}>
-            <div style={{fontSize:11,fontWeight:700,color:C.teal,textTransform:"uppercase",letterSpacing:".4px",marginBottom:6}}>Auditor signature</div>
-            {audit.signature
-              ? <>
-                  <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:6,padding:8,display:"inline-block",maxWidth:"100%"}}>
-                    <img src={audit.signature} alt="signature" style={{maxHeight:56,maxWidth:240,display:"block"}}/>
+          )) : (
+            <div style={{padding:"20px",background:C.grayXL,borderRadius:8,textAlign:"center",color:C.muted,fontSize:13}}>Checklist details not available for this record (pre-detailed-recording).</div>
+          )}
+
+          {overallNotes && (
+            <div style={{marginTop:26,paddingTop:16,borderTop:`1px solid ${C.grayL}`}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"1.4px",textTransform:"uppercase",marginBottom:8}}>Overall notes</div>
+              <div style={{fontSize:14,lineHeight:1.6,color:C.text,whiteSpace:"pre-line"}}>{overallNotes}</div>
+            </div>
+          )}
+
+          {/* Sign-off — signature line at bottom */}
+          <div style={{marginTop:28,paddingTop:20,borderTop:`1px solid ${C.grayL}`,display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:24}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"1.2px",textTransform:"uppercase",marginBottom:6}}>Signed</div>
+              {audit.signature
+                ? <>
+                    <img src={audit.signature} alt="signature" style={{maxHeight:50,maxWidth:220,display:"block"}}/>
+                    <div style={{fontSize:12,color:C.muted,marginTop:4}}>{audit.signedBy || audit.auditor}</div>
+                  </>
+                : <>
+                    <div style={{fontFamily:"'Brush Script MT', cursive",fontSize:22,color:C.text,lineHeight:1}}>{audit.auditor || "—"}</div>
+                    <div style={{fontSize:11,color:C.muted,marginTop:4,fontStyle:"italic"}}>Typed — no image on file</div>
+                  </>
+              }
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"1.2px",textTransform:"uppercase",marginBottom:6}}>Date</div>
+              <div style={{fontSize:14,color:C.text}}>{fmtNZ((audit.signedAt||audit.date||"").slice(0,10))}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AuditViewModal_2024 — "office document" era
+// ═══════════════════════════════════════════════════════════════════
+// Arial/Helvetica, plain black borders, bordered metadata + items table,
+// Result column shows text labels (no color pills), italic script
+// signature. Records dated 2024-01-01 to 2025-06-30 render in this style.
+function AuditViewModal_2024({audit,onClose}){
+  const form=AUDIT_FORMS[audit.type]||{sections:[]};
+  const sections=audit.sections||form.sections||[];
+  const checks=audit.itemChecks||{};
+  const itemNotes=audit.itemNotes||{};
+  const notesMatch = (audit.notes || "").match(/Notes:\s*([\s\S]+)$/);
+  const overallNotes = notesMatch ? notesMatch[1].trim() : "";
+  const resultLabel = (v) => v === "pass" ? "Pass" : v === "fail" ? "Fail" : v === "na" ? "N/A" : "—";
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"white",border:"1px solid #333",width:"100%",maxWidth:720,marginBottom:"2rem",overflow:"hidden",fontFamily:"Arial, Helvetica, sans-serif",color:"#1a1a1a",position:"relative"}}>
+        <button onClick={onClose} style={{position:"absolute",top:10,right:10,background:"white",border:"1px solid #333",color:"#1a1a1a",width:26,height:26,borderRadius:0,cursor:"pointer",fontSize:12,lineHeight:1,fontFamily:"inherit"}}>✕</button>
+        <div style={{padding:"22px 28px 20px",maxHeight:"80vh",overflowY:"auto"}}>
+          {/* Title */}
+          <div style={{textAlign:"center",borderBottom:"2px solid #1a1a1a",paddingBottom:10,marginBottom:14}}>
+            <div style={{fontSize:17,fontWeight:"bold",textTransform:"uppercase",letterSpacing:0.5}}>Total Body Physio</div>
+            <div style={{fontSize:13,marginTop:2}}>{form.title || audit.title || "Audit"} Report</div>
+          </div>
+
+          {/* Meta table */}
+          <table style={{width:"100%",borderCollapse:"collapse",border:"1px solid #333",marginBottom:16,fontSize:12}}>
+            <tbody>
+              <tr>
+                <td style={{padding:"6px 10px",border:"1px solid #333",background:"#e8e8e8",fontWeight:"bold",width:110}}>Clinic</td>
+                <td style={{padding:"6px 10px",border:"1px solid #333"}}>{audit.clinic || "—"}</td>
+                <td style={{padding:"6px 10px",border:"1px solid #333",background:"#e8e8e8",fontWeight:"bold",width:80}}>Date</td>
+                <td style={{padding:"6px 10px",border:"1px solid #333"}}>{fmtNZ(audit.date)}</td>
+              </tr>
+              <tr>
+                <td style={{padding:"6px 10px",border:"1px solid #333",background:"#e8e8e8",fontWeight:"bold"}}>Auditor</td>
+                <td style={{padding:"6px 10px",border:"1px solid #333"}} colSpan={3}>{audit.auditor || audit.completedByName || "—"}</td>
+              </tr>
+              {audit.physioAudited && (
+                <tr>
+                  <td style={{padding:"6px 10px",border:"1px solid #333",background:"#e8e8e8",fontWeight:"bold"}}>For</td>
+                  <td style={{padding:"6px 10px",border:"1px solid #333"}} colSpan={3}>{audit.physioAudited}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          {/* Checklist sections */}
+          {sections.length > 0 ? sections.map((sec,si) => (
+            <div key={si} style={{marginTop:18}}>
+              <div style={{fontSize:14,fontWeight:"bold",color:"#1a1a1a",marginBottom:6}}>{sec.title}</div>
+              <table style={{width:"100%",borderCollapse:"collapse",border:"1px solid #333"}}>
+                <thead>
+                  <tr style={{background:"#e8e8e8"}}>
+                    <th style={{textAlign:"left",padding:"7px 10px",border:"1px solid #333",fontSize:11,fontWeight:"bold"}}>Item</th>
+                    <th style={{textAlign:"center",padding:"7px 10px",border:"1px solid #333",fontSize:11,fontWeight:"bold",width:70}}>Result</th>
+                    <th style={{textAlign:"left",padding:"7px 10px",border:"1px solid #333",fontSize:11,fontWeight:"bold",width:200}}>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sec.items.map((item,ii) => {
+                    const k = `${si}-${ii}`;
+                    const val = checks[k];
+                    const note = itemNotes[k];
+                    const itemText = typeof item === "string" ? item : (item.text || item.label);
+                    return (
+                      <tr key={ii}>
+                        <td style={{padding:"6px 10px",border:"1px solid #333",fontSize:12,color:"#1a1a1a"}}>{itemText}</td>
+                        <td style={{padding:"6px 10px",border:"1px solid #333",fontSize:12,textAlign:"center",fontWeight:val==="fail"?"bold":"normal",color:val==="fail"?"#aa0000":"#1a1a1a"}}>{resultLabel(val)}</td>
+                        <td style={{padding:"6px 10px",border:"1px solid #333",fontSize:11,color:"#444"}}>{note || "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )) : (
+            <div style={{padding:"16px",border:"1px solid #333",textAlign:"center",fontSize:12,color:"#444",marginTop:10}}>No checklist details recorded for this audit.</div>
+          )}
+
+          {overallNotes && (
+            <div style={{marginTop:18}}>
+              <div style={{fontSize:13,fontWeight:"bold",marginBottom:5}}>Overall Notes</div>
+              <div style={{fontSize:12,lineHeight:1.5,border:"1px solid #333",padding:"8px 10px",minHeight:44,whiteSpace:"pre-line"}}>{overallNotes}</div>
+            </div>
+          )}
+
+          {/* Sign-off */}
+          <div style={{marginTop:22,display:"grid",gridTemplateColumns:"1fr 160px",gap:28,alignItems:"flex-end"}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:"bold",marginBottom:3}}>Signed:</div>
+              {audit.signature
+                ? <div style={{borderBottom:"1px solid #333",paddingBottom:3,minHeight:36,display:"flex",alignItems:"flex-end"}}>
+                    <img src={audit.signature} alt="signature" style={{maxHeight:36,maxWidth:220,display:"block"}}/>
                   </div>
-                  <div style={{fontSize:11,color:C.muted,marginTop:5,fontFamily:"monospace"}}>{audit.signedBy||audit.auditor} · signed {audit.signedAt?fmtNZ(audit.signedAt.slice(0,10)):fmtNZ(audit.date)}</div>
-                </>
-              : <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Signature not recorded — pre-signature system. Signed by: <b style={{color:C.text,fontStyle:"normal"}}>{audit.auditor||"—"}</b></div>
-            }
+                : <div style={{fontFamily:"'Lucida Handwriting','Brush Script MT',cursive",fontSize:22,color:"#1a1a1a",borderBottom:"1px solid #333",padding:"0 6px 3px"}}>{audit.auditor || audit.completedByName || "—"}</div>
+              }
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:"bold",marginBottom:3}}>Date:</div>
+              <div style={{fontSize:13,borderBottom:"1px solid #333",padding:"0 6px 3px"}}>{fmtNZ((audit.signedAt||audit.date||"").slice(0,10))}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AuditViewModal_2023 — "basic white paper" era
+// ═══════════════════════════════════════════════════════════════════
+// Plain white paper, Arial, no borders or tables. Section headings as
+// bold text, items as a simple vertical list with ✓/✗/N/A marks,
+// sign-off as two plain text lines. Records dated before 2024-01-01.
+function AuditViewModal_2023({audit,onClose}){
+  const form=AUDIT_FORMS[audit.type]||{sections:[]};
+  const sections=audit.sections||form.sections||[];
+  const checks=audit.itemChecks||{};
+  const itemNotes=audit.itemNotes||{};
+  const notesMatch = (audit.notes || "").match(/Notes:\s*([\s\S]+)$/);
+  const overallNotes = notesMatch ? notesMatch[1].trim() : "";
+  const mark = (v) => v === "pass" ? "✓" : v === "fail" ? "✗" : v === "na" ? "N/A" : "—";
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"white",width:"100%",maxWidth:640,marginBottom:"2rem",overflow:"hidden",fontFamily:"Arial, Helvetica, sans-serif",color:"#000",position:"relative",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
+        <button onClick={onClose} style={{position:"absolute",top:10,right:10,background:"white",border:"1px solid #aaa",color:"#000",width:24,height:24,cursor:"pointer",fontSize:11,lineHeight:1,fontFamily:"inherit"}}>✕</button>
+        <div style={{padding:"24px 28px",maxHeight:"80vh",overflowY:"auto"}}>
+          <div style={{fontSize:15,fontWeight:"bold",marginBottom:2}}>Total Body Physio</div>
+          <div style={{fontSize:13,marginBottom:14}}>{form.title || audit.title || "Audit"}</div>
+
+          <div style={{fontSize:12,marginBottom:14,lineHeight:1.6}}>
+            Clinic: {audit.clinic || "—"}<br/>
+            Date: {fmtNZ(audit.date)}<br/>
+            Auditor: {audit.auditor || audit.completedByName || "—"}
+            {audit.physioAudited && <><br/>For: {audit.physioAudited}</>}
+          </div>
+
+          {sections.length > 0 ? sections.map((sec,si) => (
+            <div key={si} style={{marginTop:16}}>
+              <div style={{fontSize:13,fontWeight:"bold",color:"#000",marginBottom:6}}>{sec.title}</div>
+              {sec.items.map((item,ii) => {
+                const k = `${si}-${ii}`;
+                const val = checks[k];
+                const note = itemNotes[k];
+                const itemText = typeof item === "string" ? item : (item.text || item.label);
+                return (
+                  <div key={ii} style={{display:"flex",gap:12,padding:"4px 0",fontSize:13,color:"#000",alignItems:"flex-start"}}>
+                    <div style={{flexShrink:0,width:24,textAlign:"center",fontWeight:"bold"}}>{mark(val)}</div>
+                    <div style={{flex:1,lineHeight:1.5}}>
+                      {itemText}
+                      {note && <div style={{fontSize:12,color:"#000",marginTop:2,fontStyle:"italic"}}>({note})</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )) : (
+            <div style={{fontSize:12,color:"#666",fontStyle:"italic",marginTop:14}}>No checklist details recorded.</div>
+          )}
+
+          {overallNotes && (
+            <div style={{marginTop:20}}>
+              <div style={{fontSize:13,fontWeight:"bold",color:"#000",marginBottom:4}}>Overall notes</div>
+              <div style={{fontSize:12,lineHeight:1.5,color:"#000",whiteSpace:"pre-line"}}>{overallNotes}</div>
+            </div>
+          )}
+
+          <div style={{marginTop:26}}>
+            <div style={{fontSize:12}}>
+              Signed: {audit.signature
+                ? <img src={audit.signature} alt="signature" style={{maxHeight:30,maxWidth:180,verticalAlign:"middle",marginLeft:4}}/>
+                : <span style={{fontStyle:"italic"}}>{audit.auditor || audit.completedByName || "—"}</span>
+              }
+            </div>
+            <div style={{fontSize:12,marginTop:2}}>Date: {fmtNZ((audit.signedAt||audit.date||"").slice(0,10))}</div>
           </div>
         </div>
       </div>
@@ -5447,15 +5687,22 @@ function AuditModal({type,onClose,onComplete,role,roleName}){
   if(type === "clinical_notes"){
     return <NotesAuditGridModal onClose={onClose} onComplete={onComplete} role={role} roleName={roleName}/>;
   }
+  // ── Generic fill form (H&S / hygiene / equipment) — Option A style ──
+  // Clean-clinical aesthetic matching the view. Same layout shape but
+  // each item has three tappable buttons (Pass/Fail/N/A) instead of a
+  // static symbol.
   const form=AUDIT_FORMS[type];const all=form.sections.flatMap(s=>s.items);
   const[checks,setChecks]=useState({});const[notes,setNotes]=useState({});
   const[meta,setMeta]=useState({clinic:CLINICS[0].short,auditor:roleName||"",physioAudited:"",date:new Date().toISOString().split("T")[0],time:"",duration:""});
   const[overall,setOverall]=useState("");
-  // Pass 2 — signature (from AuditSignature component; shape: { dataUrl, mode } | null)
   const[signatureObj,setSignatureObj]=useState(null);
   useEffect(()=>{ if(!_sigCacheLoaded) loadSignatures().catch(()=>{}); },[]);
-  const passed=Object.values(checks).filter(v=>v==="pass").length;const failed=Object.values(checks).filter(v=>v==="fail").length;const na=Object.values(checks).filter(v=>v==="na").length;
-  const answered=passed+failed+na;const pct=Math.round((answered/all.length)*100);
+  const passed=Object.values(checks).filter(v=>v==="pass").length;
+  const failed=Object.values(checks).filter(v=>v==="fail").length;
+  const na=Object.values(checks).filter(v=>v==="na").length;
+  const answered=passed+failed+na;
+  const pct=Math.round((answered/all.length)*100);
+
   function submit(){
     if(!meta.auditor.trim()){alert("Please enter auditor name.");return;}
     if(form.hasPhysioSelect&&!meta.physioAudited){alert("Please select the physiotherapist whose notes are being audited.");return;}
@@ -5463,67 +5710,147 @@ function AuditModal({type,onClose,onComplete,role,roleName}){
     if(answered<all.length&&!window.confirm(`${all.length-answered} items unanswered. Submit anyway?`))return;
     const fn=Object.entries(notes).filter(([,v])=>v).map(([k,v])=>`• ${k}: ${v}`).join("\n");
     const titleDisplay=form.hasPhysioSelect&&meta.physioAudited?`${form.title} — ${meta.physioAudited}`:form.title;
-    onComplete({id:Date.now(),type,title:titleDisplay,icon:form.icon,clinic:meta.clinic,auditor:meta.auditor,physioAudited:meta.physioAudited||null,date:meta.date,passed,failed,na,total:all.length,outcome:failed===0?"Passed":`${failed} issue${failed>1?"s":""} found`,notes:(fn+(overall?`\nNotes: ${overall}`:"")).trim(),signature:signatureObj.dataUrl,signedBy:meta.auditor,signedAt:new Date().toISOString()});
+    onComplete({
+      id:Date.now(), type, title:titleDisplay, icon:form.icon,
+      clinic:meta.clinic, auditor:meta.auditor,
+      physioAudited:meta.physioAudited||null,
+      date:meta.date, passed, failed, na, total:all.length,
+      outcome:failed===0?"Passed":`${failed} issue${failed>1?"s":""} found`,
+      notes:(fn+(overall?`\nNotes: ${overall}`:"")).trim(),
+      // itemChecks + itemNotes so the view modal can render each item's result
+      itemChecks:{...checks},
+      itemNotes:{...notes},
+      sections:form.sections.map(s=>({title:s.title, items:[...s.items]})),
+      signature:signatureObj.dataUrl, signedBy:meta.auditor,
+      signedAt:new Date().toISOString(),
+    });
   }
-  return(
+
+  // Three-state pass/fail/na button for an item
+  const choiceBtn = (k, val, value, label) => {
+    const colors = {
+      pass: {bg:"#EAF3DE", border:"#0F6E56", text:"#0F6E56"},
+      fail: {bg:"#FCEBEB", border:"#c0392b", text:"#c0392b"},
+      na:   {bg:"#E8E6DC", border:"#5F5E5A", text:"#5F5E5A"},
+    }[value];
+    const selected = val === value;
+    return (
+      <button key={value} onClick={()=>setChecks(p=>({...p,[k]:p[k]===value?undefined:value}))}
+        style={{
+          padding:"6px 12px", fontSize:12, fontWeight:selected?600:500,
+          border:`1.5px solid ${selected?colors.border:C.border}`, borderRadius:6,
+          background:selected?colors.bg:"white", color:selected?colors.text:C.muted,
+          cursor:"pointer", minWidth:56, fontFamily:"inherit",
+        }}>{label}</button>
+    );
+  };
+
+  return (
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:400,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:12,width:"100%",maxWidth:720,marginBottom:"2rem"}}>
-        <div style={{background:C.teal,padding:"1.25rem 1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <div><div style={{color:"white",fontSize:16,fontWeight:600}}>{form.icon} {form.title}</div><div style={{color:"rgba(255,255,255,0.75)",fontSize:11,marginTop:2}}>{form.freq}</div></div>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div style={{textAlign:"right"}}><div style={{color:"white",fontSize:20,fontWeight:700}}>{pct}%</div><div style={{color:"rgba(255,255,255,0.7)",fontSize:11}}>{answered}/{all.length}</div></div>
-            <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15}}>✕</button>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:720,marginBottom:"2rem",overflow:"hidden",boxShadow:"0 4px 24px rgba(0,0,0,0.12)"}}>
+        {/* Header */}
+        <div style={{padding:"22px 28px 16px",borderBottom:`1px solid ${C.grayL}`,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:20,fontWeight:600,letterSpacing:"-0.01em",color:C.text,lineHeight:1.25}}>{form.title}</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:4}}>{form.freq}</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:18,fontWeight:700,color:pct===100?"#0F6E56":C.text,lineHeight:1}}>{pct}%</div>
+              <div style={{fontSize:11,color:C.muted,marginTop:2}}>{answered}/{all.length}</div>
+            </div>
+            <button onClick={onClose} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.muted,width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:13,lineHeight:1}}>✕</button>
           </div>
         </div>
-        <div style={{padding:"1.25rem 1.5rem",maxHeight:"75vh",overflowY:"auto"}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.75rem",marginBottom:"0.75rem"}}>
-            {[["Clinic","clinic","select"],["Auditor name","auditor","text"],["Date","date","date"]].map(([lbl,k,t])=>(
-              <div key={k}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>{lbl}</label>
-                {t==="select"?<select value={meta[k]} onChange={e=>setMeta({...meta,[k]:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL}}>{CLINICS.map(c=><option key={c.id}>{c.short}</option>)}</select>:<input type={t} value={meta[k]} onChange={e=>setMeta({...meta,[k]:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/>}
+
+        {/* Body */}
+        <div style={{padding:"22px 28px 24px",maxHeight:"75vh",overflowY:"auto"}}>
+          {/* Metadata — clean input row */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:14}}>
+            {[
+              ["Clinic","clinic","select"],
+              ["Auditor name","auditor","text"],
+              ["Date","date","date"],
+            ].map(([lbl,k,t])=>(
+              <div key={k}>
+                <label style={{fontSize:11,fontWeight:600,color:C.muted,letterSpacing:"0.8px",textTransform:"uppercase",display:"block",marginBottom:5}}>{lbl}</label>
+                {t==="select"
+                  ? <select value={meta[k]} onChange={e=>setMeta({...meta,[k]:e.target.value})} style={{width:"100%",padding:"8px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:"white",fontFamily:"inherit"}}>
+                      {CLINICS.map(c=><option key={c.id}>{c.short}</option>)}
+                    </select>
+                  : <input type={t} value={meta[k]} onChange={e=>setMeta({...meta,[k]:e.target.value})} style={{width:"100%",padding:"8px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:"white",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                }
               </div>
             ))}
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"1.25rem"}}>
-            <div style={{minWidth:0}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Start time</label><input type="time" value={meta.time} onChange={e=>setMeta({...meta,time:e.target.value})} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
-            <div style={{minWidth:0}}><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:3}}>Duration</label><input type="text" value={meta.duration} onChange={e=>setMeta({...meta,duration:e.target.value})} placeholder="e.g. 4 mins 30 secs" style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
-          </div>
-          {form.hasPhysioSelect&&(
-            <div style={{background:"#E6F1FB",border:`1px solid #b8d4f0`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1.25rem"}}>
-              <div style={{fontSize:12,fontWeight:600,color:C.blue,marginBottom:"0.5rem"}}>📋 Whose notes are being audited?</div>
-              <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+
+          {/* Physio selector (clinical-notes-style audits) */}
+          {form.hasPhysioSelect && (
+            <div style={{marginBottom:18,padding:"12px 14px",background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:8}}>
+              <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:8}}>Whose notes are being audited?</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
                 {Object.values(STAFF).filter(s=>s.type!=="Owner").map(s=>(
-                  <div key={s.name} onClick={()=>setMeta(p=>({...p,physioAudited:s.name}))} style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${meta.physioAudited===s.name?C.blue:C.border}`,background:meta.physioAudited===s.name?C.blueL:"white",fontSize:12,cursor:"pointer",fontWeight:meta.physioAudited===s.name?600:400,color:meta.physioAudited===s.name?C.blue:C.text}}>{s.name.split(" ")[0]}</div>
+                  <button key={s.name} onClick={()=>setMeta(p=>({...p,physioAudited:s.name}))}
+                    style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${meta.physioAudited===s.name?C.teal:C.border}`,background:meta.physioAudited===s.name?"#EAF3DE":"white",fontSize:12,cursor:"pointer",fontWeight:meta.physioAudited===s.name?600:400,color:meta.physioAudited===s.name?C.teal:C.text,fontFamily:"inherit"}}>
+                    {s.name.split(" ")[0]}
+                  </button>
                 ))}
               </div>
-              {meta.physioAudited&&<div style={{fontSize:11,color:C.muted}}>Auditing 5 current + 5 past records for <strong>{meta.physioAudited}</strong> · per §1.5.1 P&P Manual</div>}
-              {!meta.physioAudited&&<div style={{fontSize:11,color:C.amber}}>⚠ Please select the physiotherapist whose notes are being audited.</div>}
+              {meta.physioAudited && <div style={{fontSize:11,color:C.muted}}>Auditing 5 current + 5 past records for <strong>{meta.physioAudited}</strong></div>}
+              {!meta.physioAudited && <div style={{fontSize:11,color:C.amber}}>Please select the physiotherapist.</div>}
             </div>
           )}
-          <div style={{display:"flex",gap:16,marginBottom:"0.875rem",fontSize:12,color:C.muted}}><span style={{fontWeight:500,color:C.text}}>Each item:</span><span style={{color:"#3B6D11",fontWeight:600}}>✓ Pass</span><span style={{color:C.red,fontWeight:600}}>✗ Fail</span><span style={{color:C.gray,fontWeight:600}}>— N/A</span></div>
-          {form.sections.map((sec,si)=>(
-            <div key={si} style={{marginBottom:"1.5rem"}}>
-              <div style={{fontSize:13,fontWeight:600,padding:"0.5rem 0.75rem",background:C.grayXL,borderRadius:6,marginBottom:"0.5rem",borderLeft:`3px solid ${C.teal}`}}>{sec.title}</div>
-              {sec.items.map((item,ii)=>{const k=`${si}-${ii}`;const val=checks[k];return(
-                <div key={ii} style={{borderBottom:`1px solid ${C.grayL}`}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0"}}>
-                    <span style={{flex:1,fontSize:13}}>{item}</span>
-                    <div style={{display:"flex",gap:4,flexShrink:0}}>
-                      {[["pass","✓","#EAF3DE","#3B6D11"],["fail","✗","#FCEBEB",C.red],["na","N/A",C.grayL,C.gray]].map(([v,lbl,bg,fg])=>(
-                        <button key={v} onClick={()=>setChecks(p=>({...p,[k]:p[k]===v?undefined:v}))} style={{fontSize:11,padding:"3px 8px",borderRadius:4,border:`1.5px solid ${val===v?fg:C.border}`,background:val===v?bg:"white",color:val===v?fg:C.muted,cursor:"pointer",fontWeight:val===v?600:400}}>{lbl}</button>
-                      ))}
+
+          {/* Checklist sections */}
+          {form.sections.map((sec,si) => (
+            <div key={si} style={{marginBottom:24}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"1.4px",textTransform:"uppercase",paddingBottom:8,borderBottom:`1px solid ${C.teal}`,marginBottom:4}}>{sec.title}</div>
+              {sec.items.map((item,ii) => {
+                const k = `${si}-${ii}`;
+                const val = checks[k];
+                return (
+                  <div key={ii} style={{padding:"10px 0",borderBottom:`1px solid ${C.grayL}`}}>
+                    <div style={{display:"flex",gap:14,alignItems:"center"}}>
+                      <div style={{flex:1,fontSize:14,color:C.text,lineHeight:1.5}}>{typeof item === "string" ? item : (item.text || item.label)}</div>
+                      <div style={{display:"flex",gap:6,flexShrink:0}}>
+                        {choiceBtn(k, val, "pass", "Pass")}
+                        {choiceBtn(k, val, "fail", "Fail")}
+                        {choiceBtn(k, val, "na", "N/A")}
+                      </div>
                     </div>
+                    {val === "fail" && (
+                      <div style={{marginTop:8,paddingLeft:0}}>
+                        <input placeholder="Issue / action required…" value={notes[k]||""} onChange={e=>setNotes(p=>({...p,[k]:e.target.value}))}
+                          style={{width:"100%",padding:"7px 10px",border:`1px solid #f5a0a0`,borderRadius:6,fontSize:13,background:"#FEF7F6",boxSizing:"border-box",fontFamily:"inherit",color:C.text}}/>
+                      </div>
+                    )}
                   </div>
-                  {val==="fail"&&<div style={{paddingBottom:8}}><input placeholder="Issue / action required…" value={notes[k]||""} onChange={e=>setNotes(p=>({...p,[k]:e.target.value}))} style={{width:"100%",padding:"5px 8px",border:`1px solid ${C.red}`,borderRadius:5,fontSize:12,background:"#FCEBEB",boxSizing:"border-box"}}/></div>}
-                </div>
-              );})}
+                );
+              })}
             </div>
           ))}
-          <div style={{background:C.grayXL,borderRadius:8,padding:"1rem",border:`1px solid ${C.border}`}}>
-            <div style={{display:"flex",gap:20,marginBottom:"0.875rem"}}><span style={{fontSize:13}}><b style={{color:"#3B6D11"}}>{passed}</b> passed</span><span style={{fontSize:13}}><b style={{color:C.red}}>{failed}</b> failed</span><span style={{fontSize:13}}><b style={{color:C.gray}}>{na}</b> N/A</span><span style={{fontSize:13,color:C.muted}}>{all.length-answered} left</span></div>
-            <Textarea label="Overall notes / actions" value={overall} onChange={e=>setOverall(e.target.value)} rows={2}/>
-            <AuditSignature staffKey={role||"staff"} staffName={meta.auditor||roleName||"Staff member"} onChange={setSignatureObj}/>
-            <div style={{marginTop:"1rem"}}>
-              <Btn onClick={submit}>Submit audit record</Btn>
+
+          {/* Overall notes + signature + submit */}
+          <div style={{marginTop:20,paddingTop:18,borderTop:`1px solid ${C.grayL}`}}>
+            <label style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"1.2px",textTransform:"uppercase",display:"block",marginBottom:6}}>Overall notes / actions</label>
+            <textarea value={overall} onChange={e=>setOverall(e.target.value)} rows={2}
+              placeholder="Any follow-up actions or additional comments…"
+              style={{width:"100%",padding:"9px 11px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:"white",boxSizing:"border-box",fontFamily:"inherit",resize:"vertical",color:C.text}}/>
+
+            <div style={{marginTop:16}}>
+              <AuditSignature staffKey={role||"staff"} staffName={meta.auditor||roleName||"Staff member"} onChange={setSignatureObj}/>
+            </div>
+
+            <div style={{marginTop:16,display:"flex",gap:20,fontSize:12,color:C.muted,paddingBottom:12,borderBottom:`1px solid ${C.grayL}`}}>
+              <span><b style={{color:"#0F6E56"}}>{passed}</b> passed</span>
+              <span><b style={{color:"#c0392b"}}>{failed}</b> failed</span>
+              <span><b style={{color:C.gray}}>{na}</b> N/A</span>
+              <span style={{color:C.muted}}>{all.length-answered} unanswered</span>
+            </div>
+
+            <div style={{marginTop:16,display:"flex",justifyContent:"flex-end",gap:10}}>
+              <button onClick={onClose} style={{padding:"10px 18px",border:`1px solid ${C.border}`,borderRadius:8,background:"white",color:C.muted,fontSize:13,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+              <button onClick={submit} style={{padding:"10px 20px",border:"none",borderRadius:8,background:C.teal,color:"white",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Submit audit record</button>
             </div>
           </div>
         </div>
