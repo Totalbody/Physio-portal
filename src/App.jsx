@@ -1481,7 +1481,11 @@ function _generateFireDrillForm(audit) {
     </div>
     <div class="signoff">
       <div class="sig-label">Contact person signature</div>
-      <div class="sig-value">${audit.auditor||ct.name||''}</div>
+      ${audit.signature
+        ? `<div style="border-bottom:1px solid #1F3A5F;padding-bottom:4px;min-width:260px;display:inline-block;"><img src="${audit.signature}" alt="signature" style="max-height:56px;max-width:300px;display:block;"/></div>
+           <div style="font-size:9pt;color:#888;margin-top:4px;font-family:'IBM Plex Mono',monospace;">${audit.signedBy||audit.auditor||ct.name||''} &middot; signed ${audit.signedAt?fmtNZ(audit.signedAt.slice(0,10)):fmtNZ(audit.date)}</div>`
+        : `<div class="sig-value">${audit.auditor||ct.name||''}</div>`
+      }
       <div class="sig-meta">${fmtNZ(audit.date)} &middot; Ref ${ref}</div>
     </div>
   </div>
@@ -3812,6 +3816,20 @@ function FireDrillViewModal({audit,onClose}){
             </>)}
           </>}
 
+          {/* Sign-off — shows actual signature image when present */}
+          <div style={{marginTop:"1.25rem",padding:"1rem",background:"#f6f8fb",border:`1px solid #e0e5ee`,borderRadius:8}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#1F3A5F",textTransform:"uppercase",letterSpacing:".4px",marginBottom:6}}>Contact person signature</div>
+            {audit.signature
+              ? <>
+                  <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:6,padding:10,display:"inline-block",maxWidth:"100%"}}>
+                    <img src={audit.signature} alt="signature" style={{maxHeight:60,maxWidth:260,display:"block"}}/>
+                  </div>
+                  <div style={{fontSize:11,color:C.muted,marginTop:5,fontFamily:"monospace"}}>{audit.signedBy||audit.auditor} · signed {audit.signedAt?fmtNZ(audit.signedAt.slice(0,10)):fmtNZ(audit.date)}</div>
+                </>
+              : <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Signature not recorded — pre-signature system. Signed by: <b style={{color:C.text,fontStyle:"normal"}}>{audit.auditor||ct.name||"—"}</b></div>
+            }
+          </div>
+
         </div>
       </div>
     </div>
@@ -4528,7 +4546,7 @@ const FENZ_QUESTIONS = [
 
 // Fire drill form — matches FENZ Evacuation Report template exactly.
 // Stored with formVersion:"v2" so AuditViewModal + PDF generator can branch.
-function FireDrillModal({onClose,onComplete}){
+function FireDrillModal({onClose,onComplete,role,roleName}){
   const today = new Date().toISOString().split("T")[0];
   // Default to first clinic that actually does fire drills
   const drillClinics = CLINICS.filter(c=>!c.noFireDrill);
@@ -4554,7 +4572,12 @@ function FireDrillModal({onClose,onComplete}){
   // Part E — Additional comments + follow-up request
   const [additionalComments, setAdditionalComments] = useState("");
   const [followUpRequested, setFollowUpRequested] = useState(false);
-  const [auditorName, setAuditorName] = useState("");
+  const [auditorName, setAuditorName] = useState(roleName || "");
+  // Pass 2 — signature (from AuditSignature component; shape: { dataUrl, mode } | null)
+  const [signatureObj, setSignatureObj] = useState(null);
+
+  // Make sure signatures are loaded when this modal opens
+  useEffect(() => { if(!_sigCacheLoaded) loadSignatures().catch(()=>{}); }, []);
 
   // When clinic changes, refresh the building name + address defaults
   function onClinicChange(newId){
@@ -4576,6 +4599,7 @@ function FireDrillModal({onClose,onComplete}){
 
   function submit(){
     if(!auditorName.trim()){ alert("Please enter the auditor / contact person name."); return; }
+    if(!signatureObj || !signatureObj.dataUrl){ alert("Please sign the form before submitting."); return; }
     if(answered < FENZ_QUESTIONS.length){
       if(!window.confirm(`${FENZ_QUESTIONS.length - answered} of 7 assessment questions unanswered. Submit anyway?`)) return;
     }
@@ -4613,6 +4637,10 @@ function FireDrillModal({onClose,onComplete}){
       total: FENZ_QUESTIONS.length,
       outcome: concerns === 0 ? "All clear" : `${concerns} issue${concerns>1?"s":""} flagged`,
       notes: notes || "Drill completed. No issues identified.",
+      // Pass 2 — signature image embedded on the record
+      signature: signatureObj.dataUrl,
+      signedBy: auditorName,
+      signedAt: new Date().toISOString(),
       // FENZ-specific payload — rendered by AuditViewModal v2 branch + PDF
       formVersion: "v2",
       fireDrillData: {
@@ -4750,7 +4778,10 @@ function FireDrillModal({onClose,onComplete}){
               {concerns > 0 && <span><b style={{color:C.red}}>{concerns}</b> concern{concerns>1?"s":""} flagged</span>}
               <span style={{color:C.muted}}>{FENZ_QUESTIONS.length - answered} unanswered</span>
             </div>
-            <Btn onClick={submit}>Submit fire drill record</Btn>
+            <AuditSignature staffKey={role||"staff"} staffName={auditorName||roleName||"Staff member"} onChange={setSignatureObj}/>
+            <div style={{marginTop:"1rem"}}>
+              <Btn onClick={submit}>Submit fire drill record</Btn>
+            </div>
           </div>
         </div>
       </div>
@@ -4758,11 +4789,393 @@ function FireDrillModal({onClose,onComplete}){
   );
 }
 
+// ═══════════════════════════════════════════════════════════════
+// SIGNATURES — reusable drawing pad + storage + audit signature block
+// ═══════════════════════════════════════════════════════════════
+// Used for both:
+//   1. Per-staff "saved signature" in ProfileModal (upload once, reuse)
+//   2. Per-audit signing at submit time (use saved OR draw fresh)
+//
+// Storage: base64 PNG data URLs mapped by staffKey in a Vercel blob
+// keyed "signatures" — kept separate from audit records so signatures
+// can be reused across multiple audits without duplication.
+// ═══════════════════════════════════════════════════════════════
+
+// ── SignaturePad — the drawing canvas with iOS fixes ──────────────
+// iOS Safari attaches React's onTouchMove as a PASSIVE listener, so
+// e.preventDefault() is silently ignored and the first drag becomes
+// a scroll. We attach touch handlers natively via addEventListener
+// with {passive:false}, which guarantees preventDefault actually
+// prevents iOS from treating the drag as a scroll gesture.
+function SignaturePad({onChange, value, height=180, color="#1a3c34"}){
+  const ref = useRef(null);
+  const [drew, setDrew] = useState(!!value);
+  const down = useRef(false);
+  const last = useRef(null);
+  const hasInk = useRef(!!value);
+  const pendingResize = useRef(false);
+  const onChangeRef = useRef(onChange);
+  useEffect(()=>{ onChangeRef.current = onChange; }, [onChange]);
+
+  // Canvas sizing + optional initial image render
+  useEffect(()=>{
+    const c = ref.current; if(!c) return;
+    const styleCtx = (ctx, dpr) => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+    };
+    const sizeCanvas = () => {
+      if(down.current){ pendingResize.current = true; return; }
+      const rect = c.getBoundingClientRect();
+      if(rect.width === 0 || rect.height === 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      const newW = Math.round(rect.width * dpr);
+      const newH = Math.round(rect.height * dpr);
+      if(c.width === newW && c.height === newH) return;
+      let snap = null;
+      if(hasInk.current && c.width && c.height){
+        snap = document.createElement("canvas");
+        snap.width = c.width; snap.height = c.height;
+        snap.getContext("2d").drawImage(c, 0, 0);
+      }
+      c.width = newW; c.height = newH;
+      const ctx = c.getContext("2d");
+      styleCtx(ctx, dpr);
+      if(snap){
+        ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+        ctx.drawImage(snap, 0, 0, snap.width, snap.height, 0, 0, c.width, c.height);
+        ctx.restore();
+        styleCtx(ctx, dpr);
+      } else if(value){
+        // Initial render of an existing signature image
+        const img = new Image();
+        img.onload = () => {
+          const ctx2 = c.getContext("2d");
+          ctx2.save();
+          ctx2.setTransform(1, 0, 0, 1, 0, 0);
+          // Fit image inside canvas while preserving aspect ratio
+          const scale = Math.min(c.width / img.width, c.height / img.height);
+          const w = img.width * scale, h = img.height * scale;
+          ctx2.drawImage(img, (c.width - w) / 2, (c.height - h) / 2, w, h);
+          ctx2.restore();
+          styleCtx(ctx2, dpr);
+        };
+        img.src = value;
+      }
+    };
+    c.__sigSize = sizeCanvas;
+    c.__sigFlushPending = () => { if(pendingResize.current){ pendingResize.current = false; sizeCanvas(); } };
+    sizeCanvas();
+    let ro = null;
+    if(typeof ResizeObserver !== "undefined"){ ro = new ResizeObserver(()=>sizeCanvas()); ro.observe(c); }
+    window.addEventListener("resize", sizeCanvas);
+    window.addEventListener("orientationchange", sizeCanvas);
+    const vv = window.visualViewport; if(vv) vv.addEventListener("resize", sizeCanvas);
+    return () => {
+      if(ro) ro.disconnect();
+      window.removeEventListener("resize", sizeCanvas);
+      window.removeEventListener("orientationchange", sizeCanvas);
+      if(vv) vv.removeEventListener("resize", sizeCanvas);
+    };
+  }, [value, color]);
+
+  // Native (non-passive) touch + mouse handlers
+  useEffect(()=>{
+    const c = ref.current; if(!c) return;
+    const pt = e => {
+      const r = c.getBoundingClientRect();
+      const t = e.touches?.[0] || e.changedTouches?.[0] || e;
+      return { x: t.clientX - r.left, y: t.clientY - r.top };
+    };
+    const go = e => {
+      e.preventDefault();
+      if(c.__sigSize) c.__sigSize();
+      down.current = true;
+      last.current = pt(e);
+    };
+    const mv = e => {
+      e.preventDefault();
+      if(!down.current) return;
+      const ctx = c.getContext("2d");
+      const p = pt(e);
+      ctx.beginPath();
+      ctx.moveTo(last.current.x, last.current.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      last.current = p;
+      if(!hasInk.current){ hasInk.current = true; setDrew(true); }
+    };
+    const up = e => {
+      if(!down.current) return;
+      if(e && e.preventDefault) e.preventDefault();
+      down.current = false;
+      if(hasInk.current && onChangeRef.current){
+        onChangeRef.current(c.toDataURL("image/png"));
+      }
+      if(c.__sigFlushPending) c.__sigFlushPending();
+    };
+    const opts = { passive: false };
+    c.addEventListener("touchstart", go, opts);
+    c.addEventListener("touchmove", mv, opts);
+    c.addEventListener("touchend", up, opts);
+    c.addEventListener("touchcancel", up, opts);
+    c.addEventListener("mousedown", go);
+    c.addEventListener("mousemove", mv);
+    c.addEventListener("mouseup", up);
+    return () => {
+      c.removeEventListener("touchstart", go, opts);
+      c.removeEventListener("touchmove", mv, opts);
+      c.removeEventListener("touchend", up, opts);
+      c.removeEventListener("touchcancel", up, opts);
+      c.removeEventListener("mousedown", go);
+      c.removeEventListener("mousemove", mv);
+      c.removeEventListener("mouseup", up);
+    };
+  }, []);
+
+  const clear = () => {
+    const c = ref.current;
+    c.getContext("2d").clearRect(0, 0, c.width, c.height);
+    hasInk.current = false;
+    setDrew(false);
+    if(onChangeRef.current) onChangeRef.current(null);
+  };
+
+  return (
+    <div style={{position:"relative"}}>
+      <canvas ref={ref} style={{width:"100%",height,border:`2px dashed ${C.border}`,borderRadius:10,background:"#f8fcf9",touchAction:"none",WebkitUserSelect:"none",userSelect:"none",cursor:"crosshair",display:"block"}}/>
+      {!drew && <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",color:C.muted,fontSize:14,pointerEvents:"none",whiteSpace:"nowrap"}}>Sign here with your finger</div>}
+      {drew && <button onClick={clear} style={{position:"absolute",top:8,right:8,background:"white",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:11,fontWeight:600,color:C.muted,cursor:"pointer"}}>Clear</button>}
+    </div>
+  );
+}
+
+// ── Signature storage ─────────────────────────────────────────────
+// signatures blob shape: { [staffKey]: "data:image/png;base64,..." }
+// Cached in-memory via _sigCache; refreshed on every loadSignatures().
+let _sigCache = null;
+let _sigCacheLoaded = false;
+
+async function loadSignatures(){
+  try {
+    const res = await fetch(PORTAL_API + "/store?key=signatures", {
+      headers: { "X-Portal-Secret": PORTAL_SECRET }
+    });
+    if(res.ok){
+      const data = await res.json();
+      _sigCache = (data && data.value) ? data.value : {};
+      _sigCacheLoaded = true;
+      return _sigCache;
+    }
+  } catch(e){ /* fall through — return empty map */ }
+  _sigCache = {};
+  _sigCacheLoaded = true;
+  return _sigCache;
+}
+
+async function saveSignature(staffKey, dataUrl){
+  if(!_sigCacheLoaded) await loadSignatures();
+  _sigCache = { ..._sigCache, [staffKey]: dataUrl };
+  const res = await fetch(PORTAL_API + "/store", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Portal-Secret": PORTAL_SECRET },
+    body: JSON.stringify({ key: "signatures", value: _sigCache })
+  });
+  if(!res.ok) throw new Error("Signature save failed: " + res.status);
+  return _sigCache;
+}
+
+async function deleteSignature(staffKey){
+  if(!_sigCacheLoaded) await loadSignatures();
+  const copy = { ..._sigCache };
+  delete copy[staffKey];
+  _sigCache = copy;
+  await fetch(PORTAL_API + "/store", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Portal-Secret": PORTAL_SECRET },
+    body: JSON.stringify({ key: "signatures", value: _sigCache })
+  });
+  return _sigCache;
+}
+
+function getSavedSignature(staffKey){
+  if(!_sigCacheLoaded || !_sigCache) return null;
+  return _sigCache[staffKey] || null;
+}
+
+// ── SignatureTab — shown inside ProfileModal for staff to set up their sig ─
+function SignatureTab({staffId, staffName}){
+  const [loading, setLoading] = useState(!_sigCacheLoaded);
+  const [saved, setSaved] = useState(getSavedSignature(staffId));
+  const [mode, setMode] = useState("current"); // "current" | "draw" | "upload"
+  const [drawing, setDrawing] = useState(null); // base64 from SignaturePad
+  const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState("");
+  const fileRef = useRef(null);
+
+  useEffect(()=>{
+    if(_sigCacheLoaded){ setSaved(getSavedSignature(staffId)); return; }
+    loadSignatures().then(()=>{ setSaved(getSavedSignature(staffId)); setLoading(false); });
+  }, [staffId]);
+
+  async function onFilePick(e){
+    const f = e.target.files?.[0];
+    if(!f) return;
+    if(!f.type.startsWith("image/")){ alert("Please upload an image file (PNG, JPG)."); return; }
+    if(f.size > 2 * 1024 * 1024){ alert("Signature image must be under 2MB."); return; }
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        try {
+          await saveSignature(staffId, ev.target.result);
+          setSaved(ev.target.result);
+          setMode("current");
+          setMsg("✓ Signature saved");
+          setTimeout(()=>setMsg(""), 2500);
+        } catch(err){ setMsg("Save failed: " + err.message); }
+        finally { setUploading(false); }
+      };
+      reader.readAsDataURL(f);
+    } catch(err){ setUploading(false); setMsg("Error: " + err.message); }
+    e.target.value = "";
+  }
+
+  async function saveDrawing(){
+    if(!drawing){ alert("Please draw your signature first."); return; }
+    setUploading(true);
+    try {
+      await saveSignature(staffId, drawing);
+      setSaved(drawing);
+      setMode("current");
+      setDrawing(null);
+      setMsg("✓ Signature saved");
+      setTimeout(()=>setMsg(""), 2500);
+    } catch(err){ setMsg("Save failed: " + err.message); }
+    finally { setUploading(false); }
+  }
+
+  async function removeSaved(){
+    if(!window.confirm("Remove your saved signature? You'll need to re-add it before signing audits.")) return;
+    try {
+      await deleteSignature(staffId);
+      setSaved(null);
+      setMsg("Signature removed");
+      setTimeout(()=>setMsg(""), 2500);
+    } catch(err){ setMsg("Remove failed: " + err.message); }
+  }
+
+  if(loading) return <div style={{padding:"2rem",textAlign:"center",color:C.muted,fontSize:13}}>Loading signature…</div>;
+
+  return (
+    <div style={{padding:"1.25rem 1.5rem"}}>
+      <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>Signature on file for {staffName}</div>
+      <div style={{fontSize:11.5,color:C.muted,marginBottom:"1rem",lineHeight:1.5}}>
+        Set a signature once — it will appear on every audit PDF you sign. You can either upload a PNG of your real signature (sign on paper, photograph/scan) or draw one below. Redo any time.
+      </div>
+
+      {saved && mode === "current" && (
+        <div style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px",marginBottom:"1rem"}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".4px",marginBottom:8}}>Current signature</div>
+          <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px",display:"flex",justifyContent:"center",minHeight:120,alignItems:"center"}}>
+            <img src={saved} alt="signature" style={{maxWidth:"100%",maxHeight:140,objectFit:"contain"}}/>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
+            <button onClick={()=>setMode("upload")} style={{padding:"7px 14px",border:`1px solid ${C.border}`,borderRadius:8,background:"white",color:C.text,fontSize:12,cursor:"pointer",fontWeight:500}}>Upload new PNG</button>
+            <button onClick={()=>setMode("draw")} style={{padding:"7px 14px",border:`1px solid ${C.border}`,borderRadius:8,background:"white",color:C.text,fontSize:12,cursor:"pointer",fontWeight:500}}>Draw new</button>
+            <button onClick={removeSaved} style={{padding:"7px 14px",border:"1px solid #f5a0a0",borderRadius:8,background:"#FCEBEB",color:C.red,fontSize:12,cursor:"pointer",fontWeight:500,marginLeft:"auto"}}>Remove</button>
+          </div>
+        </div>
+      )}
+
+      {!saved && mode === "current" && (
+        <div style={{background:"#FEFCF3",border:`1px solid #D4AF37`,borderLeft:"4px solid #D4AF37",borderRadius:"0 8px 8px 0",padding:"12px 16px",marginBottom:"1rem"}}>
+          <div style={{fontSize:12,color:"#4a3c1a",lineHeight:1.5}}>No signature on file yet. Choose one of the options below — a photographed signature on paper usually looks cleanest.</div>
+        </div>
+      )}
+
+      {mode !== "current" && (
+        <div style={{display:"flex",gap:8,marginBottom:"1rem"}}>
+          <button onClick={()=>{setMode("upload");setDrawing(null);}} style={{flex:1,padding:"10px 14px",border:`1.5px solid ${mode==="upload"?C.teal:C.border}`,borderRadius:8,background:mode==="upload"?C.tealL:"white",color:mode==="upload"?C.teal:C.text,fontSize:13,cursor:"pointer",fontWeight:600}}>📁 Upload PNG / photo</button>
+          <button onClick={()=>{setMode("draw");}} style={{flex:1,padding:"10px 14px",border:`1.5px solid ${mode==="draw"?C.teal:C.border}`,borderRadius:8,background:mode==="draw"?C.tealL:"white",color:mode==="draw"?C.teal:C.text,fontSize:13,cursor:"pointer",fontWeight:600}}>✏️ Draw with finger</button>
+          {saved && <button onClick={()=>setMode("current")} style={{padding:"10px 14px",border:`1px solid ${C.border}`,borderRadius:8,background:"white",color:C.muted,fontSize:13,cursor:"pointer"}}>Cancel</button>}
+        </div>
+      )}
+
+      {mode === "upload" && (
+        <div style={{border:`1.5px dashed ${C.border}`,borderRadius:10,padding:"1.25rem",textAlign:"center",background:C.grayXL}}>
+          <div style={{fontSize:13,color:C.text,marginBottom:6,fontWeight:500}}>Upload a photograph or scan of your signature</div>
+          <div style={{fontSize:11,color:C.muted,marginBottom:12,lineHeight:1.5}}>Sign on a blank white page, take a clear photo, crop close to the signature. PNG or JPG, under 2MB.</div>
+          <input ref={fileRef} type="file" accept="image/*" onChange={onFilePick} style={{display:"none"}}/>
+          <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{background:C.teal,color:"white",border:"none",borderRadius:8,padding:"10px 22px",fontSize:13,fontWeight:600,cursor:"pointer",opacity:uploading?0.6:1}}>{uploading?"Uploading…":"Choose file"}</button>
+        </div>
+      )}
+
+      {mode === "draw" && (
+        <div>
+          <SignaturePad onChange={setDrawing} value={null} height={200}/>
+          <div style={{display:"flex",gap:8,marginTop:10}}>
+            <button onClick={saveDrawing} disabled={!drawing || uploading} style={{background:C.teal,color:"white",border:"none",borderRadius:8,padding:"9px 18px",fontSize:13,fontWeight:600,cursor:"pointer",opacity:(!drawing||uploading)?0.5:1}}>{uploading?"Saving…":"✓ Save signature"}</button>
+            <button onClick={()=>setMode("current")} style={{padding:"9px 14px",border:`1px solid ${C.border}`,borderRadius:8,background:"white",color:C.muted,fontSize:13,cursor:"pointer"}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {msg && <div style={{marginTop:"1rem",padding:"8px 14px",background:msg.startsWith("✓")?"#EAF3DE":"#FCEBEB",borderRadius:6,fontSize:12,color:msg.startsWith("✓")?"#0F6E56":C.red,fontWeight:500}}>{msg}</div>}
+    </div>
+  );
+}
+
+// ── AuditSignature — used at submit time inside audit modals ────────
+// Gives the signer a choice: use their saved signature, or draw fresh.
+// onChange receives an object { dataUrl, mode } or null.
+function AuditSignature({ staffKey, staffName, onChange, required = true }){
+  const savedSig = getSavedSignature(staffKey);
+  const [mode, setMode] = useState(savedSig ? "saved" : "draw");
+  const [drawing, setDrawing] = useState(null);
+
+  // Emit the right signature upward based on mode
+  useEffect(() => {
+    if(mode === "saved" && savedSig){
+      onChange({ dataUrl: savedSig, mode: "saved" });
+    } else if(mode === "draw" && drawing){
+      onChange({ dataUrl: drawing, mode: "drawn" });
+    } else {
+      onChange(null);
+    }
+  }, [mode, drawing, savedSig]);
+
+  return (
+    <div style={{background:C.grayXL,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px 16px",marginTop:"1rem"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:6}}>
+        <div style={{fontSize:12,fontWeight:700,color:C.text,textTransform:"uppercase",letterSpacing:".4px"}}>Signature {required && <span style={{color:C.red,marginLeft:4}}>*</span>}</div>
+        <div style={{fontSize:11,color:C.muted}}>Signing as <b style={{color:C.text}}>{staffName}</b></div>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:10}}>
+        <button onClick={()=>setMode("saved")} disabled={!savedSig} style={{flex:1,padding:"8px 12px",border:`1.5px solid ${mode==="saved"?C.teal:C.border}`,borderRadius:8,background:mode==="saved"?C.tealL:"white",color:!savedSig?C.hint:mode==="saved"?C.teal:C.text,fontSize:12,cursor:savedSig?"pointer":"not-allowed",fontWeight:600,opacity:savedSig?1:0.6}}>✓ Use saved signature</button>
+        <button onClick={()=>setMode("draw")} style={{flex:1,padding:"8px 12px",border:`1.5px solid ${mode==="draw"?C.teal:C.border}`,borderRadius:8,background:mode==="draw"?C.tealL:"white",color:mode==="draw"?C.teal:C.text,fontSize:12,cursor:"pointer",fontWeight:600}}>✏️ Draw fresh</button>
+      </div>
+      {mode === "saved" && savedSig && (
+        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:6,padding:8,textAlign:"center"}}>
+          <img src={savedSig} alt="your signature" style={{maxHeight:80,maxWidth:"100%",objectFit:"contain"}}/>
+        </div>
+      )}
+      {mode === "saved" && !savedSig && (
+        <div style={{fontSize:12,color:C.muted,padding:"12px 4px",fontStyle:"italic"}}>No signature on file. Add one via your profile → Signature tab, or draw below.</div>
+      )}
+      {mode === "draw" && (
+        <SignaturePad onChange={setDrawing} value={null} height={140}/>
+      )}
+    </div>
+  );
+}
+
 // audit modal
-function AuditModal({type,onClose,onComplete}){
+function AuditModal({type,onClose,onComplete,role,roleName}){
   // ── Fire drill uses a dedicated FENZ-style form ──────────────────
   if(type === "fire_drill"){
-    return <FireDrillModal onClose={onClose} onComplete={onComplete}/>;
+    return <FireDrillModal onClose={onClose} onComplete={onComplete} role={role} roleName={roleName}/>;
   }
   // ── Peer review uses a dedicated PBNZ-style narrative form ────────
   if(type === "peer_review"){
@@ -5139,7 +5552,7 @@ function ProfileModal({id,onClose,role,onStaffSave,staffOverrides}){
             <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:32,height:32,borderRadius:"50%",cursor:"pointer",fontSize:18,flexShrink:0}}>✕</button>
           </div>
           <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,background:C.grayXL,overflowX:"auto"}}>
-            {[["certs","📋 Compliance"],["empinfo","📝 Employee Info"],["profile","👤 Profile"],["orientation","✓ Orientation"]].map(([t,l])=>(
+            {[["certs","📋 Compliance"],["empinfo","📝 Employee Info"],["profile","👤 Profile"],["signature","✍️ Signature"],["orientation","✓ Orientation"]].map(([t,l])=>(
               <div key={t} onClick={()=>setTab(t)} style={{padding:"9px 14px",fontSize:12,color:tab===t?C.teal:C.muted,cursor:"pointer",borderBottom:tab===t?`2px solid ${C.teal}`:"2px solid transparent",fontWeight:tab===t?500:400,whiteSpace:"nowrap"}}>{l}</div>
             ))}
           </div>
@@ -5162,6 +5575,7 @@ function ProfileModal({id,onClose,role,onStaffSave,staffOverrides}){
                 {s.info&&<>{<SL>Details</SL>}{s.info.map(([l,v])=><div key={l} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}><span style={{color:C.muted}}>{l}</span><span style={{fontWeight:500,textAlign:"right",maxWidth:"60%"}}>{v}</span></div>)}</>}
               </div>
             )}
+            {tab==="signature"&&<SignatureTab staffId={id} staffName={s.name}/>}
             {tab==="orientation"&&(
               <div>
                 {(()=>{const oriData=loadGen(`ori_${id}`)||{};const isDone=!!oriData.done;const doneDate=oriData.doneDate||"";
@@ -6978,7 +7392,7 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
 
       <ProfileModal id={profile} onClose={()=>{setProfile(null);fu(n=>n+1);}} role={role} onStaffSave={(id,saved)=>setStaffOverrides(p=>({...p,[id]:saved}))} staffOverrides={staffOverrides}/>
       {viewAudit&&<AuditViewModal audit={viewAudit} onClose={()=>setViewAudit(null)}/>}
-      {activeAudit&&<AuditModal type={activeAudit} onClose={()=>setActiveAudit(null)} onComplete={r=>{setAudits(p=>{const updated=[...p,r];saveGen("audits",updated);return updated;});setActiveAudit(null);setPage("management");setMgmtTab("audits");}}/>}
+      {activeAudit&&<AuditModal type={activeAudit} role={role} roleName={roleNames[role]||"Staff member"} onClose={()=>setActiveAudit(null)} onComplete={r=>{setAudits(p=>{const updated=[...p,r];saveGen("audits",updated);return updated;});setActiveAudit(null);setPage("management");setMgmtTab("audits");}}/>}
       {eavf&&<FileViewer file={eavf} onClose={()=>setEavf(null)}/>}
       {vf&&<FileViewer file={vf} onClose={()=>setVf(null)}/>}
     </div>
