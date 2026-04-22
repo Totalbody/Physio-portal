@@ -5404,6 +5404,7 @@ function SignatureTab({staffId, staffName, role}){
   // viewer is owner and this is the owner's own profile (jade).
   const isOwnProfile = role === staffId || (role === "owner" && staffId === "jade");
   const [retrofillMode, setRetrofillMode] = useState("idle");  // idle | scanning | preview | saving | done
+  const [retrofillKind, setRetrofillKind] = useState("safe");  // 'safe' = only unsigned records; 'force' = overwrite all, including placeholder/typed sigs
   const [retrofillCandidates, setRetrofillCandidates] = useState([]);
   const [retrofillMsg, setRetrofillMsg] = useState("");
 
@@ -5551,47 +5552,90 @@ function SignatureTab({staffId, staffName, role}){
         <div style={{marginTop:"1.5rem",paddingTop:"1.25rem",borderTop:`1px solid ${C.border}`}}>
           <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:4}}>Retrofill signature on past audits</div>
           <div style={{fontSize:11,color:C.muted,lineHeight:1.5,marginBottom:12}}>
-            Finds all audit records you completed (any year) that don't yet have a signature image attached, and applies your saved signature to them. The signed date will match the original audit date, so it looks the same as if you'd signed at the time. Records with a signature already on them are skipped.
+            <b style={{color:C.teal}}>Scan for audits to retrofill</b> — finds records you completed that have <u>no signature at all</u> and adds your saved signature. Safe, non-destructive.<br/>
+            <b style={{color:C.red}}>Force regenerate</b> — overwrites any existing signature (including placeholder or typed values) on your audits with your current saved signature image. Use this if some old audits are showing a wrong / mock / typed signature. Only touches records where you were the auditor — never affects other people's records.
           </div>
 
           {retrofillMode === "idle" && (
-            <button
-              onClick={async () => {
-                setRetrofillMode("scanning");
-                setRetrofillMsg("Loading audits…");
-                try {
-                  const audits = loadGen("audits") || [];
-                  // Match criteria: any year, no existing signature, and this staff member was the auditor
-                  const nameRe = new RegExp(`^\\s*(${staffName}|${staffName.split(" ")[0]}|${staffId})\\s*$`, "i");
-                  const candidates = audits.filter(a => {
-                    if(!a || !a.date) return false;
-                    if(a.signature) return false; // don't overwrite existing sigs
-                    // Special case for peer review: only retrofill if this user was the reviewer
-                    if(a.type === "peer_review" && a.peerReviewData){
-                      const rev = a.peerReviewData.reviewer || "";
-                      return nameRe.test(rev) || a.completedBy === staffId;
+            <>
+              <button
+                onClick={async () => {
+                  setRetrofillKind("safe");
+                  setRetrofillMode("scanning");
+                  setRetrofillMsg("Loading audits…");
+                  try {
+                    const audits = loadGen("audits") || [];
+                    // SAFE mode: skip records that already have a signature field set (any value)
+                    const nameRe = new RegExp(`^\\s*(${staffName}|${staffName.split(" ")[0]}|${staffId})\\s*$`, "i");
+                    const candidates = audits.filter(a => {
+                      if(!a || !a.date) return false;
+                      if(a.signature) return false; // safe: don't touch existing values
+                      if(a.type === "peer_review" && a.peerReviewData){
+                        const rev = a.peerReviewData.reviewer || "";
+                        return nameRe.test(rev) || a.completedBy === staffId;
+                      }
+                      const auditor = a.auditor || "";
+                      const sb = a.signedBy || "";
+                      const cb = a.completedBy || "";
+                      return nameRe.test(auditor) || nameRe.test(sb) || cb === staffId;
+                    });
+                    setRetrofillCandidates(candidates);
+                    if(candidates.length === 0){
+                      setRetrofillMode("idle");
+                      setRetrofillMsg(`✓ No unsigned audits found. All your records already have signatures. (If some look wrong, try "Force regenerate" below.)`);
+                    } else {
+                      setRetrofillMode("preview");
+                      setRetrofillMsg("");
                     }
-                    // Generic: match on auditor name, signedBy name, or completedBy role
-                    const auditor = a.auditor || "";
-                    const sb = a.signedBy || "";
-                    const cb = a.completedBy || "";
-                    return nameRe.test(auditor) || nameRe.test(sb) || cb === staffId;
-                  });
-                  setRetrofillCandidates(candidates);
-                  if(candidates.length === 0){
+                  } catch(e){
                     setRetrofillMode("idle");
-                    setRetrofillMsg(`✓ No unsigned audits found. All your records already have signatures.`);
-                  } else {
-                    setRetrofillMode("preview");
-                    setRetrofillMsg("");
+                    setRetrofillMsg(`❌ Couldn't load audits: ${e.message}`);
                   }
-                } catch(e){
-                  setRetrofillMode("idle");
-                  setRetrofillMsg(`❌ Couldn't load audits: ${e.message}`);
-                }
-              }}
-              style={{background:"white",border:`1.5px solid ${C.teal}`,color:C.teal,borderRadius:8,padding:"9px 18px",fontSize:12,fontWeight:600,cursor:"pointer"}}
-            >🔍 Scan for audits to retrofill</button>
+                }}
+                style={{background:"white",border:`1.5px solid ${C.teal}`,color:C.teal,borderRadius:8,padding:"9px 18px",fontSize:12,fontWeight:600,cursor:"pointer",marginRight:8}}
+              >🔍 Scan for audits to retrofill</button>
+
+              <button
+                onClick={async () => {
+                  if(!window.confirm(
+                    `Force regenerate: this will OVERWRITE any existing signatures (including placeholder or typed values) on all your audit records with your real signature image.\n\n` +
+                    `Only use this if some audits show the wrong signature (e.g. a mock "typed" value). Real signatures from other people WILL NOT be touched — matching is strict on auditor name.\n\n` +
+                    `Continue?`
+                  )) return;
+                  setRetrofillKind("force");
+                  setRetrofillMode("scanning");
+                  setRetrofillMsg("Scanning all your records…");
+                  try {
+                    const audits = loadGen("audits") || [];
+                    // FORCE mode: include records regardless of existing signature value
+                    const nameRe = new RegExp(`^\\s*(${staffName}|${staffName.split(" ")[0]}|${staffId})\\s*$`, "i");
+                    const candidates = audits.filter(a => {
+                      if(!a || !a.date) return false;
+                      if(a.type === "peer_review" && a.peerReviewData){
+                        const rev = a.peerReviewData.reviewer || "";
+                        return nameRe.test(rev) || a.completedBy === staffId;
+                      }
+                      const auditor = a.auditor || "";
+                      const sb = a.signedBy || "";
+                      const cb = a.completedBy || "";
+                      return nameRe.test(auditor) || nameRe.test(sb) || cb === staffId;
+                    });
+                    setRetrofillCandidates(candidates);
+                    if(candidates.length === 0){
+                      setRetrofillMode("idle");
+                      setRetrofillMsg(`No records found where you were the auditor.`);
+                    } else {
+                      setRetrofillMode("preview");
+                      setRetrofillMsg("");
+                    }
+                  } catch(e){
+                    setRetrofillMode("idle");
+                    setRetrofillMsg(`❌ Couldn't load audits: ${e.message}`);
+                  }
+                }}
+                style={{background:"white",border:`1.5px solid ${C.red}`,color:C.red,borderRadius:8,padding:"9px 18px",fontSize:12,fontWeight:600,cursor:"pointer"}}
+              >⚠ Force regenerate all my sigs</button>
+            </>
           )}
 
           {retrofillMode === "scanning" && (
@@ -5600,14 +5644,28 @@ function SignatureTab({staffId, staffName, role}){
 
           {retrofillMode === "preview" && (
             <div>
-              <div style={{background:"#F5F0FB",border:`1px solid #c7b8e0`,borderLeft:`4px solid #6B46C1`,borderRadius:"0 6px 6px 0",padding:"10px 14px",marginBottom:12}}>
-                <div style={{fontSize:12,fontWeight:700,color:"#6B46C1",marginBottom:3}}>Found {retrofillCandidates.length} record{retrofillCandidates.length===1?"":"s"} to retrofill</div>
-                <div style={{fontSize:11,color:C.text,lineHeight:1.5}}>Review the list below. Clicking "Apply" will add your saved signature image to all of these records with signedAt = the audit's original date.</div>
-              </div>
+              {retrofillKind === "force" ? (
+                <div style={{background:"#FCEBEB",border:`1px solid #f5a0a0`,borderLeft:`4px solid ${C.red}`,borderRadius:"0 6px 6px 0",padding:"10px 14px",marginBottom:12}}>
+                  <div style={{fontSize:12,fontWeight:700,color:C.red,marginBottom:3}}>⚠ Force regenerate — {retrofillCandidates.length} record{retrofillCandidates.length===1?"":"s"}</div>
+                  <div style={{fontSize:11,color:C.text,lineHeight:1.5}}>Existing signatures on these records will be <b>overwritten</b> with your current saved signature. signedAt will be reset to each audit's original date. This cannot be undone.</div>
+                </div>
+              ) : (
+                <div style={{background:"#F5F0FB",border:`1px solid #c7b8e0`,borderLeft:`4px solid #6B46C1`,borderRadius:"0 6px 6px 0",padding:"10px 14px",marginBottom:12}}>
+                  <div style={{fontSize:12,fontWeight:700,color:"#6B46C1",marginBottom:3}}>Found {retrofillCandidates.length} record{retrofillCandidates.length===1?"":"s"} to retrofill</div>
+                  <div style={{fontSize:11,color:C.text,lineHeight:1.5}}>Review the list below. Clicking "Apply" will add your saved signature image to all of these records with signedAt = the audit's original date.</div>
+                </div>
+              )}
 
               <div style={{maxHeight:200,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:6,marginBottom:12}}>
                 {retrofillCandidates.map((a,i) => {
                   const def = AUDIT_FORMS[a.type] || {icon:"📋", title:a.type};
+                  // Show what the current signature looks like so force mode users can see what's being overwritten
+                  const currentSig = a.signature || null;
+                  const sigPreview = !currentSig
+                    ? <span style={{color:C.muted,fontStyle:"italic",fontSize:10}}>no sig</span>
+                    : currentSig.startsWith("data:image")
+                      ? <img src={currentSig} alt="" style={{maxHeight:20,maxWidth:80,display:"block"}}/>
+                      : <span style={{color:C.red,fontStyle:"italic",fontSize:10}}>placeholder: "{currentSig.slice(0,20)}"</span>;
                   return (
                     <div key={a.id || i} style={{padding:"7px 12px",borderBottom:i<retrofillCandidates.length-1?`1px solid ${C.border}`:"none",display:"flex",alignItems:"center",gap:10,fontSize:11}}>
                       <span style={{fontSize:14}}>{def.icon}</span>
@@ -5615,6 +5673,7 @@ function SignatureTab({staffId, staffName, role}){
                         <div style={{fontWeight:600,color:C.text,fontSize:12}}>{a.title || def.title}{a.clinic?` — ${a.clinic}`:""}</div>
                         <div style={{color:C.muted,fontSize:10,marginTop:1}}>{a.date} · {a.auditor || a.completedByName || "—"}</div>
                       </div>
+                      {retrofillKind === "force" && <div style={{flexShrink:0,width:90,textAlign:"right"}}>{sigPreview}</div>}
                     </div>
                   );
                 })}
@@ -5632,9 +5691,9 @@ function SignatureTab({staffId, staffName, role}){
                         if(!candidateIds.has(a.id)) return a;
                         return {
                           ...a,
-                          signature: saved,
-                          signedBy: a.signedBy || a.auditor || staffName,
-                          signedAt: a.date + "T12:00:00.000Z",  // audit-date-based, noon UTC
+                          signature: saved,                                     // always overwrite — force or fresh
+                          signedBy: staffName,                                  // always set to current staff name (force fixes wrong names too)
+                          signedAt: a.date + "T12:00:00.000Z",
                         };
                       });
                       const result = await saveGenImmediate("audits", updated);
@@ -5650,10 +5709,10 @@ function SignatureTab({staffId, staffName, role}){
                       setRetrofillMsg(`❌ Retrofill failed: ${e.message}`);
                     }
                   }}
-                  style={{background:"#6B46C1",color:"white",border:"none",borderRadius:8,padding:"9px 18px",fontSize:12,fontWeight:600,cursor:"pointer"}}
-                >✓ Apply signature to all {retrofillCandidates.length}</button>
+                  style={{background:retrofillKind==="force"?C.red:"#6B46C1",color:"white",border:"none",borderRadius:8,padding:"9px 18px",fontSize:12,fontWeight:600,cursor:"pointer"}}
+                >{retrofillKind==="force" ? "⚠ Overwrite" : "✓ Apply"} signature on all {retrofillCandidates.length}</button>
                 <button
-                  onClick={() => { setRetrofillMode("idle"); setRetrofillCandidates([]); setRetrofillMsg(""); }}
+                  onClick={() => { setRetrofillMode("idle"); setRetrofillCandidates([]); setRetrofillMsg(""); setRetrofillKind("safe"); }}
                   style={{padding:"9px 14px",border:`1px solid ${C.border}`,borderRadius:8,background:"white",color:C.muted,fontSize:12,cursor:"pointer"}}
                 >Cancel</button>
               </div>
@@ -5666,7 +5725,7 @@ function SignatureTab({staffId, staffName, role}){
 
           {retrofillMode === "done" && (
             <button
-              onClick={() => { setRetrofillMode("idle"); setRetrofillCandidates([]); setRetrofillMsg(""); }}
+              onClick={() => { setRetrofillMode("idle"); setRetrofillCandidates([]); setRetrofillMsg(""); setRetrofillKind("safe"); }}
               style={{padding:"7px 14px",border:`1px solid ${C.border}`,borderRadius:8,background:"white",color:C.muted,fontSize:12,cursor:"pointer"}}
             >Close</button>
           )}
