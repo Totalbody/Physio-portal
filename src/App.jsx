@@ -221,12 +221,12 @@ const LEGISLATION = [
 ];
 
 const CLINICS = [
-  {id:"pakuranga",name:"Pakuranga — Lloyd Elsmore",short:"Pakuranga",icon:"🏊",note:"Lloyd Elsmore Leisure Centre · Since 2002 · Pool & gym access"},
-  {id:"flatbush", name:"Flat Bush",               short:"Flat Bush", icon:"🏥",note:"Flat Bush clinic"},
-  {id:"titirangi",name:"Titirangi Village",        short:"Titirangi", icon:"🌿",note:"Below Titirangi Medical Centre · Since 2004 · On-site gym"},
-  {id:"panmure",  name:"Panmure — Lagoon Pools",   short:"Panmure",  icon:"🏊",note:"Inside Lagoon Pools complex · Hydrotherapy access"},
-  {id:"howick_school",    name:"Howick School",    short:"Howick School",    icon:"🏫",isSchool:true,note:"School term only · Hakinakina Hauora Health Services"},
-  {id:"edgewater_school", name:"Edgewater School", short:"Edgewater School", icon:"🏫",isSchool:true,note:"School term only · Hakinakina Hauora Health Services"},
+  {id:"pakuranga",name:"Pakuranga — Lloyd Elsmore",short:"Pakuranga",icon:"🏊",address:"1 Sir Lloyd Drive, Pakuranga, Auckland",note:"Lloyd Elsmore Leisure Centre · Since 2002 · Pool & gym access"},
+  {id:"flatbush", name:"Flat Bush",               short:"Flat Bush", icon:"🏥",address:"14 Fusion Road, Flat Bush, Auckland",note:"Flat Bush clinic"},
+  {id:"titirangi",name:"Titirangi Village",        short:"Titirangi", icon:"🌿",address:"2 Rangiwai Road, Titirangi, Auckland 0604",note:"Below Titirangi Medical Centre · Since 2004 · On-site gym"},
+  {id:"panmure",  name:"Panmure — Lagoon Pools",   short:"Panmure",  icon:"🏊",address:"29 Lagoon Drive, Panmure, Auckland 1072",note:"Inside Lagoon Pools complex · Hydrotherapy access"},
+  {id:"howick_school",    name:"Howick School",    short:"Howick School",    icon:"🏫",isSchool:true,noFireDrill:true,note:"School term only · Hakinakina Hauora Health Services · School runs own fire drills"},
+  {id:"edgewater_school", name:"Edgewater School", short:"Edgewater School", icon:"🏫",isSchool:true,noFireDrill:true,note:"School term only · Hakinakina Hauora Health Services · School runs own fire drills"},
 ];
 
 const STAFF = {
@@ -292,11 +292,14 @@ const AUDIT_FORMS = {
     {title:"PPE & infection control",items:["PPE supplies stocked (gloves, masks)","Clinical waste disposed of correctly","No expired single-use items in clinical areas"]},
   ]},
   clinical_notes:{title:"Clinical Notes Audit",icon:"📋",freq:"Every 6 months",hasPhysioSelect:true,sections:[
-    {title:"Documentation standards (10 records — 5 current, 5 past)",items:["Notes completed within 24hrs of treatment","SOATAP format used consistently","Legible and professional language throughout","No blank fields in required sections","ACC45 number present on all records"]},
-    {title:"Consent & patient information",items:["Informed verbal consent documented at first visit","'Informed Verbal Consent Obtained' ticked on initial assessment","Patient details accurate and up to date","Privacy statement signed","ACC claim details correct","If PhysioNote AI used in session — client consent documented in notes"]},
-    {title:"Treatment planning",items:["Initial assessment findings fully documented","Clinical diagnosis recorded","Treatment plan with functional goals documented","SMART goals set with patient","Baseline outcome measures recorded"]},
-    {title:"Progress & outcomes",items:["Progress notes reflect treatment plan","Numerical pain rating scale recorded every visit","Patient Specific Functional Scale recorded","Any change in condition noted and plan updated","Referrals documented where made"]},
-    {title:"ACC compliance",items:["Discharge summary completed per ACC guidelines","Discharge letter sent to GP where referred","ACC forms completed accurately — correct read codes and injury details","Treatment codes correct per ACC Allied Health schedule","Submit Kit used for all claims","Prior approval obtained where required (vocational, pain specialist, social rehab)"]},
+    {title:"Notes can be clearly understood",items:["Logical, intelligible and sequential","Patient is identified on each page"]},
+    {title:"Consent",items:["Evidence that assessment and treatment has been explained and accepted by the patient","Further consent with significant change in treatment"]},
+    {title:"Assessment",items:["Patient history","Subjective examination","Objective examination","Related test findings","Analysis / conclusion"]},
+    {title:"Goals of treatment",items:["Identified","Measurable","Time bound"]},
+    {title:"Treatment plan",items:["Record of initial treatment plan"]},
+    {title:"Changes in plan",items:["Recorded"]},
+    {title:"Notation of each treatment given",items:["Treatment given recorded"]},
+    {title:"Evidence of review",items:["Entry of review each time a patient attends for treatment"]},
   ]},
   hs_audit:{title:"H&S Workplace Audit",icon:"⚠️",freq:"Quarterly",sections:[
     {title:"Fire safety",items:["Fire exits clear and unobstructed","Fire exit signage visible and in good condition","Fire extinguisher present, tagged and in date","Evacuation plan posted in visible location","All staff aware of evacuation procedure and meeting point","Date of last fire drill recorded — within 12 months"]},
