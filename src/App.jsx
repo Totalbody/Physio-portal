@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, Fragment } from "react";
 
 const PORTAL_API = "https://tbp-cliniko-proxy-j6f9.vercel.app/api/portal";
 const PORTAL_SECRET = "LSLYXuABMuqYUAJ7BeF4oHhnKh0xvBlogog99ipQ";
@@ -291,7 +291,7 @@ const AUDIT_FORMS = {
     {title:"Common areas",items:["Waiting room chairs and surfaces clean","Reception desk clean and tidy","Kitchen/staff room clean","Staff toilets clean and stocked"]},
     {title:"PPE & infection control",items:["PPE supplies stocked (gloves, masks)","Clinical waste disposed of correctly","No expired single-use items in clinical areas"]},
   ]},
-  clinical_notes:{title:"Clinical Notes Audit",icon:"📋",freq:"Every 6 months",hasPhysioSelect:true,sections:[
+  clinical_notes:{title:"Clinical Notes Audit",icon:"📋",freq:"Every 6 months",hasPhysioSelect:true,useV2Grid:true,sections:[
     {title:"Notes can be clearly understood",items:["Logical, intelligible and sequential","Patient is identified on each page"]},
     {title:"Consent",items:["Evidence that assessment and treatment has been explained and accepted by the patient","Further consent with significant change in treatment"]},
     {title:"Assessment",items:["Patient history","Subjective examination","Objective examination","Related test findings","Analysis / conclusion"]},
@@ -1495,6 +1495,185 @@ function _generateFireDrillForm(audit) {
 </body></html>`;
 }
 
+// ── NZP-style clinical notes audit PDF for v2 grid records ──────
+// Matches the 15-criterion × 10-record grid template with per-row
+// totals and %Complies column, plus a "To work on" block at the
+// bottom. Green TBP branding.
+function _generateNotesAuditForm(audit) {
+  const nd = audit.notesAuditData || {};
+  const grid = nd.grid || {};
+  const ref = `CN-${audit.id}`;
+  const dateFormatted = fmtNZLong(audit.date);
+
+  // Build the 16 criteria grouped by section
+  const criteria = [
+    { section:"Notes can be clearly understood",       text:"Logical, intelligible and sequential" },
+    { section:"Notes can be clearly understood",       text:"Patient is identified on each page" },
+    { section:"Consent",                                text:"Evidence that assessment and treatment has been explained and accepted by the patient" },
+    { section:"Consent",                                text:"Further consent with significant change in treatment" },
+    { section:"Assessment",                             text:"Patient history" },
+    { section:"Assessment",                             text:"Subjective examination" },
+    { section:"Assessment",                             text:"Objective examination" },
+    { section:"Assessment",                             text:"Related test findings" },
+    { section:"Assessment",                             text:"Analysis / conclusion" },
+    { section:"Goals of treatment",                     text:"Identified" },
+    { section:"Goals of treatment",                     text:"Measurable" },
+    { section:"Goals of treatment",                     text:"Time bound" },
+    { section:"Treatment plan",                         text:"Record of initial treatment plan" },
+    { section:"Changes in plan",                        text:"Recorded" },
+    { section:"Notation of each treatment given",       text:"Treatment given recorded" },
+    { section:"Evidence of review",                     text:"Entry of review each time a patient attends for treatment" },
+  ];
+
+  function rowStats(row){
+    let currentPass=0, currentDone=0, pastPass=0, pastDone=0;
+    for(let col=0; col<10; col++){
+      const v = grid[`${row}-${col}`];
+      const isCurrent = col < 5;
+      if(v === "pass"){ if(isCurrent) currentPass++; else pastPass++; }
+      if(v === "pass" || v === "fail"){ if(isCurrent) currentDone++; else pastDone++; }
+    }
+    const denom = currentDone + pastDone;
+    const numer = currentPass + pastPass;
+    return { currentPass, pastPass, pct: denom === 0 ? null : Math.round((numer / denom) * 100) };
+  }
+
+  const cellMark = (v) => {
+    if(v === "pass") return `<span style="color:#1a6e1a;font-weight:700;font-size:12pt;">✓</span>`;
+    if(v === "fail") return `<span style="color:#c0392b;font-weight:700;font-size:12pt;">✗</span>`;
+    if(v === "na")   return `<span style="color:#888;font-size:8.5pt;font-weight:600;">N/A</span>`;
+    return `<span style="color:#ddd;">·</span>`;
+  };
+
+  // Render rows grouped by section
+  let tbodyRows = "";
+  let lastSection = null;
+  criteria.forEach((c, row) => {
+    if(c.section !== lastSection){
+      tbodyRows += `<tr><td colspan="13" style="background:#eef5f1;color:#1a3c34;font-weight:700;font-size:9.5pt;padding:6px 10px;text-transform:uppercase;letter-spacing:.5px;">${c.section}</td></tr>`;
+      lastSection = c.section;
+    }
+    const s = rowStats(row);
+    const pctText = s.pct === null ? "—" : `${s.pct}%`;
+    const pctBg = s.pct === null ? "#f5f5f0" : s.pct === 100 ? "#EAF3DE" : s.pct >= 80 ? "#FAEEDA" : "#FCEBEB";
+    const pctColor = s.pct === null ? "#888" : s.pct === 100 ? "#0F6E56" : s.pct >= 80 ? "#BA7517" : "#c0392b";
+    let cells = "";
+    for(let col=0; col<10; col++){
+      const v = grid[`${row}-${col}`] || "";
+      const borderLeft = col === 5 ? "border-left:2px solid #a8c4b6;" : "border-left:1px solid #d6e8e0;";
+      cells += `<td style="padding:5px 2px;text-align:center;${borderLeft}width:7%;">${cellMark(v)}</td>`;
+    }
+    tbodyRows += `<tr>
+      <td style="padding:7px 10px;font-size:10pt;color:#1a2a24;border:1px solid #c8ddd5;">${c.text}</td>
+      ${cells}
+      <td style="padding:5px 6px;text-align:center;font-weight:700;font-size:10pt;color:${pctColor};background:${pctBg};border-left:2px solid #c8ddd5;">${pctText}</td>
+    </tr>`;
+  });
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Clinical Notes Audit — ${audit.physioAudited||''} — ${fmtNZ(audit.date)}</title>
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:10.5pt;color:#1a2a24;background:#fff;line-height:1.5;}
+  .page{padding:28px 36px;}
+  .header{background:linear-gradient(145deg,#1a3c34 0%,#2a5c4e 100%);color:white;padding:22px 28px;margin:-28px -36px 18px;display:flex;align-items:center;justify-content:space-between;}
+  .header .brand{display:flex;align-items:center;gap:14px;}
+  .header .logo{width:48px;height:48px;border-radius:10px;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14pt;}
+  .header h1{margin:4px 0 0;font-size:18pt;font-weight:700;letter-spacing:-0.01em;}
+  .header .sub{font-size:9.5pt;opacity:0.8;letter-spacing:0.4pt;text-transform:uppercase;margin-top:2px;}
+  .header .ref{text-align:right;font-size:9pt;opacity:0.85;line-height:1.7;}
+  .tag{font-size:11pt;opacity:0.85;margin-top:4px;font-style:italic;}
+  .meta{background:#eef5f1;padding:14px 20px;border-bottom:1px solid #c8ddd5;margin:0 -36px 14px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px 22px;}
+  .meta-field .label{font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#2a5c4e;}
+  .meta-field .value{font-size:10.5pt;color:#1a2a24;border-bottom:1px solid #c8ddd5;padding:2px 0;}
+  .key-strip{padding:8px 0;font-size:10pt;color:#3d5a50;display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:6px;}
+  .key-strip strong{color:#1a3c34;text-transform:uppercase;letter-spacing:.5px;font-size:9pt;}
+  .key-strip .k{background:#eef5f1;padding:2px 9px;border-radius:12px;}
+  table.grid{width:100%;border-collapse:collapse;font-size:10pt;table-layout:fixed;}
+  table.grid th{background:#1a3c34;color:#fff;padding:6px 4px;font-weight:600;font-size:9.5pt;border:1px solid #0f2b24;text-align:center;}
+  table.grid th.crit-col{text-align:left;padding-left:10px;width:38%;}
+  table.grid th.group-head{background:#2a5c4e;font-size:9pt;letter-spacing:.3px;}
+  table.grid th.pct{background:#7ab648;color:#0f2b1e;width:7%;}
+  .workon{background:#fff;border:1px solid #c8ddd5;border-radius:8px;padding:14px 18px;margin:14px 0;}
+  .workon .label{font-size:10pt;font-weight:700;color:#2a5c4e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+  .workon .text{font-size:10.5pt;color:#1a2a24;white-space:pre-line;line-height:1.6;min-height:60px;}
+  .signoff{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:22px;padding-top:14px;border-top:1px solid #c8ddd5;}
+  .sig-block .label{font-size:9pt;font-weight:700;color:#2a5c4e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+  .sig-block .value{font-family:'Brush Script MT','Apple Chancery',cursive;font-size:20pt;color:#1a3c34;line-height:1.1;border-bottom:1.5px solid #1a2a24;padding-bottom:4px;min-width:200px;display:inline-block;}
+  .sig-block .date{font-size:9pt;color:#888;margin-top:3px;font-style:italic;}
+  .footer{margin-top:20px;padding:10px 0;background:#1a3c34;color:rgba(255,255,255,0.75);font-size:9pt;text-align:center;letter-spacing:.3px;margin:20px -36px -28px;padding:10px 36px;}
+  .footer-bar{height:3px;background:linear-gradient(90deg,#2a9d5c,#7ab648);margin:0 -36px;}
+</style></head><body>
+
+<div class="page">
+  <div class="header">
+    <div class="brand">
+      <div class="logo">TBP</div>
+      <div>
+        <div style="font-size:11pt;opacity:0.85;letter-spacing:.3px;">Total Body Physio Limited</div>
+        <h1>Clinical Record Audit Form</h1>
+        <div class="tag">Five current records · five past records · NZP-aligned structure</div>
+      </div>
+    </div>
+    <div class="ref">Ref: ${ref}<br>${fmtNZ(audit.date)}</div>
+  </div>
+
+  <div class="meta">
+    <div class="meta-field"><div class="label">Physiotherapist</div><div class="value">${audit.physioAudited||'—'}</div></div>
+    <div class="meta-field"><div class="label">Auditor</div><div class="value">${audit.auditor||'—'}</div></div>
+    <div class="meta-field"><div class="label">Clinic</div><div class="value">${audit.clinic||'—'}</div></div>
+    <div class="meta-field"><div class="label">Date</div><div class="value">${dateFormatted}</div></div>
+  </div>
+
+  <div class="key-strip">
+    <strong>Key</strong>
+    <span class="k"><b style="color:#1a6e1a;">✓</b> present</span>
+    <span class="k"><b style="color:#c0392b;">✗</b> not present or inadequate</span>
+    <span class="k"><b>N/A</b> not applicable</span>
+  </div>
+
+  <table class="grid">
+    <thead>
+      <tr>
+        <th rowspan="2" class="crit-col">Criterion</th>
+        <th colspan="5" class="group-head">Current records</th>
+        <th colspan="5" class="group-head">Past records</th>
+        <th rowspan="2" class="pct">% Complies</th>
+      </tr>
+      <tr>
+        <th style="width:6%;">C1</th><th style="width:6%;">C2</th><th style="width:6%;">C3</th><th style="width:6%;">C4</th><th style="width:6%;">C5</th>
+        <th style="width:6%;">P1</th><th style="width:6%;">P2</th><th style="width:6%;">P3</th><th style="width:6%;">P4</th><th style="width:6%;">P5</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${tbodyRows}
+    </tbody>
+  </table>
+
+  <div class="workon">
+    <div class="label">To work on &mdash; specific actions, feedback, examples</div>
+    <div class="text">${nd.workOn || 'No specific actions recorded.'}</div>
+  </div>
+
+  <div class="signoff">
+    <div class="sig-block">
+      <div class="label">Auditor signature</div>
+      <div class="value">${audit.auditor||''}</div>
+      <div class="date">${dateFormatted}</div>
+    </div>
+    <div class="sig-block">
+      <div class="label">Physio signature (acknowledged)</div>
+      <div class="value"></div>
+      <div class="date">To be signed on review</div>
+    </div>
+  </div>
+
+  <div class="footer">Total Body Physio Limited · Clinical Record Audit Form · ${fmtNZ(audit.date)} · Ref: ${ref}</div>
+  <div class="footer-bar"></div>
+
+</div>
+</body></html>`;
+}
+
 function _generateAuditForm(audit) {
   const era = _era(audit.date);
   const dateFormatted = fmtNZLong(audit.date);
@@ -1510,6 +1689,11 @@ function _generateAuditForm(audit) {
   // pre-v2 fire drill records still fall through to the generic era-based layout.
   if (audit.type === 'fire_drill' && audit.formVersion === 'v2' && audit.fireDrillData) {
     return _generateFireDrillForm(audit);
+  }
+
+  // v2 clinical notes audits use the 15x10 grid template.
+  if (audit.type === 'clinical_notes' && audit.formVersion === 'v2' && audit.notesAuditData) {
+    return _generateNotesAuditForm(audit);
   }
 
   const checklists = {
@@ -3644,6 +3828,10 @@ function AuditViewModal({audit,onClose}){
   if(audit.type === "peer_review" && audit.formVersion === "v2" && audit.peerReviewData){
     return <PeerReviewViewModal audit={audit} onClose={onClose}/>;
   }
+  // ── v2 clinical notes audits render as a 15x10 grid ──────────────
+  if(audit.type === "clinical_notes" && audit.formVersion === "v2" && audit.notesAuditData){
+    return <NotesAuditGridViewModal audit={audit} onClose={onClose}/>;
+  }
   const form=AUDIT_FORMS[audit.type]||{sections:[]};
   const sections=audit.sections||form.sections||[];
   const checks=audit.itemChecks||{};
@@ -3697,6 +3885,371 @@ function AuditViewModal({audit,onClose}){
             <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Overall notes</div>
             <div style={{fontSize:12,color:C.muted,whiteSpace:"pre-line"}}>{audit.notes.replace(/^• .*$/gm,"").replace(/Notes: /,"").trim()}</div>
           </div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Clinical Notes Audit — 16-criteria NZP structure ─────────────
+// Each criterion is ticked across 10 records (5 current + 5 past)
+// producing a 16 × 10 grid. Per-row totals + %Complies auto-calculated.
+const NOTES_AUDIT_CRITERIA = [
+  { section:"Notes can be clearly understood",       text:"Logical, intelligible and sequential" },
+  { section:"Notes can be clearly understood",       text:"Patient is identified on each page" },
+  { section:"Consent",                                text:"Evidence that assessment and treatment has been explained and accepted by the patient" },
+  { section:"Consent",                                text:"Further consent with significant change in treatment" },
+  { section:"Assessment",                             text:"Patient history" },
+  { section:"Assessment",                             text:"Subjective examination" },
+  { section:"Assessment",                             text:"Objective examination" },
+  { section:"Assessment",                             text:"Related test findings" },
+  { section:"Assessment",                             text:"Analysis / conclusion" },
+  { section:"Goals of treatment",                     text:"Identified" },
+  { section:"Goals of treatment",                     text:"Measurable" },
+  { section:"Goals of treatment",                     text:"Time bound" },
+  { section:"Treatment plan",                         text:"Record of initial treatment plan" },
+  { section:"Changes in plan",                        text:"Recorded" },
+  { section:"Notation of each treatment given",       text:"Treatment given recorded" },
+  { section:"Evidence of review",                     text:"Entry of review each time a patient attends for treatment" },
+];
+
+// Cycle states: undefined → "pass" → "fail" → "na" → undefined
+const NOTES_CYCLE = { undefined:"pass", "":"pass", pass:"fail", fail:"na", na:"" };
+const NOTES_DISPLAY = {
+  pass: {mark:"✓",  color:"#0F6E56", bg:"#EAF3DE"},
+  fail: {mark:"✗",  color:"#c0392b", bg:"#FCEBEB"},
+  na:   {mark:"N/A",color:"#5F5E5A", bg:"#E8E6DC"},
+};
+
+function NotesAuditGridModal({onClose,onComplete}){
+  const today = new Date().toISOString().split("T")[0];
+  // State — one grid cell per (criterion index, record index). Stored as
+  // flat object keyed "rowIdx-colIdx" to keep the save payload compact.
+  const [grid, setGrid] = useState({});
+  const [meta, setMeta] = useState({
+    date: today,
+    clinic: CLINICS[0].short,
+    physioAudited: "",
+    auditor: "",
+    workOn: "",
+  });
+
+  // Cycle a cell through the four states
+  function cycleCell(row, col){
+    const k = `${row}-${col}`;
+    setGrid(p => {
+      const cur = p[k] || "";
+      const next = NOTES_CYCLE[cur] || "";
+      const copy = {...p};
+      if(next === "") delete copy[k]; else copy[k] = next;
+      return copy;
+    });
+  }
+
+  // Live totals per row: how many of each record group pass/fail/na
+  function rowStats(row){
+    let currentPass=0, currentDone=0, pastPass=0, pastDone=0;
+    for(let col=0; col<10; col++){
+      const v = grid[`${row}-${col}`];
+      const isCurrent = col < 5;
+      if(v === "pass"){ if(isCurrent) currentPass++; else pastPass++; }
+      if(v === "pass" || v === "fail"){
+        // N/A doesn't count toward denominator for the %Complies calculation
+        if(isCurrent) currentDone++; else pastDone++;
+      }
+    }
+    const denom = currentDone + pastDone;
+    const numer = currentPass + pastPass;
+    const pct = denom === 0 ? null : Math.round((numer / denom) * 100);
+    return { currentPass, currentDone, pastPass, pastDone, pct };
+  }
+
+  // Overall stats — total ticks across the whole 15×10 grid
+  const totalPassed = Object.values(grid).filter(v=>v==="pass").length;
+  const totalFailed = Object.values(grid).filter(v=>v==="fail").length;
+  const totalNa     = Object.values(grid).filter(v=>v==="na").length;
+  const totalCells  = NOTES_AUDIT_CRITERIA.length * 10;
+  const totalAnswered = totalPassed + totalFailed + totalNa;
+  const pctComplete = Math.round((totalAnswered / totalCells) * 100);
+
+  function submit(){
+    if(!meta.physioAudited){ alert("Please select the physiotherapist whose notes are being audited."); return; }
+    if(!meta.auditor.trim()){ alert("Please enter auditor name."); return; }
+    if(totalAnswered < totalCells){
+      if(!window.confirm(`${totalCells - totalAnswered} of ${totalCells} cells unanswered. Submit anyway?`)) return;
+    }
+    // Build the notes text for history/list display
+    const summaryLines = [];
+    NOTES_AUDIT_CRITERIA.forEach((c, row) => {
+      const s = rowStats(row);
+      if(s.pct !== null && s.pct < 100){
+        summaryLines.push(`• ${c.text}: ${s.pct}% complies (${s.currentPass + s.pastPass}/${s.currentDone + s.pastDone})`);
+      }
+    });
+    const notesText = [
+      summaryLines.length ? "Criteria below 100%:" : "All criteria 100%.",
+      ...summaryLines,
+      meta.workOn ? `\nTo work on: ${meta.workOn}` : "",
+    ].filter(Boolean).join("\n").trim();
+
+    onComplete({
+      id: Date.now(),
+      type: "clinical_notes",
+      title: `Clinical Notes Audit — ${meta.physioAudited}`,
+      icon: "📋",
+      clinic: meta.clinic,
+      auditor: meta.auditor,
+      physioAudited: meta.physioAudited,
+      date: meta.date,
+      passed: totalPassed,
+      failed: totalFailed,
+      na: totalNa,
+      total: totalCells,
+      outcome: totalFailed === 0 ? "Passed" : `${totalFailed} issue${totalFailed>1?"s":""} found`,
+      notes: notesText,
+      formVersion: "v2",
+      notesAuditData: {
+        grid: {...grid},
+        workOn: meta.workOn,
+      },
+    });
+  }
+
+  // Group criteria by section for visual grouping in the grid
+  const sectionGroups = [];
+  let lastSection = null;
+  NOTES_AUDIT_CRITERIA.forEach((c, idx) => {
+    if(c.section !== lastSection){
+      sectionGroups.push({ section: c.section, rows: [] });
+      lastSection = c.section;
+    }
+    sectionGroups[sectionGroups.length-1].rows.push({ ...c, idx });
+  });
+
+  // ── UI ──
+  const lbl = (txt) => <label style={{fontSize:11,fontWeight:600,color:C.muted,display:"block",marginBottom:3,textTransform:"uppercase",letterSpacing:".3px"}}>{txt}</label>;
+  const sectionHead = (title) => <div style={{background:C.teal,color:"white",padding:"6px 12px",fontWeight:600,fontSize:11,letterSpacing:".4px",textTransform:"uppercase"}}>{title}</div>;
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:400,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:12,width:"100%",maxWidth:960,marginBottom:"2rem"}}>
+        {/* Header */}
+        <div style={{background:"linear-gradient(145deg,#1a3c34 0%,#2a5c4e 100%)",padding:"1.25rem 1.5rem",borderRadius:"12px 12px 0 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{color:"white",fontSize:17,fontWeight:700,letterSpacing:".3px"}}>📋 Clinical Record Audit Form</div>
+            <div style={{color:"rgba(255,255,255,0.85)",fontSize:11,marginTop:3,fontStyle:"italic"}}>Five current records · five past records · NZP-aligned structure</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{textAlign:"right"}}>
+              <div style={{color:"white",fontSize:20,fontWeight:700}}>{pctComplete}%</div>
+              <div style={{color:"rgba(255,255,255,0.7)",fontSize:11}}>{totalAnswered}/{totalCells}</div>
+            </div>
+            <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15}}>✕</button>
+          </div>
+        </div>
+
+        <div style={{padding:"1.25rem 1.5rem",maxHeight:"78vh",overflowY:"auto"}}>
+
+          {/* Meta */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.75rem",marginBottom:"1rem"}}>
+            <div>{lbl("Date")}<input type="date" value={meta.date} onChange={e=>setMeta(p=>({...p,date:e.target.value}))} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
+            <div>{lbl("Clinic")}<select value={meta.clinic} onChange={e=>setMeta(p=>({...p,clinic:e.target.value}))} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL}}>{CLINICS.map(c=><option key={c.id}>{c.short}</option>)}</select></div>
+            <div>{lbl("Auditor name")}<input type="text" value={meta.auditor} onChange={e=>setMeta(p=>({...p,auditor:e.target.value}))} placeholder="e.g. Jade Warren" style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,boxSizing:"border-box"}}/></div>
+          </div>
+
+          {/* Physio selector */}
+          <div style={{background:"#E6F1FB",border:`1px solid #b8d4f0`,borderRadius:8,padding:"0.75rem 1rem",marginBottom:"1.25rem"}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.blue,marginBottom:"0.5rem"}}>📋 Whose notes are being audited?</div>
+            <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap"}}>
+              {Object.values(STAFF).filter(s=>s.type!=="Owner").map(s=>(
+                <div key={s.name} onClick={()=>setMeta(p=>({...p,physioAudited:s.name}))} style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${meta.physioAudited===s.name?C.blue:C.border}`,background:meta.physioAudited===s.name?C.blueL:"white",fontSize:12,cursor:"pointer",fontWeight:meta.physioAudited===s.name?600:400,color:meta.physioAudited===s.name?C.blue:C.text}}>{s.name.split(" ")[0]}</div>
+              ))}
+            </div>
+            {meta.physioAudited && <div style={{fontSize:11,color:C.muted,marginTop:6}}>Auditing 5 current + 5 past records for <strong>{meta.physioAudited}</strong></div>}
+          </div>
+
+          {/* Legend */}
+          <div style={{background:C.grayXL,borderRadius:8,padding:"8px 12px",marginBottom:"0.75rem",display:"flex",gap:16,alignItems:"center",fontSize:11,color:C.muted,flexWrap:"wrap"}}>
+            <span style={{fontWeight:600,color:C.text}}>Tap cell to cycle:</span>
+            <span>blank → <b style={{color:"#0F6E56"}}>✓</b> → <b style={{color:"#c0392b"}}>✗</b> → <b style={{color:C.gray}}>N/A</b> → blank</span>
+            <span style={{marginLeft:"auto",fontStyle:"italic"}}>Scroll horizontally if the grid is wider than your screen →</span>
+          </div>
+
+          {/* The grid — sticky criterion column, 10 record columns, totals, pct */}
+          <div style={{border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden",marginBottom:"1rem"}}>
+            <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+              <table style={{borderCollapse:"collapse",fontSize:12,minWidth:820,width:"100%"}}>
+                <thead>
+                  <tr style={{background:"#1a3c34",color:"white"}}>
+                    <th style={{padding:"8px 10px",textAlign:"left",fontWeight:600,fontSize:11,letterSpacing:".3px",position:"sticky",left:0,background:"#1a3c34",zIndex:2,minWidth:260,borderRight:"2px solid #0f2b24"}}>Criterion</th>
+                    {[1,2,3,4,5].map(n=><th key={`cur-${n}`} style={{padding:"6px 4px",fontWeight:600,fontSize:10,minWidth:44,background:"#2a5c4e",borderLeft:"1px solid rgba(255,255,255,0.12)"}}>C{n}</th>)}
+                    {[1,2,3,4,5].map(n=><th key={`past-${n}`} style={{padding:"6px 4px",fontWeight:600,fontSize:10,minWidth:44,background:"#2a5c4e",borderLeft:n===1?`2px solid rgba(255,255,255,0.35)`:"1px solid rgba(255,255,255,0.12)"}}>P{n}</th>)}
+                    <th style={{padding:"6px 4px",fontWeight:700,fontSize:10,minWidth:72,background:"#7ab648",color:"#0f2b1e",borderLeft:"2px solid rgba(255,255,255,0.35)"}}>Complies</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sectionGroups.map((group, gi) => (
+                    <Fragment key={gi}>
+                      <tr>
+                        <td colSpan={12} style={{padding:0}}>{sectionHead(group.section)}</td>
+                      </tr>
+                      {group.rows.map((c, ri) => {
+                        const rowIdx = c.idx;
+                        const s = rowStats(rowIdx);
+                        const pctText = s.pct === null ? "—" : `${s.pct}%`;
+                        const pctColor = s.pct === null ? C.hint : s.pct === 100 ? "#0F6E56" : s.pct >= 80 ? "#BA7517" : "#c0392b";
+                        return (
+                          <tr key={rowIdx} style={{background: (gi+ri) % 2 === 0 ? "#fff" : "#fafbf9"}}>
+                            <td style={{padding:"7px 10px",fontSize:12,position:"sticky",left:0,background:(gi+ri) % 2 === 0 ? "#fff" : "#fafbf9",zIndex:1,borderRight:`2px solid ${C.border}`,color:C.text,minWidth:260}}>{c.text}</td>
+                            {Array.from({length:10}).map((_, col) => {
+                              const v = grid[`${rowIdx}-${col}`];
+                              const d = v ? NOTES_DISPLAY[v] : null;
+                              return (
+                                <td key={col} style={{padding:2,textAlign:"center",borderLeft:col===5?`2px solid ${C.border}`:`1px solid ${C.grayL}`,background:d?d.bg:"#fff"}}>
+                                  <button
+                                    onClick={()=>cycleCell(rowIdx,col)}
+                                    style={{width:"100%",height:34,border:"none",background:"transparent",cursor:"pointer",fontSize:d?.mark === "N/A" ? 10 : 16,fontWeight:700,color:d?d.color:C.hint,padding:0}}
+                                    title={`Record ${col<5?'C':'P'}${(col%5)+1}, ${c.text}`}
+                                  >{d ? d.mark : ""}</button>
+                                </td>
+                              );
+                            })}
+                            <td style={{padding:"7px 8px",textAlign:"center",fontSize:12,fontWeight:700,color:pctColor,background:s.pct===100?"#EAF3DE":s.pct===null?"#f5f5f0":s.pct>=80?"#FAEEDA":"#FCEBEB",borderLeft:`2px solid ${C.border}`,minWidth:72}}>{pctText}</td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Totals strip */}
+          <div style={{display:"flex",gap:16,padding:"12px 14px",background:C.grayXL,borderRadius:8,marginBottom:"1rem",flexWrap:"wrap"}}>
+            <span style={{fontSize:13}}><b style={{color:"#0F6E56"}}>{totalPassed}</b> passed</span>
+            <span style={{fontSize:13}}><b style={{color:"#c0392b"}}>{totalFailed}</b> failed</span>
+            <span style={{fontSize:13}}><b style={{color:C.gray}}>{totalNa}</b> N/A</span>
+            <span style={{fontSize:13,color:C.muted}}>{totalCells - totalAnswered} unanswered</span>
+          </div>
+
+          {/* To work on */}
+          <div style={{marginBottom:"1rem"}}>
+            {lbl("To work on — specific actions, feedback, examples")}
+            <textarea rows={4} value={meta.workOn} onChange={e=>setMeta(p=>({...p,workOn:e.target.value}))} placeholder="e.g. Goals to be time framed — e.g. 4 weeks · Measurable · Make sure Discharge summaries are completed" style={{width:"100%",padding:"9px 12px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:13,background:C.grayXL,fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
+          </div>
+
+          <Btn onClick={submit}>Submit audit record</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Read-only grid view for v2 notes audit records
+function NotesAuditGridViewModal({audit,onClose}){
+  const nd = audit.notesAuditData || {};
+  const grid = nd.grid || {};
+
+  function rowStats(row){
+    let currentPass=0, currentDone=0, pastPass=0, pastDone=0;
+    for(let col=0; col<10; col++){
+      const v = grid[`${row}-${col}`];
+      const isCurrent = col < 5;
+      if(v === "pass"){ if(isCurrent) currentPass++; else pastPass++; }
+      if(v === "pass" || v === "fail"){
+        if(isCurrent) currentDone++; else pastDone++;
+      }
+    }
+    const denom = currentDone + pastDone;
+    const numer = currentPass + pastPass;
+    const pct = denom === 0 ? null : Math.round((numer / denom) * 100);
+    return { currentPass, currentDone, pastPass, pastDone, pct };
+  }
+
+  const sectionGroups = [];
+  let lastSection = null;
+  NOTES_AUDIT_CRITERIA.forEach((c, idx) => {
+    if(c.section !== lastSection){
+      sectionGroups.push({ section: c.section, rows: [] });
+      lastSection = c.section;
+    }
+    sectionGroups[sectionGroups.length-1].rows.push({ ...c, idx });
+  });
+
+  const sectionHead = (title) => <div style={{background:C.teal,color:"white",padding:"6px 12px",fontWeight:600,fontSize:11,letterSpacing:".4px",textTransform:"uppercase"}}>{title}</div>;
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"1.5rem 1rem",overflowY:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:12,width:"100%",maxWidth:960,marginBottom:"2rem",overflow:"hidden"}}>
+        <div style={{background:audit.outcome==="Passed"?"linear-gradient(145deg,#1a3c34 0%,#2a5c4e 100%)":C.red,padding:"1.25rem 1.5rem",display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
+          <div>
+            <div style={{color:"white",fontSize:16,fontWeight:600}}>📋 {audit.title}</div>
+            <div style={{color:"rgba(255,255,255,0.85)",fontSize:12,marginTop:4,display:"flex",gap:12,flexWrap:"wrap"}}>
+              <span>📅 {fmtNZ(audit.date)}</span>
+              <span>📍 {audit.clinic}</span>
+              <span>👤 Auditor: {audit.auditor}</span>
+              <span>🎯 Reviewee: {audit.physioAudited}</span>
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{background:"rgba(255,255,255,0.2)",borderRadius:8,padding:"6px 14px",textAlign:"center"}}>
+              <div style={{color:"white",fontSize:16,fontWeight:700}}>{audit.outcome}</div>
+              <div style={{color:"rgba(255,255,255,0.7)",fontSize:11}}>{audit.passed}/{audit.total} cells ✓</div>
+            </div>
+            <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:15,flexShrink:0}}>✕</button>
+          </div>
+        </div>
+
+        <div style={{padding:"1.25rem 1.5rem",maxHeight:"72vh",overflowY:"auto"}}>
+          <div style={{border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden",marginBottom:"1rem"}}>
+            <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+              <table style={{borderCollapse:"collapse",fontSize:12,minWidth:820,width:"100%"}}>
+                <thead>
+                  <tr style={{background:"#1a3c34",color:"white"}}>
+                    <th style={{padding:"8px 10px",textAlign:"left",fontWeight:600,fontSize:11,letterSpacing:".3px",position:"sticky",left:0,background:"#1a3c34",zIndex:2,minWidth:260,borderRight:"2px solid #0f2b24"}}>Criterion</th>
+                    {[1,2,3,4,5].map(n=><th key={`cur-${n}`} style={{padding:"6px 4px",fontWeight:600,fontSize:10,minWidth:44,background:"#2a5c4e"}}>C{n}</th>)}
+                    {[1,2,3,4,5].map(n=><th key={`past-${n}`} style={{padding:"6px 4px",fontWeight:600,fontSize:10,minWidth:44,background:"#2a5c4e",borderLeft:n===1?`2px solid rgba(255,255,255,0.35)`:""}}>P{n}</th>)}
+                    <th style={{padding:"6px 4px",fontWeight:700,fontSize:10,minWidth:72,background:"#7ab648",color:"#0f2b1e",borderLeft:"2px solid rgba(255,255,255,0.35)"}}>Complies</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sectionGroups.map((group, gi) => (
+                    <Fragment key={gi}>
+                      <tr><td colSpan={12} style={{padding:0}}>{sectionHead(group.section)}</td></tr>
+                      {group.rows.map((c, ri) => {
+                        const rowIdx = c.idx;
+                        const s = rowStats(rowIdx);
+                        const pctText = s.pct === null ? "—" : `${s.pct}%`;
+                        const pctColor = s.pct === null ? C.hint : s.pct === 100 ? "#0F6E56" : s.pct >= 80 ? "#BA7517" : "#c0392b";
+                        const rowBg = (gi+ri) % 2 === 0 ? "#fff" : "#fafbf9";
+                        return (
+                          <tr key={rowIdx} style={{background:rowBg}}>
+                            <td style={{padding:"7px 10px",fontSize:12,position:"sticky",left:0,background:rowBg,zIndex:1,borderRight:`2px solid ${C.border}`,minWidth:260}}>{c.text}</td>
+                            {Array.from({length:10}).map((_, col) => {
+                              const v = grid[`${rowIdx}-${col}`];
+                              const d = v ? NOTES_DISPLAY[v] : null;
+                              return (
+                                <td key={col} style={{padding:"7px 4px",textAlign:"center",borderLeft:col===5?`2px solid ${C.border}`:`1px solid ${C.grayL}`,background:d?d.bg:"#fff",color:d?d.color:C.hint,fontSize:d?.mark === "N/A" ? 10 : 15,fontWeight:700}}>{d ? d.mark : ""}</td>
+                              );
+                            })}
+                            <td style={{padding:"7px 8px",textAlign:"center",fontSize:12,fontWeight:700,color:pctColor,background:s.pct===100?"#EAF3DE":s.pct===null?"#f5f5f0":s.pct>=80?"#FAEEDA":"#FCEBEB",borderLeft:`2px solid ${C.border}`}}>{pctText}</td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {nd.workOn && (
+            <div style={{background:"#FEFCF3",border:`1px solid #D4AF37`,borderLeft:"4px solid #D4AF37",borderRadius:"0 6px 6px 0",padding:"12px 16px"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#8a6a1c",marginBottom:4,textTransform:"uppercase",letterSpacing:".4px"}}>To work on</div>
+              <div style={{fontSize:12,color:C.text,lineHeight:1.5,whiteSpace:"pre-line"}}>{nd.workOn}</div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -4214,6 +4767,10 @@ function AuditModal({type,onClose,onComplete}){
   // ── Peer review uses a dedicated PBNZ-style narrative form ────────
   if(type === "peer_review"){
     return <PeerReviewModal onClose={onClose} onComplete={onComplete}/>;
+  }
+  // ── Clinical notes audit uses a 16 x 10 grid ───────────────────
+  if(type === "clinical_notes"){
+    return <NotesAuditGridModal onClose={onClose} onComplete={onComplete}/>;
   }
   const form=AUDIT_FORMS[type];const all=form.sections.flatMap(s=>s.items);
   const[checks,setChecks]=useState({});const[notes,setNotes]=useState({});
