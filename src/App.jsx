@@ -5876,15 +5876,37 @@ function ItemCheckRetrofillButton(){
   // form structures (FENZ parts, PBNZ areas, 16×10 grid) and are skipped.
   const GENERIC_TYPES = ["hs_audit","hygiene","equipment","incident"];
 
-  // Detect whether a record's sections are made up of generic "Item 1…N" names
-  // from an earlier retrofill pass. If so, and today's template count now
-  // matches, we can replace them with real item text.
+  // Detect whether a record needs its sections re-synthesised from today's
+  // template. Returns a diagnostic reason string if the record is a candidate,
+  // or null otherwise. Multiple cases trigger a redo.
   const hasGenericItems = (a) => {
-    if(!a.sections || !Array.isArray(a.sections) || a.sections.length === 0) return false;
+    const form = AUDIT_FORMS[a.type];
+    const todayTotal = (form && form.sections) ? form.sections.flatMap(s=>s.items).length : 0;
+    const todaySectionCount = (form && form.sections) ? form.sections.length : 0;
+
+    // Case 3: no sections stored but has itemChecks — always eligible for redo
+    if(!a.sections || !Array.isArray(a.sections) || a.sections.length === 0){
+      return "no sections stored";
+    }
+
+    // Gather all item texts, handling both string and object forms
+    const itemText = (it) => {
+      if(typeof it === "string") return it;
+      if(it && typeof it === "object") return String(it.text || it.label || "");
+      return String(it);
+    };
     const allItems = a.sections.flatMap(s => s.items || []);
-    if(allItems.length === 0) return false;
-    const genericCount = allItems.filter(it => /^Item \d+$/.test(String(it).trim())).length;
-    return genericCount / allItems.length >= 0.6; // majority look generic
+    if(allItems.length === 0) return "sections empty";
+
+    // Case 1+2: majority of items match "Item N" pattern
+    const genericCount = allItems.filter(it => /^Item \s*\d+$/.test(itemText(it).trim())).length;
+    if(genericCount / allItems.length >= 0.6) return "items look generic";
+
+    // Case 4: section layout differs from today's form
+    if(todaySectionCount > 1 && a.sections.length === 1) return "single catch-all section";
+    if(todayTotal > 0 && allItems.length !== todayTotal) return `count mismatch (stored ${allItems.length} vs today ${todayTotal})`;
+
+    return null;
   };
 
   const scan = (kind = "missing") => {
@@ -5893,17 +5915,20 @@ function ItemCheckRetrofillButton(){
     setMsg("Scanning records…");
     try {
       const audits = loadGen("audits") || [];
-      const cands = audits.filter(a => {
-        if(!a || !a.type) return false;
-        if(!GENERIC_TYPES.includes(a.type)) return false;
+      const cands = [];
+      for(const a of audits){
+        if(!a || !a.type) continue;
+        if(!GENERIC_TYPES.includes(a.type)) continue;
         const hasItemChecks = a.itemChecks && Object.keys(a.itemChecks).length > 0;
         if(kind === "redo-generic"){
-          // Redo: records that DO have itemChecks but look generic
-          return hasItemChecks && hasGenericItems(a);
+          if(!hasItemChecks) continue;
+          const reason = hasGenericItems(a);
+          if(reason) cands.push({...a, _redoReason: reason});
+        } else {
+          // Default: records with no itemChecks at all
+          if(!hasItemChecks) cands.push({...a, _redoReason: "no item-level data"});
         }
-        // Default: records with no itemChecks at all
-        return !hasItemChecks;
-      });
+      }
       setCandidates(cands);
       if(cands.length === 0){
         setMode("idle");
@@ -6047,7 +6072,7 @@ function ItemCheckRetrofillButton(){
                   <span>{def.icon}</span>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:600,color:C.text,fontSize:12}}>{a.title || def.title}{a.clinic?` — ${a.clinic}`:""}</div>
-                    <div style={{color:C.muted,fontSize:10,marginTop:1}}>{a.date} · {a.passed||0} pass · {a.failed||0} fail · {a.na||0} N/A</div>
+                    <div style={{color:C.muted,fontSize:10,marginTop:1}}>{a.date} · {a.passed||0} pass · {a.failed||0} fail · {a.na||0} N/A{a._redoReason?` · ${a._redoReason}`:""}</div>
                   </div>
                 </div>
               );
