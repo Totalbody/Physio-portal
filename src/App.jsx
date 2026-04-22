@@ -358,6 +358,17 @@ const AUDIT_FORMS = {
     {title:"Clinical reasoning & treatment plan",items:["Strong clinical reasoning demonstrated linking subjective and objective findings","Diagnosis clearly articulated and evidence-based","Treatment options discussed with patient including rationale","Patient preferences considered in decision-making","Treatment plan includes functional goals","Discharge criteria and planning documented where appropriate"]},
     {title:"Summaries & action plan (PBNZ template p.4)",items:["Reviewee summary completed — reflections on session recorded","Reviewer summary completed — strengths and areas for improvement documented","Specific feedback provided within 7 days","Action plan agreed with clear objectives and timeframes","Monitoring plan in place (e.g. monthly progress meetings)","Evaluation criteria defined (e.g. patient feedback, documentation review)","Peer review record signed by both reviewer and reviewee","Copy filed in personnel file and uploaded to compliance portal"]},
   ]},
+  incident:{title:"Incident Report",icon:"⚠️",freq:"As required",isIncident:true,sections:[
+    {title:"Incident details",items:["Incident documented in Cliniko","H&S Officer notified","Affected person/s identified and supported"]},
+    {title:"Response",items:["Immediate action taken to address risk","Area/equipment made safe","Witness details recorded if applicable"]},
+    {title:"Follow-up",items:["Root cause identified","Corrective actions assigned","WorkSafe notified if serious harm (worksafe.govt.nz)","ACC notified if injury (acc.co.nz)"]},
+  ]},
+  complaint:{title:"Complaint Record",icon:"📝",freq:"As required",isComplaint:true,allowPdfAttachment:true,sections:[
+    {title:"Complaint received",items:["Date and method of complaint recorded (phone / email / in-person / letter)","Complainant details captured (name, contact, relationship to clinic)","Nature of complaint clearly documented","Staff member(s) involved identified","Director(s) notified within 24 hours (per §3.9 P&P Manual)"]},
+    {title:"Investigation",items:["Relevant staff spoken with","Clinical notes / records reviewed where applicable","Timeline of events established","Root cause identified","Privacy Officer involved if privacy-related"]},
+    {title:"Response to complainant",items:["Initial contact with complainant within 24 hours","Written acknowledgement within 5 days if unresolved","Findings explained to complainant","Corrective action communicated","Follow-up offered where appropriate"]},
+    {title:"Resolution & learning",items:["Complaint resolved or escalation path agreed","Documented in Cliniko incident report","Corrective actions implemented","Team debrief held if systemic issue","Lessons learned noted for future prevention"]},
+  ]},
 };
 
 // ── GOOGLE DRIVE STORAGE ─────────────────────────────────────
