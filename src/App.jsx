@@ -7502,8 +7502,25 @@ export default function App(){
       // Pull them here so the portal always shows them regardless of Drive status.
       fetch(PORTAL_API+"/store",{headers:{"X-Portal-Secret":PORTAL_SECRET}})
         .then(r=>r.ok?r.json():{}).then(vs=>{
+          // CRITICAL: respect deletion tracking. If the user deleted an audit on
+          // this device (or any device that synced to Drive), that id is in
+          // deletedAuditIds. Without this filter, the Vercel-merge would
+          // resurrect deleted audits because Vercel has its own copy that the
+          // delete never reached.
+          const deletedAuditIds = new Set([
+            ...(_portalStore.data?.["deletedAuditIds"] || []),
+            ...(Array.isArray(vs.data?.deletedAuditIds) ? vs.data.deletedAuditIds : []),
+            ...JSON.parse(localStorage.getItem("tbp_deleted_audit_ids") || "[]"),
+          ]);
+          // Also track any user-created ids (timestamp >= 100000) the user
+          // explicitly deleted — stored in localStorage as tbp_deleted_audit_ids_any
+          const userDeletedIds = new Set(
+            JSON.parse(localStorage.getItem("tbp_deleted_audit_ids_any") || "[]").map(String)
+          );
           const vercelAudits=(Array.isArray(vs.data?.audits)?vs.data.audits:[])
-            .filter(a=>typeof a.id==='string'||Number(a.id)>=100000);
+            .filter(a=>typeof a.id==='string'||Number(a.id)>=100000)
+            .filter(a=>!deletedAuditIds.has(a.id))
+            .filter(a=>!userDeletedIds.has(String(a.id)));
           if(vercelAudits.length){
             setAudits(prev=>{
               const existingIds=new Set(prev.map(a=>String(a.id)));
@@ -8316,35 +8333,66 @@ export default function App(){
                                     <BSm onClick={async e=>{
                                       e.stopPropagation();
                                       if(!window.confirm(`Delete this ${a.type} audit for ${a.clinic} on ${fmtNZ(a.date)}?\n\nThis cannot be undone.`)) return;
+                                      _log(`[Delete] audit id=${a.id} type=${a.type} seeded=${typeof a.id === "number" && a.id < 100000}`);
                                       // Optimistic UI update so the row disappears immediately
                                       const updated = audits.filter(x => x.id !== a.id);
                                       setAudits(updated);
-                                      // If seeded (id < 100000), also track deletion so INIT_AUDITS doesn't re-add
-                                      // it on next load. Mirror to localStorage AND to Drive (deletedAuditIds key).
+                                      // Track ALL audit deletions in localStorage (both seeded <100000 and
+                                      // user-created timestamp-ids). This is a defensive backstop — even if
+                                      // Drive save and Vercel mirror both fail, the next reload will filter
+                                      // out this id from whatever Vercel tries to send back.
+                                      try {
+                                        const prevAny = JSON.parse(localStorage.getItem("tbp_deleted_audit_ids_any") || "[]");
+                                        const allAny = [...new Set([...prevAny, String(a.id)])];
+                                        localStorage.setItem("tbp_deleted_audit_ids_any", JSON.stringify(allAny));
+                                      } catch {}
+                                      // Seeded records also need the deletedAuditIds key in Drive so
+                                      // INIT_AUDITS doesn't re-add them.
                                       let deletedIds = null;
                                       if(typeof a.id === "number" && a.id < 100000){
                                         const prev = JSON.parse(localStorage.getItem("tbp_deleted_audit_ids") || "[]");
                                         deletedIds = [...new Set([...prev, a.id])];
                                         localStorage.setItem("tbp_deleted_audit_ids", JSON.stringify(deletedIds));
                                       }
-                                      // Write both keys to the in-memory store BEFORE saving, then do ONE
-                                      // Drive save. Previously we called saveGenImmediate twice — but
-                                      // _saveDriveState has save-coalescing logic where the second caller
-                                      // can return before its save actually completes (its save is just
-                                      // queued as a follow-up). That meant deletedAuditIds often hadn't
-                                      // reached Drive when the tab closed, so seeded deletes reappeared.
                                       if(!_portalReady){
                                         try { localStorage.setItem("audits", JSON.stringify(updated)); } catch {}
                                         if(deletedIds){ try { localStorage.setItem("deletedAuditIds", JSON.stringify(deletedIds)); } catch {} }
                                         return;
                                       }
+                                      // Write both keys to the in-memory store synchronously, then do ONE
+                                      // Drive save. See earlier commit for why two saveGenImmediate calls
+                                      // don't work (save-coalescing makes the second return early).
                                       _portalStore.data["audits"] = updated;
                                       if(deletedIds) _portalStore.data["deletedAuditIds"] = deletedIds;
                                       clearTimeout(_saveTimer);
                                       try {
                                         await _saveDriveState();
+                                        _log(`[Delete] ✓ Drive save succeeded`);
                                       } catch(err) {
+                                        _err(`[Delete] Drive save failed:`, err);
                                         alert("⚠️ Delete saved locally but Drive write failed:\n" + (err.message||err) + "\n\nThe audit may reappear on next login. Try again or check your network.");
+                                      }
+                                      // CRITICAL: the portal also mirrors audits to Vercel (async, 500ms debounce).
+                                      // If the user reloads before that mirror fires, Vercel still has the deleted
+                                      // audit, and on next login the portal's Vercel-merge step resurrects it.
+                                      // Do the Vercel writes SYNCHRONOUSLY here so deletes are guaranteed to land
+                                      // on Vercel before this function returns.
+                                      try {
+                                        await Promise.all([
+                                          fetch(PORTAL_API + '/store', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json', 'X-Portal-Secret': PORTAL_SECRET },
+                                            body: JSON.stringify({ key: 'audits', value: updated }),
+                                          }),
+                                          deletedIds ? fetch(PORTAL_API + '/store', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json', 'X-Portal-Secret': PORTAL_SECRET },
+                                            body: JSON.stringify({ key: 'deletedAuditIds', value: deletedIds }),
+                                          }) : Promise.resolve(),
+                                        ]);
+                                        _log(`[Delete] ✓ Vercel mirror succeeded`);
+                                      } catch(err) {
+                                        _warn(`[Delete] Vercel mirror failed (localStorage backstop should still block it):`, err);
                                       }
                                     }} color={C.red}>🗑 Delete</BSm>
                                   </div>
@@ -8507,19 +8555,24 @@ export default function App(){
                               <Pill s="ok" label="Done ✓"/>
                               <BSm onClick={async ()=>{
                                 if(!window.confirm("Delete this meeting?")) return;
+                                _log(`[Delete] meeting id=${m.id} seeded=${typeof m.id === "number" && m.id < 100000}`);
                                 // Optimistic UI update
                                 const u = meetings.filter(x => x.id !== m.id);
                                 setMeetings(u);
-                                // Track seeded meeting deletions so INIT_MEETINGS doesn't re-add them
+                                // Track ALL meeting deletions in localStorage as a defensive backstop.
+                                try {
+                                  const prevAny = JSON.parse(localStorage.getItem("tbp_deleted_meeting_ids_any") || "[]");
+                                  const allAny = [...new Set([...prevAny, String(m.id)])];
+                                  localStorage.setItem("tbp_deleted_meeting_ids_any", JSON.stringify(allAny));
+                                } catch {}
+                                // Seeded meetings also need the deletedMeetingIds key in Drive so
+                                // INIT_MEETINGS doesn't re-add them.
                                 let deletedIds = null;
                                 if(typeof m.id === "number" && m.id < 100000){
                                   const prev = JSON.parse(localStorage.getItem("tbp_deleted_meeting_ids") || "[]");
                                   deletedIds = [...new Set([...prev, m.id])];
                                   localStorage.setItem("tbp_deleted_meeting_ids", JSON.stringify(deletedIds));
                                 }
-                                // Single atomic save — mutate in-memory store for BOTH keys, then one
-                                // Drive write. See audit delete handler for why two saveGenImmediate
-                                // calls don't work (save-coalescing can make the second return early).
                                 if(!_portalReady){
                                   try { localStorage.setItem("meetings", JSON.stringify(u)); } catch {}
                                   if(deletedIds){ try { localStorage.setItem("deletedMeetingIds", JSON.stringify(deletedIds)); } catch {} }
@@ -8530,8 +8583,28 @@ export default function App(){
                                 clearTimeout(_saveTimer);
                                 try {
                                   await _saveDriveState();
+                                  _log(`[Delete] ✓ Drive save succeeded`);
                                 } catch(err) {
+                                  _err(`[Delete] Drive save failed:`, err);
                                   alert("⚠️ Delete saved locally but Drive write failed:\n" + (err.message||err) + "\n\nThe meeting may reappear on next login. Try again or check your network.");
+                                }
+                                // Sync Vercel mirror inline (see audit delete handler for rationale)
+                                try {
+                                  await Promise.all([
+                                    fetch(PORTAL_API + '/store', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json', 'X-Portal-Secret': PORTAL_SECRET },
+                                      body: JSON.stringify({ key: 'meetings', value: u }),
+                                    }),
+                                    deletedIds ? fetch(PORTAL_API + '/store', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json', 'X-Portal-Secret': PORTAL_SECRET },
+                                      body: JSON.stringify({ key: 'deletedMeetingIds', value: deletedIds }),
+                                    }) : Promise.resolve(),
+                                  ]);
+                                  _log(`[Delete] ✓ Vercel mirror succeeded`);
+                                } catch(err) {
+                                  _warn(`[Delete] Vercel mirror failed:`, err);
                                 }
                               }} color={C.red}>✕</BSm>
                             </div>
