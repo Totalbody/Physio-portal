@@ -7368,11 +7368,11 @@ export default function App(){
     ]);
 
     const driveById = {};
-    (d["audits"]||[]).forEach(a => { if(isSeeded(a.id)) driveById[a.id] = a; });
+    (d["audits"]||[]).forEach(a => { if(isSeeded(a.id) && !deletedIds.has(a.id)) driveById[a.id] = a; });
     const driveMeetById = {};
     (d["meetings"]||[]).forEach(m => { if(isSeeded(m.id)) driveMeetById[m.id] = m; });
 
-    const driveAudits   = (d["audits"]   || []).filter(a => !isSeeded(a.id));
+    const driveAudits   = (d["audits"]   || []).filter(a => !isSeeded(a.id) && !deletedIds.has(a.id));
     const driveMeetings = (d["meetings"] || []).filter(m => !isSeeded(m.id));
 
     const initAudits = INIT_AUDITS
@@ -8311,17 +8311,22 @@ export default function App(){
                                         deletedIds = [...new Set([...prev, a.id])];
                                         localStorage.setItem("tbp_deleted_audit_ids", JSON.stringify(deletedIds));
                                       }
-                                      // Await the Drive write so the delete survives tab close / logout.
-                                      // Previously this used saveGen() which is debounced 2s — if the user
-                                      // closed the tab within that window, the delete was lost and the audit
-                                      // reappeared on next login.
+                                      // Write both keys to the in-memory store BEFORE saving, then do ONE
+                                      // Drive save. Previously we called saveGenImmediate twice — but
+                                      // _saveDriveState has save-coalescing logic where the second caller
+                                      // can return before its save actually completes (its save is just
+                                      // queued as a follow-up). That meant deletedAuditIds often hadn't
+                                      // reached Drive when the tab closed, so seeded deletes reappeared.
+                                      if(!_portalReady){
+                                        try { localStorage.setItem("audits", JSON.stringify(updated)); } catch {}
+                                        if(deletedIds){ try { localStorage.setItem("deletedAuditIds", JSON.stringify(deletedIds)); } catch {} }
+                                        return;
+                                      }
+                                      _portalStore.data["audits"] = updated;
+                                      if(deletedIds) _portalStore.data["deletedAuditIds"] = deletedIds;
+                                      clearTimeout(_saveTimer);
                                       try {
-                                        const r1 = await saveGenImmediate("audits", updated);
-                                        if(!r1.ok) throw new Error(r1.error || "audits save failed");
-                                        if(deletedIds){
-                                          const r2 = await saveGenImmediate("deletedAuditIds", deletedIds);
-                                          if(!r2.ok) throw new Error(r2.error || "deletedAuditIds save failed");
-                                        }
+                                        await _saveDriveState();
                                       } catch(err) {
                                         alert("⚠️ Delete saved locally but Drive write failed:\n" + (err.message||err) + "\n\nThe audit may reappear on next login. Try again or check your network.");
                                       }
@@ -8496,14 +8501,19 @@ export default function App(){
                                   deletedIds = [...new Set([...prev, m.id])];
                                   localStorage.setItem("tbp_deleted_meeting_ids", JSON.stringify(deletedIds));
                                 }
-                                // Await Drive write so the delete survives tab close / logout.
+                                // Single atomic save — mutate in-memory store for BOTH keys, then one
+                                // Drive write. See audit delete handler for why two saveGenImmediate
+                                // calls don't work (save-coalescing can make the second return early).
+                                if(!_portalReady){
+                                  try { localStorage.setItem("meetings", JSON.stringify(u)); } catch {}
+                                  if(deletedIds){ try { localStorage.setItem("deletedMeetingIds", JSON.stringify(deletedIds)); } catch {} }
+                                  return;
+                                }
+                                _portalStore.data["meetings"] = u;
+                                if(deletedIds) _portalStore.data["deletedMeetingIds"] = deletedIds;
+                                clearTimeout(_saveTimer);
                                 try {
-                                  const r1 = await saveGenImmediate("meetings", u);
-                                  if(!r1.ok) throw new Error(r1.error || "meetings save failed");
-                                  if(deletedIds){
-                                    const r2 = await saveGenImmediate("deletedMeetingIds", deletedIds);
-                                    if(!r2.ok) throw new Error(r2.error || "deletedMeetingIds save failed");
-                                  }
+                                  await _saveDriveState();
                                 } catch(err) {
                                   alert("⚠️ Delete saved locally but Drive write failed:\n" + (err.message||err) + "\n\nThe meeting may reappear on next login. Try again or check your network.");
                                 }
