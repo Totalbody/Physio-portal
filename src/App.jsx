@@ -463,6 +463,29 @@ function _debouncedSave() {
   _saveTimer = setTimeout(() => _saveDriveState().catch(() => {}), 2000);
 }
 
+// Flush any pending debounced save when the tab is about to close or hidden.
+// This catches the common "delete then close immediately" bug where the 2s
+// debounce never fires. `visibilitychange` fires more reliably than
+// `beforeunload` on mobile Safari, so we hook both.
+if (typeof window !== 'undefined') {
+  const _flushPendingSave = () => {
+    if (_saveTimer) {
+      clearTimeout(_saveTimer);
+      _saveTimer = null;
+      // Fire save but don't await — browser is closing. The save request will
+      // be in flight; on a good network it should reach Drive even after the
+      // tab closes. Not guaranteed, but much better than nothing.
+      _saveDriveState().catch(() => {});
+    }
+  };
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') _flushPendingSave();
+  });
+  window.addEventListener('beforeunload', _flushPendingSave);
+  window.addEventListener('pagehide', _flushPendingSave);
+}
+
+
 // Load Google scripts (gapi + GIS) — injected once
 function _loadGoogleScripts() {
   const load = (src) => new Promise(res => {
@@ -724,7 +747,7 @@ let _vercelMirrorTimer = null;
 function _mirrorStateToVercel() {
   clearTimeout(_vercelMirrorTimer);
   _vercelMirrorTimer = setTimeout(() => {
-    const MIRROR_KEYS = ['inservices', 'audits', 'meetings', 'ppDocs', 'ppReviews', 'deletedInserviceIds', 'deletedAuditIds'];
+    const MIRROR_KEYS = ['inservices', 'audits', 'meetings', 'ppDocs', 'ppReviews', 'deletedInserviceIds', 'deletedAuditIds', 'deletedMeetingIds'];
     MIRROR_KEYS.forEach(k => {
       const val = _portalStore.data?.[k];
       if (val === undefined || val === null) return;
@@ -7359,13 +7382,19 @@ export default function App(){
       // item checks, and any other field written after the seed was originally
       // created. Now: seed is the base, Drive data overlays on top.
       .map(a => { const drv = driveById[a.id]; return drv ? {...a, ...drv} : a; });
-    const initMeetings = INIT_MEETINGS.map(m => {
-      const drv = driveMeetById[m.id];
-      return drv?.attachment ? {...m, attachment: drv.attachment} : m;
-    });
+    const deletedMeetingIds = new Set([
+      ...(d["deletedMeetingIds"] || []),
+      ...JSON.parse(localStorage.getItem("tbp_deleted_meeting_ids") || "[]"),
+    ]);
+    const initMeetings = INIT_MEETINGS
+      .filter(m => !deletedMeetingIds.has(m.id))
+      .map(m => {
+        const drv = driveMeetById[m.id];
+        return drv?.attachment ? {...m, attachment: drv.attachment} : m;
+      });
 
     const newAudits   = [...initAudits,   ...driveAudits];
-    const newMeetings = [...initMeetings, ...driveMeetings];
+    const newMeetings = [...initMeetings, ...driveMeetings.filter(m => !deletedMeetingIds.has(m.id))];
     newAudits.sort((a,b)=>b.date.localeCompare(a.date));
     newMeetings.sort((a,b)=>b.date.localeCompare(a.date));
 
@@ -8268,8 +8297,35 @@ export default function App(){
                                     }} color={C.blue}>View full report →</BSm>
                                     {/* Upload-PDF-as-evidence only for fire/peer/notes types (where PDF is the canonical record). */}
                                     {["fire_drill","peer_review","clinical_notes"].includes(a.type) && <AuditEvidenceBtn audit={a} audits={audits} setAudits={setAudits} onView={setEavf}/>}
-                                    <BSm onClick={e=>{e.stopPropagation();if(!window.confirm(`Delete this ${a.type} audit for ${a.clinic} on ${fmtNZ(a.date)}?\n\nThis cannot be undone.`))return;const updated=audits.filter(x=>x.id!==a.id);setAudits(updated);saveGen("audits",updated);// Track deleted seeded IDs so they don't reload from INIT
-if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getItem("tbp_deleted_audit_ids")||"[]");localStorage.setItem("tbp_deleted_audit_ids",JSON.stringify([...new Set([...prev,a.id])]));saveGen("deletedAuditIds",[...new Set([...prev,a.id])]);};}} color={C.red}>🗑 Delete</BSm>
+                                    <BSm onClick={async e=>{
+                                      e.stopPropagation();
+                                      if(!window.confirm(`Delete this ${a.type} audit for ${a.clinic} on ${fmtNZ(a.date)}?\n\nThis cannot be undone.`)) return;
+                                      // Optimistic UI update so the row disappears immediately
+                                      const updated = audits.filter(x => x.id !== a.id);
+                                      setAudits(updated);
+                                      // If seeded (id < 100000), also track deletion so INIT_AUDITS doesn't re-add
+                                      // it on next load. Mirror to localStorage AND to Drive (deletedAuditIds key).
+                                      let deletedIds = null;
+                                      if(typeof a.id === "number" && a.id < 100000){
+                                        const prev = JSON.parse(localStorage.getItem("tbp_deleted_audit_ids") || "[]");
+                                        deletedIds = [...new Set([...prev, a.id])];
+                                        localStorage.setItem("tbp_deleted_audit_ids", JSON.stringify(deletedIds));
+                                      }
+                                      // Await the Drive write so the delete survives tab close / logout.
+                                      // Previously this used saveGen() which is debounced 2s — if the user
+                                      // closed the tab within that window, the delete was lost and the audit
+                                      // reappeared on next login.
+                                      try {
+                                        const r1 = await saveGenImmediate("audits", updated);
+                                        if(!r1.ok) throw new Error(r1.error || "audits save failed");
+                                        if(deletedIds){
+                                          const r2 = await saveGenImmediate("deletedAuditIds", deletedIds);
+                                          if(!r2.ok) throw new Error(r2.error || "deletedAuditIds save failed");
+                                        }
+                                      } catch(err) {
+                                        alert("⚠️ Delete saved locally but Drive write failed:\n" + (err.message||err) + "\n\nThe audit may reappear on next login. Try again or check your network.");
+                                      }
+                                    }} color={C.red}>🗑 Delete</BSm>
                                   </div>
                                 </div>}
                               </div>
@@ -8428,7 +8484,30 @@ if(typeof a.id==="number"&&a.id<100000){const prev=JSON.parse(localStorage.getIt
                             </div>
                             <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
                               <Pill s="ok" label="Done ✓"/>
-                              <BSm onClick={()=>{if(window.confirm("Delete this meeting?")){const u=meetings.filter(x=>x.id!==m.id);setMeetings(u);saveGen("meetings",u);}}} color={C.red}>✕</BSm>
+                              <BSm onClick={async ()=>{
+                                if(!window.confirm("Delete this meeting?")) return;
+                                // Optimistic UI update
+                                const u = meetings.filter(x => x.id !== m.id);
+                                setMeetings(u);
+                                // Track seeded meeting deletions so INIT_MEETINGS doesn't re-add them
+                                let deletedIds = null;
+                                if(typeof m.id === "number" && m.id < 100000){
+                                  const prev = JSON.parse(localStorage.getItem("tbp_deleted_meeting_ids") || "[]");
+                                  deletedIds = [...new Set([...prev, m.id])];
+                                  localStorage.setItem("tbp_deleted_meeting_ids", JSON.stringify(deletedIds));
+                                }
+                                // Await Drive write so the delete survives tab close / logout.
+                                try {
+                                  const r1 = await saveGenImmediate("meetings", u);
+                                  if(!r1.ok) throw new Error(r1.error || "meetings save failed");
+                                  if(deletedIds){
+                                    const r2 = await saveGenImmediate("deletedMeetingIds", deletedIds);
+                                    if(!r2.ok) throw new Error(r2.error || "deletedMeetingIds save failed");
+                                  }
+                                } catch(err) {
+                                  alert("⚠️ Delete saved locally but Drive write failed:\n" + (err.message||err) + "\n\nThe meeting may reappear on next login. Try again or check your network.");
+                                }
+                              }} color={C.red}>✕</BSm>
                             </div>
                           </div>
                           {m.attendees&&<div style={{fontSize:12,color:C.muted,marginTop:6}}>👥 {m.attendees}</div>}
