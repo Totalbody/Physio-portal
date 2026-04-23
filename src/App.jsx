@@ -780,8 +780,24 @@ async function _loadDriveData() {
       return;
     }
     if (found.length > 1) {
-      _warn(`[Drive] ⚠️ Found ${found.length} portal-state.json files — using newest. Older copies:`,
-        found.slice(1).map(f => `${f.id} (modified ${f.modifiedTime})`).join(' | '));
+      _warn(`[Drive] ⚠️ Found ${found.length} portal-state.json files — using newest, trashing older copies.`);
+      // Trash all but the newest so future saves can't hit an old duplicate.
+      // Without this, the code saves to whichever file-id is cached in memory/
+      // localStorage (could be ANY of them), but load always reads the newest
+      // by modifiedTime. If those two files differ, deletes appear to vanish
+      // into the older copy while the newer (stale) copy keeps being displayed.
+      const duplicates = found.slice(1);
+      duplicates.forEach(f => {
+        _log(`[Drive] Trashing duplicate portal-state.json id=${f.id.slice(0,10)}… modified=${f.modifiedTime}`);
+        fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, {
+          method:'PATCH',
+          headers:{ Authorization:`Bearer ${_driveToken}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ trashed: true }),
+        }).then(r => {
+          if (r.ok) _log(`[Drive] ✓ Trashed duplicate ${f.id.slice(0,10)}…`);
+          else      _warn(`[Drive] Failed to trash duplicate ${f.id.slice(0,10)}…: HTTP ${r.status}`);
+        }).catch(e => _warn(`[Drive] Error trashing duplicate:`, e.message||e));
+      });
     }
     _driveStateFileId = found[0].id;
     _log(`[Drive] Using state file id=${found[0].id.slice(0,10)}… modified=${found[0].modifiedTime} size=${((Number(found[0].size)||0)/1024).toFixed(0)}KB`);
