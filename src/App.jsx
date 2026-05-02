@@ -3091,14 +3091,21 @@ function FileViewer({file,onClose}){
 
   if(!file)return null;
 
+  const isPdf = file?.fileType === "application/pdf" || /\.pdf$/i.test(file?.fileName||"");
+
   // Drive thumbnail is fast and reliable for images
   const imgSrc = isDrive
     ? `https://drive.google.com/thumbnail?id=${file.driveId}&sz=w1200`
     : (file.blobUrl||file.dataUrl);
 
-  // Drive preview embed — works for PDF, DOCX, PPTX, XLSX (NOT html)
+  // Drive preview embed — works for PDF, DOCX, PPTX, XLSX (NOT html).
+  // For PDFs we add usp=embed_googleplus which keeps the page navigation
+  // bar visible so users on iPad can flip through multi-page documents
+  // (without it, Safari's iframe handling can clip the controls to page 1).
   const previewUrl = file.driveId
-    ? `https://drive.google.com/file/d/${file.driveId}/preview`
+    ? (isPdf
+        ? `https://drive.google.com/file/d/${file.driveId}/preview?usp=embed_googleplus`
+        : `https://drive.google.com/file/d/${file.driveId}/preview`)
     : null;
 
   const openUrl = file.driveId
@@ -3178,10 +3185,29 @@ function FileViewer({file,onClose}){
             ref={iframeRef}
             src={embedSrc}
             title={file.fileName}
-            style={{width:"100%",height:"100%",border:"none",background:"#fff"}}
+            style={{width:"100%",height:"100%",border:"none",background:"#fff",WebkitOverflowScrolling:"touch"}}
+            scrolling="auto"
             onError={()=>setIframeError(true)}
             allow="autoplay"
           />
+        )}
+
+        {/* Multi-page PDF helper — Drive's iframe preview on iPad sometimes
+            only shows page 1 due to Safari's nested-scroll handling. Surface
+            a clear "Open in Drive" CTA so the user can always reach the
+            full document. */}
+        {isPdf && canEmbed && !iframeError && openUrl && (
+          <a
+            href={openUrl} target="_blank" rel="noreferrer"
+            style={{
+              position:"absolute",top:12,left:12,zIndex:10,
+              background:"rgba(0,0,0,0.8)",border:"2px solid rgba(255,255,255,0.3)",
+              color:"white",padding:"10px 16px",borderRadius:24,
+              fontSize:13,fontWeight:600,textDecoration:"none",
+              boxShadow:"0 2px 8px rgba(0,0,0,0.4)",
+              WebkitTapHighlightColor:"transparent",
+            }}
+          >↗ Open full document</a>
         )}
 
         {/* ── Fallback card ── */}
